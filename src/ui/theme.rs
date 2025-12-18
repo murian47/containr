@@ -79,6 +79,8 @@ pub struct ThemeSpec {
     pub panel: StyleSpec,
     #[serde(default = "default_panel_focused")]
     pub panel_focused: StyleSpec,
+    #[serde(default = "default_cmdline")]
+    pub cmdline: StyleSpec,
 
     // Text roles.
     #[serde(default = "default_text_dim")]
@@ -238,6 +240,15 @@ fn default_scroll_thumb() -> StyleSpec {
     }
 }
 
+fn default_cmdline() -> StyleSpec {
+    // Command line / prompt row at the bottom.
+    StyleSpec {
+        fg: "#dcdcdc".to_string(),
+        bg: "#101010".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
 pub fn default_theme_spec() -> ThemeSpec {
     ThemeSpec {
         version: default_theme_version(),
@@ -247,6 +258,7 @@ pub fn default_theme_spec() -> ThemeSpec {
         footer: default_footer(),
         panel: default_panel(),
         panel_focused: default_panel_focused(),
+        cmdline: default_cmdline(),
         text_dim: default_text_dim(),
         text_error: default_text_error(),
         text_warn: default_text_warn(),

@@ -213,8 +213,8 @@ fn shell_back_from_full(app: &mut App) {
         ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages
     ) {
         // Full-screen views should never keep command-line mode active in the background.
-        app.shell_cmd_mode = false;
-        app.shell_confirm = None;
+        app.shell_cmdline.mode = false;
+        app.shell_cmdline.confirm = None;
         app.shell_view = if app.shell_view == ShellView::Help {
             app.shell_help_return
         } else if app.shell_view == ShellView::Messages {
@@ -284,7 +284,7 @@ impl App {
             refresh_secs: self.refresh_secs.max(1),
             logs_tail: self.logs_tail.max(1),
             cmd_history_max: self.cmd_history_max_effective(),
-            cmd_history: self.shell_cmd_history.entries.clone(),
+            cmd_history: self.shell_cmdline.history.entries.clone(),
             active_theme: self.theme_name.clone(),
             templates_dir: self.templates_dir.to_string_lossy().to_string(),
             view_layout: self
@@ -663,43 +663,6 @@ fn shell_open_console(app: &mut App, user: Option<&str>, shell: &str) {
     app.shell_pending_interactive = Some(ShellInteractive::RunCommand { cmd });
 }
 
-fn format_key_spec(spec: KeySpec) -> String {
-    let mut parts: Vec<&'static str> = Vec::new();
-    if (spec.mods & 1) != 0 {
-        parts.push("C");
-    }
-    if (spec.mods & 2) != 0 {
-        parts.push("S");
-    }
-    if (spec.mods & 4) != 0 {
-        parts.push("A");
-    }
-    let key = match spec.code {
-        KeyCodeNorm::Char(' ') => "Space".to_string(),
-        KeyCodeNorm::Char(',') => ",".to_string(),
-        KeyCodeNorm::Char(c) => c.to_string(),
-        KeyCodeNorm::F(n) => format!("F{n}"),
-        KeyCodeNorm::Enter => "Enter".to_string(),
-        KeyCodeNorm::Esc => "Esc".to_string(),
-        KeyCodeNorm::Tab => "Tab".to_string(),
-        KeyCodeNorm::Backspace => "Backspace".to_string(),
-        KeyCodeNorm::Delete => "Delete".to_string(),
-        KeyCodeNorm::Home => "Home".to_string(),
-        KeyCodeNorm::End => "End".to_string(),
-        KeyCodeNorm::PageUp => "PageUp".to_string(),
-        KeyCodeNorm::PageDown => "PageDown".to_string(),
-        KeyCodeNorm::Up => "Up".to_string(),
-        KeyCodeNorm::Down => "Down".to_string(),
-        KeyCodeNorm::Left => "Left".to_string(),
-        KeyCodeNorm::Right => "Right".to_string(),
-    };
-    if parts.is_empty() {
-        key
-    } else {
-        format!("{}-{}", parts.join("-"), key)
-    }
-}
-
 fn shell_execute_cmdline(
     app: &mut App,
     cmdline: &str,
@@ -743,10 +706,10 @@ fn shell_execute_cmdline(
             if force {
                 app.should_quit = true;
             } else {
-                app.shell_cmd_mode = true;
-                app.shell_cmd_input.clear();
-                app.shell_cmd_cursor = 0;
-                app.shell_confirm = Some(ShellConfirm {
+                app.shell_cmdline.mode = true;
+                app.shell_cmdline.input.clear();
+                app.shell_cmdline.cursor = 0;
+                app.shell_cmdline.confirm = Some(ShellConfirm {
                     label: "quit".to_string(),
                     cmdline: cmdline_full,
                 });
@@ -756,10 +719,10 @@ fn shell_execute_cmdline(
         "?" | "help" => {
             // Ensure we don't get "stuck" in command-line mode while the Help view is active.
             // Otherwise 'q' is treated as input and won't close Help.
-            app.shell_cmd_mode = false;
-            app.shell_confirm = None;
-            app.shell_cmd_input.clear();
-            app.shell_cmd_cursor = 0;
+            app.shell_cmdline.mode = false;
+            app.shell_cmdline.confirm = None;
+            app.shell_cmdline.input.clear();
+            app.shell_cmdline.cursor = 0;
             app.shell_help_return = app.shell_view;
             app.shell_view = ShellView::Help;
             app.shell_focus = ShellFocus::List;
@@ -773,10 +736,10 @@ fn shell_execute_cmdline(
                 return;
             }
             // Messages is a full-screen view; leaving cmdline mode avoids confusing key handling.
-            app.shell_cmd_mode = false;
-            app.shell_confirm = None;
-            app.shell_cmd_input.clear();
-            app.shell_cmd_cursor = 0;
+            app.shell_cmdline.mode = false;
+            app.shell_cmdline.confirm = None;
+            app.shell_cmdline.input.clear();
+            app.shell_cmdline.cursor = 0;
             if app.shell_view == ShellView::Messages {
                 shell_back_from_full(app);
             } else {
@@ -885,192 +848,15 @@ fn shell_execute_cmdline(
             return;
         }
         "map" => {
-            let sub = it.next().unwrap_or("");
-            if sub.is_empty() || sub == "help" {
-                app.set_info(
-                    "usage: :map [scope] <KEY> <COMMAND...>  |  :map list  |  :unmap [scope] <KEY>",
-                );
-                app.shell_msgs_return = app.shell_view;
-                app.shell_view = ShellView::Messages;
-                app.shell_focus = ShellFocus::List;
-                app.shell_msgs_scroll = usize::MAX;
-                return;
-            }
-            if sub == "list" {
-                // Show effective bindings (defaults + overrides). Mark explicit entries with '*'.
-                let mut explicit: HashMap<(KeyScope, KeySpec), String> = HashMap::new();
-                let mut unsafe_entries: Vec<(String, String, String)> = Vec::new();
-                for kb in &app.keymap {
-                    let Some(scope) = parse_scope(&kb.scope) else {
-                        continue;
-                    };
-                    let Ok(spec) = parse_key_spec(&kb.key) else {
-                        continue;
-                    };
-                    let cmd = kb.cmd.trim().trim_start_matches(':').to_string();
-                    if !cmd.is_empty() && is_single_letter_without_modifiers(spec) && cmdline_is_destructive(&cmd) {
-                        unsafe_entries.push((
-                            scope_to_string(scope).to_string(),
-                            format_key_spec(spec),
-                            kb.cmd.trim().to_string(),
-                        ));
-                        continue;
-                    }
-                    explicit.insert((scope, spec), cmd);
-                }
-
-                let mut keys: HashSet<(KeyScope, KeySpec)> = HashSet::new();
-                keys.extend(app.keymap_defaults.keys().copied());
-                keys.extend(explicit.keys().copied());
-
-                let mut entries: Vec<(String, String, String, bool)> = Vec::new();
-                for (scope, spec) in keys {
-                    let scope_str = scope_to_string(scope).to_string();
-                    let key_str = format_key_spec(spec);
-                    let (cmd, is_explicit) = if let Some(cmd) = explicit.get(&(scope, spec)) {
-                        if cmd.is_empty() {
-                            ("<disabled>".to_string(), true)
-                        } else {
-                            (format!(":{}", cmd), true)
-                        }
-                    } else if let Some(cmd) = app.keymap_defaults.get(&(scope, spec)) {
-                        (format!(":{}", cmd), false)
-                    } else {
-                        ("<disabled>".to_string(), false)
-                    };
-                    entries.push((scope_str, key_str, cmd, is_explicit));
-                }
-                entries.sort_by(|a, b| (a.0.as_str(), a.1.as_str()).cmp(&(b.0.as_str(), b.1.as_str())));
-
-                if entries.is_empty() {
-                    app.set_info("no key bindings configured");
-                } else {
-                    app.set_info("Key bindings (* = configured/overridden):");
-                    for (scope, key, cmd, explicit) in entries {
-                        let star = if explicit { "*" } else { " " };
-                        app.set_info(format!("{star} {scope:<13} {key:<12} -> {cmd}"));
-                    }
-                    for (scope, key, cmd) in unsafe_entries {
-                        app.set_info(format!(
-                            "* INVALID {scope:<8} {key:<12} -> {cmd}  (destructive commands require a modifier)"
-                        ));
-                    }
-                }
-                app.shell_msgs_return = app.shell_view;
-                app.shell_view = ShellView::Messages;
-                app.shell_focus = ShellFocus::List;
-                app.shell_msgs_scroll = usize::MAX;
-                return;
-            }
-
-            // Syntax: :map [scope] <KEY> <CMD...>
-            let (scope, key_str, cmd_rest) = if let Some(scope) = parse_scope(sub) {
-                let Some(key_str) = it.next() else {
-                    app.set_warn("usage: :map [scope] <KEY> <COMMAND...>");
-                    return;
-                };
-                (scope, key_str, it.collect::<Vec<&str>>().join(" "))
-            } else {
-                (KeyScope::Global, sub, it.collect::<Vec<&str>>().join(" "))
-            };
-            if cmd_rest.trim().is_empty() {
-                app.set_warn("usage: :map [scope] <KEY> <COMMAND...>");
-                return;
-            }
-            let spec = match parse_key_spec(key_str) {
-                Ok(s) => s,
-                Err(e) => {
-                    app.set_warn(format!("invalid key: {e}"));
-                    return;
-                }
-            };
-            let key_canon = format_key_spec(spec);
-            let mut cmd_store = cmd_rest.trim().to_string();
-            if !cmd_store.starts_with(':') {
-                cmd_store = format!(":{cmd_store}");
-            }
-            if is_single_letter_without_modifiers(spec) && cmdline_is_destructive(&cmd_store) {
-                app.set_warn(
-                    "refusing to map destructive commands to a single letter without modifiers",
-                );
-                return;
-            }
-
-            let scope_str = scope_to_string(scope).to_string();
-            app.keymap.retain(|kb| {
-                parse_scope(&kb.scope) != Some(scope) || parse_key_spec(&kb.key).ok() != Some(spec)
-            });
-            app.keymap.push(KeyBinding {
-                key: key_canon.clone(),
-                scope: scope_str.clone(),
-                cmd: cmd_store.clone(),
-            });
-            app.rebuild_keymap();
-            app.persist_config();
-            app.set_info(format!("mapped {scope_str} {key_canon} -> {cmd_store}"));
-            app.shell_msgs_return = app.shell_view;
-            app.shell_view = ShellView::Messages;
-            app.shell_focus = ShellFocus::List;
-            app.shell_msgs_scroll = usize::MAX;
+            let first = it.next().unwrap_or("");
+            let rest: Vec<&str> = it.collect();
+            let _ = commands::keymap_cmd::handle_map(app, first, &rest);
             return;
         }
         "unmap" => {
-            let Some(first) = it.next() else {
-                app.set_warn("usage: :unmap [scope] <KEY>");
-                return;
-            };
-            let (scope, key_str) = if let Some(scope) = parse_scope(first) {
-                let Some(key_str) = it.next() else {
-                    app.set_warn("usage: :unmap [scope] <KEY>");
-                    return;
-                };
-                (scope, key_str)
-            } else {
-                (KeyScope::Global, first)
-            };
-
-            let spec = match parse_key_spec(key_str) {
-                Ok(s) => s,
-                Err(e) => {
-                    app.set_warn(format!("invalid key: {e}"));
-                    return;
-                }
-            };
-            let scope_str = scope_to_string(scope).to_string();
-            let key_canon = format_key_spec(spec);
-
-            let mut removed = false;
-            let before = app.keymap.len();
-            app.keymap.retain(|kb| {
-                let same = parse_scope(&kb.scope) == Some(scope)
-                    && parse_key_spec(&kb.key).ok() == Some(spec);
-                if same {
-                    removed = true;
-                }
-                !same
-            });
-
-            // If there was no explicit mapping, insert a disable marker to override defaults.
-            if !removed {
-                app.keymap.push(KeyBinding {
-                    key: key_canon.clone(),
-                    scope: scope_str.clone(),
-                    cmd: String::new(),
-                });
-            }
-            app.rebuild_keymap();
-            app.persist_config();
-            if removed && app.keymap.len() < before {
-                app.set_info(format!(
-                    "unmapped {scope_str} {key_canon} (restored defaults)"
-                ));
-            } else {
-                app.set_info(format!("unmapped {scope_str} {key_canon}"));
-            }
-            app.shell_msgs_return = app.shell_view;
-            app.shell_view = ShellView::Messages;
-            app.shell_focus = ShellFocus::List;
-            app.shell_msgs_scroll = usize::MAX;
+            let first = it.next().unwrap_or("");
+            let rest: Vec<&str> = it.collect();
+            let _ = commands::keymap_cmd::handle_unmap(app, first, &rest);
             return;
         }
         _ => {}
@@ -1078,265 +864,104 @@ fn shell_execute_cmdline(
 
     if cmd == "container" || cmd == "ctr" {
         let sub = it.next().unwrap_or("");
-        match sub {
-            "start" => shell_exec_container_action(app, ContainerAction::Start, action_req_tx),
-            "stop" => shell_exec_container_action(app, ContainerAction::Stop, action_req_tx),
-            "restart" => shell_exec_container_action(app, ContainerAction::Restart, action_req_tx),
-            "rm" | "delete" | "remove" => {
-                if force {
-                    shell_exec_container_action(app, ContainerAction::Remove, action_req_tx)
-                } else {
-                    shell_begin_confirm(app, "container rm", cmdline_full.clone());
-                }
-            }
-            "console" => {
-                let mut user: Option<String> = None;
-                let mut shell: Option<String> = None;
-                while let Some(tok) = it.next() {
-                    if tok == "-u" {
-                        user = it.next().map(|s| s.to_string());
-                        if user.is_none() {
-                            app.set_warn("usage: :container console [-u USER] [bash|sh|SHELL]");
-                            return;
-                        }
-                    } else if shell.is_none() {
-                        shell = Some(tok.to_string());
-                    } else {
-                        app.set_warn("usage: :container console [-u USER] [bash|sh|SHELL]");
-                        return;
-                    }
-                }
-                let shell = shell.unwrap_or_else(|| "bash".to_string());
-                let user = user.as_deref().or(Some("root"));
-                shell_open_console(app, user, &shell);
-            }
-            "tree" => {
-                app.active_view = ActiveView::Containers;
-                let anchor_id = app.selected_container().map(|c| c.id.clone());
-                app.list_mode = match app.list_mode {
-                    ListMode::Flat => ListMode::Tree,
-                    ListMode::Tree => ListMode::Flat,
-                };
-                app.view_dirty = true;
-                app.ensure_view();
-                if let Some(id) = anchor_id {
-                    if app.list_mode == ListMode::Tree {
-                        if let Some(idx) = app.view.iter().position(
-                            |e| matches!(e, ViewEntry::Container { id: cid, .. } if cid == &id),
-                        ) {
-                            app.selected = idx;
-                        }
-                    } else if let Some(idx) = app.container_idx_by_id.get(&id).copied() {
-                        app.selected = idx;
-                    }
-                }
-            }
-            _ => {
-                app.set_warn(
-                    "usage: :container (start|stop|restart|rm|console [bash|sh]|tree)  (uses selection/marked/stack)",
-                );
-            }
+        let mut args: Vec<&str> = Vec::new();
+        if !sub.is_empty() {
+            args.push(sub);
         }
+        args.extend(it);
+        let _ = commands::container_cmd::handle_container(
+            app,
+            force,
+            cmdline_full.clone(),
+            &args,
+            action_req_tx,
+        );
         return;
     }
 
     if cmd == "image" || cmd == "img" {
         let sub = it.next().unwrap_or("");
-        match sub {
-            "untag" => {
-                if force {
-                    shell_exec_image_action(app, true, action_req_tx);
-                } else {
-                    shell_begin_confirm(app, "image untag", cmdline_full.clone());
-                }
-            }
-            "rm" | "remove" | "delete" => {
-                if force {
-                    shell_exec_image_action(app, false, action_req_tx);
-                } else {
-                    shell_begin_confirm(app, "image rm", cmdline_full.clone());
-                }
-            }
-            _ => app.set_warn("usage: :image untag | :image rm"),
+        let mut args: Vec<&str> = Vec::new();
+        if !sub.is_empty() {
+            args.push(sub);
         }
+        args.extend(it);
+        let _ = commands::image_cmd::handle_image(
+            app,
+            force,
+            cmdline_full.clone(),
+            &args,
+            action_req_tx,
+        );
         return;
     }
 
     if cmd == "volume" || cmd == "vol" {
         let sub = it.next().unwrap_or("");
-        match sub {
-            "rm" | "remove" | "delete" => {
-                if force {
-                    shell_exec_volume_remove(app, action_req_tx);
-                } else {
-                    shell_begin_confirm(app, "volume rm", cmdline_full.clone());
-                }
-            }
-            _ => app.set_warn("usage: :volume rm"),
+        let mut args: Vec<&str> = Vec::new();
+        if !sub.is_empty() {
+            args.push(sub);
         }
+        args.extend(it);
+        let _ = commands::volume_cmd::handle_volume(
+            app,
+            force,
+            cmdline_full.clone(),
+            &args,
+            action_req_tx,
+        );
         return;
     }
 
     if cmd == "network" || cmd == "net" {
         let sub = it.next().unwrap_or("");
-        match sub {
-            "rm" | "remove" | "delete" => {
-                if force {
-                    shell_exec_network_remove(app, action_req_tx);
-                } else {
-                    // Avoid prompting when only system networks are selected/marked.
-                    let any_removable = if !app.marked_networks.is_empty() {
-                        app.marked_networks
-                            .iter()
-                            .any(|id| !app.is_system_network_id(id))
-                    } else {
-                        app.selected_network()
-                            .map(|n| !App::is_system_network(n))
-                            .unwrap_or(false)
-                    };
-                    if !any_removable {
-                        app.set_warn("system networks cannot be modified");
-                        return;
-                    }
-                    shell_begin_confirm(app, "network rm", cmdline_full.clone());
-                }
-            }
-            _ => app.set_warn("usage: :network rm"),
+        let mut args: Vec<&str> = Vec::new();
+        if !sub.is_empty() {
+            args.push(sub);
         }
+        args.extend(it);
+        let _ = commands::network_cmd::handle_network(
+            app,
+            force,
+            cmdline_full.clone(),
+            &args,
+            action_req_tx,
+        );
         return;
     }
 
     if cmd == "sidebar" {
-        let sub = it.next().unwrap_or("");
-        match sub {
-            "toggle" => {
-                app.shell_sidebar_hidden = !app.shell_sidebar_hidden;
-                if app.shell_sidebar_hidden && app.shell_focus == ShellFocus::Sidebar {
-                    app.shell_focus = ShellFocus::List;
-                }
-            }
-            "compact" => app.shell_sidebar_collapsed = !app.shell_sidebar_collapsed,
-            _ => app.set_warn("usage: :sidebar toggle|compact"),
-        }
+        let sub = it.next().unwrap_or("toggle");
+        let mut args: Vec<&str> = Vec::new();
+        args.push(sub);
+        args.extend(it);
+        let _ = commands::sidebar_cmd::handle_sidebar(app, &args);
         return;
     }
 
     if cmd == "logs" {
         let sub = it.next().unwrap_or("");
-        if sub == "reload" || sub == "refresh" {
-            if let Some(id) = app.logs_for_id.clone() {
-                app.logs_loading = true;
-                let _ = logs_req_tx.send((id, app.logs_tail.max(1)));
-            } else {
-                app.set_warn("no logs target selected");
-            }
-            return;
+        let mut args: Vec<&str> = Vec::new();
+        if !sub.is_empty() {
+            args.push(sub);
         }
-        if sub == "copy" {
-            app.logs_copy_selection();
-            return;
-        }
-        app.set_warn("usage: :logs reload|copy");
+        args.extend(it);
+        let _ = commands::logs_cmd::handle_logs(app, &args, logs_req_tx);
         return;
     }
 
     if cmd == "set" {
-        let sub = it.next().unwrap_or("");
-        if sub == "refresh" {
-            let Some(v) = it.next() else {
-                app.set_warn("usage: :set refresh <seconds>");
-                return;
-            };
-            match v.parse::<u64>() {
-                Ok(secs) if secs >= 1 && secs <= 3600 => {
-                    app.refresh_secs = secs;
-                    let _ = refresh_interval_tx.send(Duration::from_secs(secs));
-                    app.persist_config();
-                }
-                _ => {
-                    app.set_warn("refresh must be 1..3600");
-                }
-            }
-            return;
-        }
-        if sub == "logtail" {
-            let Some(v) = it.next() else {
-                app.set_warn("usage: :set logtail <lines>");
-                return;
-            };
-            match v.parse::<usize>() {
-                Ok(n) if (1..=200_000).contains(&n) => {
-                    app.logs_tail = n;
-                    app.persist_config();
-                    if app.shell_view == ShellView::Logs {
-                        if let Some(id) = app.logs_for_id.clone() {
-                            app.logs_loading = true;
-                            let _ = logs_req_tx.send((id, app.logs_tail.max(1)));
-                        }
-                    }
-                }
-                _ => {
-                    app.set_warn("logtail must be 1..200000");
-                }
-            }
-            return;
-        }
-        if sub == "history" {
-            let Some(v) = it.next() else {
-                app.set_warn("usage: :set history <entries>");
-                return;
-            };
-            match v.parse::<usize>() {
-                Ok(n) if (1..=5000).contains(&n) => {
-                    app.cmd_history_max = n;
-                    // Trim existing history to the new limit.
-                    let entries = app.shell_cmd_history.entries.clone();
-                    app.set_cmd_history_entries(entries);
-                    app.persist_config();
-                }
-                _ => app.set_warn("history must be 1..5000"),
-            }
-            return;
-        }
-        app.set_warn(
-            "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries>",
-        );
+        let args: Vec<&str> = it.collect();
+        let _ = commands::set_cmd::handle_set(app, &args, refresh_interval_tx, logs_req_tx);
         return;
     }
 
     if cmd == "layout" {
         let sub = it.next().unwrap_or("toggle");
-        let target_view = if matches!(
-            app.shell_view,
-            ShellView::Inspect | ShellView::Logs | ShellView::Help | ShellView::Messages
-        ) {
-            app.shell_last_main_view
-        } else {
-            app.shell_view
-        };
-        match sub.to_ascii_lowercase().as_str() {
-            "h" | "hor" | "horizontal" => app.shell_split_mode = ShellSplitMode::Horizontal,
-            "v" | "ver" | "vertical" => app.shell_split_mode = ShellSplitMode::Vertical,
-            "toggle" => {
-                app.shell_split_mode = match app.shell_split_mode {
-                    ShellSplitMode::Horizontal => ShellSplitMode::Vertical,
-                    ShellSplitMode::Vertical => ShellSplitMode::Horizontal,
-                }
-            }
-            _ => {
-                app.set_warn("usage: :layout [horizontal|vertical|toggle]");
-                return;
-            }
-        }
-        app.set_view_split_mode(target_view, app.shell_split_mode);
-        app.persist_config();
-        app.set_info(format!(
-            "layout: {}",
-            match app.shell_split_mode {
-                ShellSplitMode::Horizontal => "horizontal",
-                ShellSplitMode::Vertical => "vertical",
-            }
-        ));
+        let mut args: Vec<&str> = Vec::new();
+        args.push(sub);
+        args.extend(it);
+        let _ = commands::layout_cmd::handle_layout(app, &args);
         return;
     }
 
@@ -1430,31 +1055,31 @@ fn shell_execute_cmdline(
             return;
         }
         if sub == "new" {
-            app.shell_cmd_mode = true;
+            app.shell_cmdline.mode = true;
             set_text_and_cursor(
-                &mut app.shell_cmd_input,
-                &mut app.shell_cmd_cursor,
+                &mut app.shell_cmdline.input,
+                &mut app.shell_cmdline.cursor,
                 match app.templates_kind {
                     TemplatesKind::Stacks => "template add ".to_string(),
                     TemplatesKind::Networks => "nettemplate add ".to_string(),
                 },
             );
-            app.shell_confirm = None;
+            app.shell_cmdline.confirm = None;
             return;
         }
         if sub == "add" || sub == "new" {
             let Some(name) = it.next() else {
                 // Convenience: without name, open prompt for "template add".
-                app.shell_cmd_mode = true;
+                app.shell_cmdline.mode = true;
                 set_text_and_cursor(
-                    &mut app.shell_cmd_input,
-                    &mut app.shell_cmd_cursor,
+                    &mut app.shell_cmdline.input,
+                    &mut app.shell_cmdline.cursor,
                     match app.templates_kind {
                         TemplatesKind::Stacks => "template add ".to_string(),
                         TemplatesKind::Networks => "nettemplate add ".to_string(),
                     },
                 );
-                app.shell_confirm = None;
+                app.shell_cmdline.confirm = None;
                 return;
             };
             match app.templates_kind {
@@ -1569,24 +1194,24 @@ fn shell_execute_cmdline(
             return;
         }
         if sub == "new" {
-            app.shell_cmd_mode = true;
+            app.shell_cmdline.mode = true;
             set_text_and_cursor(
-                &mut app.shell_cmd_input,
-                &mut app.shell_cmd_cursor,
+                &mut app.shell_cmdline.input,
+                &mut app.shell_cmdline.cursor,
                 "nettemplate add ".to_string(),
             );
-            app.shell_confirm = None;
+            app.shell_cmdline.confirm = None;
             return;
         }
         if sub == "add" || sub == "new" {
             let Some(name) = it.next() else {
-                app.shell_cmd_mode = true;
+                app.shell_cmdline.mode = true;
                 set_text_and_cursor(
-                    &mut app.shell_cmd_input,
-                    &mut app.shell_cmd_cursor,
+                    &mut app.shell_cmdline.input,
+                    &mut app.shell_cmdline.cursor,
                     "nettemplate add ".to_string(),
                 );
-                app.shell_confirm = None;
+                app.shell_cmdline.confirm = None;
                 return;
             };
             match create_net_template(app, name) {
@@ -1964,16 +1589,16 @@ fn shell_execute_action(
         }
         ShellAction::TemplateEdit => shell_edit_selected_template(app),
         ShellAction::TemplateNew => {
-            app.shell_cmd_mode = true;
+            app.shell_cmdline.mode = true;
             set_text_and_cursor(
-                &mut app.shell_cmd_input,
-                &mut app.shell_cmd_cursor,
+                &mut app.shell_cmdline.input,
+                &mut app.shell_cmdline.cursor,
                 match app.templates_kind {
                     TemplatesKind::Stacks => "template add ".to_string(),
                     TemplatesKind::Networks => "nettemplate add ".to_string(),
                 },
             );
-            app.shell_confirm = None;
+            app.shell_cmdline.confirm = None;
         }
         ShellAction::TemplateDelete => {
             let name = match app.templates_kind {
@@ -2187,17 +1812,17 @@ fn handle_shell_key(
         }
     }
 
-    if app.shell_cmd_mode {
-        if let Some(confirm) = app.shell_confirm.clone() {
+    if app.shell_cmdline.mode {
+        if let Some(confirm) = app.shell_cmdline.confirm.clone() {
             match key.code {
                 KeyCode::Char('y') | KeyCode::Char('Y') => {
                     // Re-run the original command with the force modifier to auto-confirm.
                     let cmdline = format!("!{}", confirm.cmdline);
-                    app.shell_confirm = None;
-                    app.shell_cmd_mode = false;
-                    app.shell_cmd_input.clear();
-                    app.shell_cmd_cursor = 0;
-                    app.shell_cmd_history.reset_nav();
+                    app.shell_cmdline.confirm = None;
+                    app.shell_cmdline.mode = false;
+                    app.shell_cmdline.input.clear();
+                    app.shell_cmdline.cursor = 0;
+                    app.shell_cmdline.history.reset_nav();
                     shell_execute_cmdline(
                         app,
                         &cmdline,
@@ -2211,11 +1836,11 @@ fn handle_shell_key(
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                     // Cancel.
-                    app.shell_confirm = None;
-                    app.shell_cmd_mode = false;
-                    app.shell_cmd_input.clear();
-                    app.shell_cmd_cursor = 0;
-                    app.shell_cmd_history.reset_nav();
+                    app.shell_cmdline.confirm = None;
+                    app.shell_cmdline.mode = false;
+                    app.shell_cmdline.input.clear();
+                    app.shell_cmdline.cursor = 0;
+                    app.shell_cmdline.history.reset_nav();
                     return;
                 }
                 _ => return,
@@ -2224,10 +1849,10 @@ fn handle_shell_key(
 
         match key.code {
             KeyCode::Enter => {
-                let cmdline = app.shell_cmd_input.trim().to_string();
-                app.shell_cmd_mode = false;
-                app.shell_cmd_input.clear();
-                app.shell_cmd_cursor = 0;
+                let cmdline = app.shell_cmdline.input.trim().to_string();
+                app.shell_cmdline.mode = false;
+                app.shell_cmdline.input.clear();
+                app.shell_cmdline.cursor = 0;
                 app.push_cmd_history(&cmdline);
                 shell_execute_cmdline(
                     app,
@@ -2240,57 +1865,57 @@ fn handle_shell_key(
                 );
             }
             KeyCode::Esc => {
-                app.shell_cmd_mode = false;
-                app.shell_cmd_input.clear();
-                app.shell_cmd_cursor = 0;
-                app.shell_confirm = None;
-                app.shell_cmd_history.reset_nav();
+                app.shell_cmdline.mode = false;
+                app.shell_cmdline.input.clear();
+                app.shell_cmdline.cursor = 0;
+                app.shell_cmdline.confirm = None;
+                app.shell_cmdline.history.reset_nav();
             }
             KeyCode::Up => {
-                if let Some(s) = app.shell_cmd_history.prev(&app.shell_cmd_input) {
-                    set_text_and_cursor(&mut app.shell_cmd_input, &mut app.shell_cmd_cursor, s);
+                if let Some(s) = app.shell_cmdline.history.prev(&app.shell_cmdline.input) {
+                    set_text_and_cursor(&mut app.shell_cmdline.input, &mut app.shell_cmdline.cursor, s);
                 }
             }
             KeyCode::Down => {
-                if let Some(s) = app.shell_cmd_history.next() {
-                    set_text_and_cursor(&mut app.shell_cmd_input, &mut app.shell_cmd_cursor, s);
+                if let Some(s) = app.shell_cmdline.history.next() {
+                    set_text_and_cursor(&mut app.shell_cmdline.input, &mut app.shell_cmdline.cursor, s);
                 }
             }
             KeyCode::Backspace => {
-                backspace_at_cursor(&mut app.shell_cmd_input, &mut app.shell_cmd_cursor);
-                app.shell_cmd_history.on_edit();
+                backspace_at_cursor(&mut app.shell_cmdline.input, &mut app.shell_cmdline.cursor);
+                app.shell_cmdline.history.on_edit();
             }
             KeyCode::Delete => {
-                delete_at_cursor(&mut app.shell_cmd_input, &mut app.shell_cmd_cursor);
-                app.shell_cmd_history.on_edit();
+                delete_at_cursor(&mut app.shell_cmdline.input, &mut app.shell_cmdline.cursor);
+                app.shell_cmdline.history.on_edit();
             }
             KeyCode::Left => {
-                app.shell_cmd_cursor = clamp_cursor_to_text(&app.shell_cmd_input, app.shell_cmd_cursor)
+                app.shell_cmdline.cursor = clamp_cursor_to_text(&app.shell_cmdline.input, app.shell_cmdline.cursor)
                     .saturating_sub(1);
             }
             KeyCode::Right => {
-                let len = app.shell_cmd_input.chars().count();
-                app.shell_cmd_cursor =
-                    clamp_cursor_to_text(&app.shell_cmd_input, app.shell_cmd_cursor).saturating_add(1).min(len);
+                let len = app.shell_cmdline.input.chars().count();
+                app.shell_cmdline.cursor =
+                    clamp_cursor_to_text(&app.shell_cmdline.input, app.shell_cmdline.cursor).saturating_add(1).min(len);
             }
-            KeyCode::Home => app.shell_cmd_cursor = 0,
-            KeyCode::End => app.shell_cmd_cursor = app.shell_cmd_input.chars().count(),
+            KeyCode::Home => app.shell_cmdline.cursor = 0,
+            KeyCode::End => app.shell_cmdline.cursor = app.shell_cmdline.input.chars().count(),
             KeyCode::Char(ch) => {
                 // Common readline-like movement shortcuts.
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
                     match ch {
-                        'a' | 'A' => app.shell_cmd_cursor = 0,
-                        'e' | 'E' => app.shell_cmd_cursor = app.shell_cmd_input.chars().count(),
+                        'a' | 'A' => app.shell_cmdline.cursor = 0,
+                        'e' | 'E' => app.shell_cmdline.cursor = app.shell_cmdline.input.chars().count(),
                         'u' | 'U' => {
-                            app.shell_cmd_input.clear();
-                            app.shell_cmd_cursor = 0;
-                            app.shell_cmd_history.on_edit();
+                            app.shell_cmdline.input.clear();
+                            app.shell_cmdline.cursor = 0;
+                            app.shell_cmdline.history.on_edit();
                         }
                         _ => {}
                     }
                 } else if !ch.is_control() {
-                    insert_char_at_cursor(&mut app.shell_cmd_input, &mut app.shell_cmd_cursor, ch);
-                    app.shell_cmd_history.on_edit();
+                    insert_char_at_cursor(&mut app.shell_cmdline.input, &mut app.shell_cmdline.cursor, ch);
+                    app.shell_cmdline.history.on_edit();
                 }
             }
             _ => {}
@@ -2662,10 +2287,10 @@ fn handle_shell_key(
                 }
                 ShellView::Inspect => app.inspect_enter_command(),
                 _ => {
-                    app.shell_cmd_mode = true;
-                    app.shell_cmd_input.clear();
-                    app.shell_cmd_cursor = 0;
-                    app.shell_confirm = None;
+                    app.shell_cmdline.mode = true;
+                    app.shell_cmdline.input.clear();
+                    app.shell_cmdline.cursor = 0;
+                    app.shell_cmdline.confirm = None;
                 }
             }
             return;
@@ -3582,21 +3207,19 @@ fn draw_shell_footer(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
 }
 
 fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
-    let bg = Style::default()
-        .bg(Color::Rgb(16, 16, 16))
-        .fg(Color::Rgb(220, 220, 220));
+    let bg = app.theme.cmdline.to_style();
     f.render_widget(Block::default().style(bg), area);
 
     let (mode, prefix, input, cursor, show_cursor): (&str, &str, String, usize, bool) =
-        if app.shell_cmd_mode {
-            if let Some(confirm) = &app.shell_confirm {
+        if app.shell_cmdline.mode {
+            if let Some(confirm) = &app.shell_cmdline.confirm {
                 ("CONFIRM", ":", format!("{} (y/n)", confirm.label), 0, false)
             } else {
                 (
                     "COMMAND",
                     ":",
-                    app.shell_cmd_input.clone(),
-                    app.shell_cmd_cursor,
+                    app.shell_cmdline.input.clone(),
+                    app.shell_cmdline.cursor,
                     true,
                 )
             }
