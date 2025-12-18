@@ -30,6 +30,7 @@ fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
         items.push(ShellSidebarItem::Server(i));
     }
     items.push(ShellSidebarItem::Separator);
+    items.push(ShellSidebarItem::Module(ShellView::Dashboard));
     items.push(ShellSidebarItem::Module(ShellView::Containers));
     items.push(ShellSidebarItem::Module(ShellView::Images));
     items.push(ShellSidebarItem::Module(ShellView::Volumes));
@@ -41,6 +42,7 @@ fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
     // Help is accessible via :? / :help (not a module entry).
 
     let actions: Vec<ShellAction> = match app.shell_view {
+        ShellView::Dashboard => vec![],
         ShellView::Containers => vec![
             ShellAction::Start,
             ShellAction::Stop,
@@ -129,6 +131,7 @@ fn shell_set_main_view(app: &mut App, view: ShellView) {
     }
     app.shell_focus = ShellFocus::List;
     app.active_view = match view {
+        ShellView::Dashboard => app.active_view,
         ShellView::Containers => ActiveView::Containers,
         ShellView::Images => ActiveView::Images,
         ShellView::Volumes => ActiveView::Volumes,
@@ -235,6 +238,7 @@ fn shell_switch_server(
     idx: usize,
     conn_tx: &watch::Sender<Connection>,
     refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_refresh_tx: &mpsc::UnboundedSender<()>,
 ) {
     let Some(s) = app.servers.get(idx).cloned() else {
         return;
@@ -259,6 +263,9 @@ fn shell_switch_server(
     app.current_target = runner.key();
     app.clear_conn_error();
     app.start_loading(true);
+    app.dashboard.loading = true;
+    app.dashboard.error = None;
+    app.dashboard.snap = None;
     let _ = conn_tx.send(Connection {
         runner,
         docker: DockerCfg {
@@ -269,14 +276,21 @@ fn shell_switch_server(
     // Persist last_server only; no secrets stored.
     app.persist_config();
     let _ = refresh_tx.send(());
+    let _ = dash_refresh_tx.send(());
 
-    shell_set_main_view(app, ShellView::Containers);
+    shell_set_main_view(app, ShellView::Dashboard);
     shell_sidebar_select_item(app, ShellSidebarItem::Server(idx));
 }
 
-fn shell_refresh(app: &mut App, refresh_tx: &mpsc::UnboundedSender<()>) {
+fn shell_refresh(
+    app: &mut App,
+    refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_refresh_tx: &mpsc::UnboundedSender<()>,
+) {
     app.start_loading(true);
+    app.dashboard.loading = true;
     let _ = refresh_tx.send(());
+    let _ = dash_refresh_tx.send(());
 }
 
 impl App {
@@ -671,6 +685,7 @@ fn shell_execute_cmdline(
     cmdline: &str,
     conn_tx: &watch::Sender<Connection>,
     refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_refresh_tx: &mpsc::UnboundedSender<()>,
     refresh_interval_tx: &watch::Sender<Duration>,
     logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
@@ -768,6 +783,7 @@ fn shell_execute_cmdline(
                 return;
             }
             match app.shell_view {
+                ShellView::Dashboard => {}
                 ShellView::Containers => {
                     let ids: Vec<String> = if !app.marked.is_empty() {
                         app.marked.iter().cloned().collect()
@@ -842,7 +858,7 @@ fn shell_execute_cmdline(
                     TemplatesKind::Networks => app.refresh_net_templates(),
                 }
             } else {
-                shell_refresh(app, refresh_tx);
+                shell_refresh(app, refresh_tx, dash_refresh_tx);
             }
             return;
         }
@@ -1088,6 +1104,7 @@ fn shell_execute_cmdline(
             &args,
             conn_tx,
             refresh_tx,
+            dash_refresh_tx,
         );
         return;
     }
@@ -1484,6 +1501,7 @@ fn handle_shell_key(
     key: crossterm::event::KeyEvent,
     conn_tx: &watch::Sender<Connection>,
     refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_refresh_tx: &mpsc::UnboundedSender<()>,
     refresh_interval_tx: &watch::Sender<Duration>,
     inspect_req_tx: &mpsc::UnboundedSender<InspectTarget>,
     logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
@@ -1500,6 +1518,7 @@ fn handle_shell_key(
                         &cmd,
                         conn_tx,
                         refresh_tx,
+                        dash_refresh_tx,
                         refresh_interval_tx,
                         logs_req_tx,
                         action_req_tx,
@@ -1526,6 +1545,7 @@ fn handle_shell_key(
                         &cmdline,
                         conn_tx,
                         refresh_tx,
+                        dash_refresh_tx,
                         refresh_interval_tx,
                         logs_req_tx,
                         action_req_tx,
@@ -1557,6 +1577,7 @@ fn handle_shell_key(
                     &cmdline,
                     conn_tx,
                     refresh_tx,
+                    dash_refresh_tx,
                     refresh_interval_tx,
                     logs_req_tx,
                     action_req_tx,
@@ -1958,6 +1979,7 @@ fn handle_shell_key(
                         &cmd,
                         conn_tx,
                         refresh_tx,
+                        dash_refresh_tx,
                         refresh_interval_tx,
                         logs_req_tx,
                         action_req_tx,
@@ -2012,7 +2034,7 @@ fn handle_shell_key(
                     ch = ch.to_ascii_uppercase();
                 }
                 if ch == hint {
-                    shell_switch_server(app, i, conn_tx, refresh_tx);
+                    shell_switch_server(app, i, conn_tx, refresh_tx, dash_refresh_tx);
                     return;
                 }
             }
@@ -2021,6 +2043,7 @@ fn handle_shell_key(
             if !matches!(app.shell_view, ShellView::Logs | ShellView::Inspect) {
                 let ch_lc = ch.to_ascii_lowercase();
                 for v in [
+                    ShellView::Dashboard,
                     ShellView::Containers,
                     ShellView::Images,
                     ShellView::Volumes,
@@ -2056,7 +2079,9 @@ fn handle_shell_key(
                     return;
                 };
                 match it {
-                    ShellSidebarItem::Server(i) => shell_switch_server(app, i, conn_tx, refresh_tx),
+                    ShellSidebarItem::Server(i) => {
+                        shell_switch_server(app, i, conn_tx, refresh_tx, dash_refresh_tx)
+                    }
                     ShellSidebarItem::Module(v) => match v {
                         ShellView::Inspect => shell_enter_inspect(app, inspect_req_tx),
                         ShellView::Logs => shell_enter_logs(app, logs_req_tx),
@@ -2077,6 +2102,7 @@ fn handle_shell_key(
 
     // Main list / view handling.
     match app.shell_view {
+        ShellView::Dashboard => {}
         ShellView::Containers | ShellView::Images | ShellView::Volumes | ShellView::Networks => {
             // Ensure active_view matches (used by the existing selection/mark logic).
             app.active_view = match app.shell_view {
@@ -2641,6 +2667,7 @@ fn contrast_ratio(bg: (u8, u8, u8), fg: Color) -> f32 {
 
 fn shell_breadcrumbs(app: &App) -> String {
     match app.shell_view {
+        ShellView::Dashboard => String::new(),
         ShellView::Containers => {
             if let Some((name, ..)) = app.selected_stack() {
                 return format!("/{name}");
@@ -2862,6 +2889,12 @@ fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout:
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
 
+    // Dashboard is a single-pane view (no details section).
+    if app.shell_view == ShellView::Dashboard {
+        draw_shell_main_list(f, app, area);
+        return;
+    }
+
     let is_full = matches!(app.shell_view, ShellView::Logs | ShellView::Inspect);
     let is_split_view = matches!(
         app.shell_view,
@@ -2977,6 +3010,10 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     let content_area = chunks[1];
 
     match app.shell_view {
+        ShellView::Dashboard => {
+            draw_shell_title(f, app, "Dashboard", 0, title_area);
+            draw_shell_dashboard(f, app, content_area);
+        }
         ShellView::Containers => {
             draw_shell_title(f, app, "Containers", app.containers.len(), title_area);
             draw_shell_containers_table(f, app, content_area);
@@ -3031,6 +3068,7 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
 
 fn draw_shell_main_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
     match app.shell_view {
+        ShellView::Dashboard => {}
         ShellView::Containers => draw_shell_container_details(f, app, area),
         ShellView::Images => draw_shell_image_details(f, app, area),
         ShellView::Volumes => draw_shell_volume_details(f, app, area),
@@ -3048,6 +3086,9 @@ fn draw_shell_footer(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
     f.render_widget(Block::default().style(bg), area);
 
     let hint = match app.shell_view {
+        ShellView::Dashboard => {
+            " F1 help  b sidebar  ^p layout  :q quit"
+        }
         ShellView::Containers => {
             " F1 help  b sidebar  ^p layout  :q quit"
         }
@@ -3382,6 +3423,7 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
 
     const REF_TEXT_MAX: usize = 62;
     const ID_TEXT_MAX: usize = 50;
+    const USED_W: usize = 6;
     const SIZE_W: usize = 10;
     const REF_MIN_W: usize = 24;
     const ID_MIN_W: usize = 10;
@@ -3417,6 +3459,13 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
         };
         let is_removing = app.image_action_inflight.contains_key(&key);
         let err = app.image_action_error.get(&key);
+        let used = app
+            .image_referenced_count_by_id
+            .get(&img.id)
+            .copied()
+            .unwrap_or(0)
+            > 0;
+        let used_cell = if used { "used" } else { "unused" };
         let size = if is_removing {
             Cell::from(size_cell("removing")).style(bg.patch(app.theme.text_warn.to_style()))
         } else if let Some(err) = err {
@@ -3434,6 +3483,7 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
             Row::new(vec![
                 Cell::from(reference),
                 Cell::from(id),
+                Cell::from(used_cell),
                 size,
             ])
             .style(row_style),
@@ -3449,6 +3499,7 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
         [
             Constraint::Length(ref_w as u16),
             Constraint::Length(id_w as u16),
+            Constraint::Length(USED_W as u16),
             Constraint::Length(SIZE_W as u16),
         ],
     )
@@ -3456,6 +3507,7 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
         Row::new(vec![
             Cell::from("REF"),
             Cell::from("ID"),
+            Cell::from("USED"),
             Cell::from(size_cell("SIZE")),
         ])
         .style(shell_header_style(app)),
@@ -3562,6 +3614,13 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
             } else {
                 Style::default()
             };
+            let used = app
+                .network_referenced_count_by_id
+                .get(&n.id)
+                .copied()
+                .unwrap_or(0)
+                > 0;
+            let used_cell = if used { "used" } else { "unused" };
             let is_removing = app.network_action_inflight.contains_key(&n.id);
             let err = app.network_action_error.get(&n.id);
             let scope_cell = if is_removing {
@@ -3579,6 +3638,7 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
                 Cell::from(n.name.clone()),
                 Cell::from(n.id.clone()),
                 Cell::from(n.driver.clone()),
+                Cell::from(used_cell),
                 scope_cell,
             ])
             .style(st)
@@ -3596,6 +3656,7 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
             Constraint::Length(16),
             Constraint::Min(16),
             Constraint::Length(10),
+            Constraint::Length(6),
             Constraint::Length(10),
         ],
     )
@@ -3604,6 +3665,7 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
             Cell::from("NAME"),
             Cell::from("ID"),
             Cell::from("DRIVER"),
+            Cell::from("USED"),
             Cell::from("SCOPE"),
         ])
         .style(shell_header_style(app)),
@@ -3613,6 +3675,339 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
     .row_highlight_style(shell_row_highlight(app))
     .highlight_symbol("");
     f.render_stateful_widget(table, inner, &mut state);
+}
+
+fn format_bytes_short(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut v = bytes as f64;
+    let mut u = 0usize;
+    while v >= 1024.0 && u + 1 < UNITS.len() {
+        v /= 1024.0;
+        u += 1;
+    }
+    if u == 0 {
+        format!("{bytes}B")
+    } else if v >= 10.0 {
+        format!("{:.0}{}", v, UNITS[u])
+    } else {
+        format!("{:.1}{}", v, UNITS[u])
+    }
+}
+
+fn bar_line(width: usize, ratio: f32, ascii_only: bool) -> String {
+    let width = width.max(1);
+    let ratio = ratio.clamp(0.0, 1.0);
+    let filled = ((width as f32) * ratio).round() as usize;
+    let filled = filled.min(width);
+    let (on, off) = if ascii_only { ('#', '.') } else { ('█', '░') };
+    let mut out = String::with_capacity(width);
+    out.extend(std::iter::repeat(on).take(filled));
+    out.extend(std::iter::repeat(off).take(width - filled));
+    out
+}
+
+fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+    let bg = app.theme.panel.to_style();
+    f.render_widget(Block::default().style(bg), area);
+    let inner = area.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // health strip
+            Constraint::Length(1), // spacer
+            Constraint::Length(7), // summary table
+            Constraint::Length(1), // spacer
+            Constraint::Length(4), // metrics table
+            Constraint::Min(1),    // notes
+        ])
+        .split(inner);
+
+    let ok = bg.patch(app.theme.text_ok.to_style());
+    let warn = bg.patch(app.theme.text_warn.to_style());
+    let err = bg.patch(app.theme.text_error.to_style());
+    let dim = bg.patch(app.theme.text_dim.to_style());
+    let faint = bg.patch(app.theme.text_faint.to_style());
+
+    let ssh_ok = app.conn_error.is_none();
+    let dash_ok = app.dashboard.error.is_none() && app.dashboard.snap.is_some();
+    let snap = app.dashboard.snap.as_ref();
+
+    let engine_ok = dash_ok && snap.is_some_and(|s| !s.engine.trim().is_empty() && s.engine != "-");
+    let disk_ratio = snap
+        .and_then(|s| {
+            if s.disk_total_bytes == 0 {
+                None
+            } else {
+                Some((s.disk_used_bytes as f32) / (s.disk_total_bytes as f32))
+            }
+        })
+        .unwrap_or(0.0);
+    let mem_ratio = snap
+        .and_then(|s| {
+            if s.mem_total_bytes == 0 {
+                None
+            } else {
+                Some((s.mem_used_bytes as f32) / (s.mem_total_bytes as f32))
+            }
+        })
+        .unwrap_or(0.0);
+
+    let disk_total = snap.map(|s| s.disk_total_bytes).unwrap_or(0);
+    let mem_total = snap.map(|s| s.mem_total_bytes).unwrap_or(0);
+    let disk_style = if !dash_ok || disk_total == 0 {
+        warn
+    } else if disk_ratio >= 0.9 {
+        err
+    } else if disk_ratio >= 0.8 {
+        warn
+    } else {
+        ok
+    };
+    let mem_style = if !dash_ok || mem_total == 0 {
+        warn
+    } else if mem_ratio >= 0.9 {
+        err
+    } else if mem_ratio >= 0.8 {
+        warn
+    } else {
+        ok
+    };
+
+    let badge = |label: &str, st: Style| -> Span<'static> {
+        // Keep it readable and consistent with the mock: "[ SSH OK ]".
+        Span::styled(format!("[ {label} ]"), st)
+    };
+
+    let mut strip: Vec<Span<'static>> = Vec::new();
+    strip.push(badge(
+        if ssh_ok { "SSH OK" } else { "SSH ERR" },
+        if ssh_ok { ok } else { err },
+    ));
+    strip.push(Span::styled(" ", dim));
+    strip.push(badge(
+        if engine_ok { "ENGINE OK" } else { "ENGINE ?" },
+        if engine_ok { ok } else { warn },
+    ));
+    strip.push(Span::styled(" ", dim));
+    strip.push(badge(
+        if disk_style == ok {
+            "DISK OK"
+        } else if disk_style == err {
+            "DISK ERR"
+        } else {
+            "DISK WARN"
+        },
+        disk_style,
+    ));
+    strip.push(Span::styled(" ", dim));
+    strip.push(badge(
+        if mem_style == ok {
+            "MEM OK"
+        } else if mem_style == err {
+            "MEM ERR"
+        } else {
+            "MEM WARN"
+        },
+        mem_style,
+    ));
+    let unseen_err = app.unseen_error_count();
+    if unseen_err > 0 {
+        strip.push(Span::styled(" ", dim));
+        strip.push(badge(&format!("ERR {unseen_err}"), err));
+    }
+    f.render_widget(
+        Paragraph::new(Line::from(strip)).style(bg).wrap(Wrap { trim: false }),
+        chunks[0],
+    );
+
+    // Spacer line for readability.
+    f.render_widget(Paragraph::new(" ").style(bg), chunks[1]);
+
+    // Summary.
+    let (os, kernel, arch, uptime, engine, ts, load1, load5, load15, cores) = if let Some(s) = snap
+    {
+        (
+            s.os.as_str(),
+            s.kernel.as_str(),
+            s.arch.as_str(),
+            s.uptime.as_str(),
+            s.engine.as_str(),
+            format_session_ts(s.collected_at),
+            s.load1,
+            s.load5,
+            s.load15,
+            s.cpu_cores,
+        )
+    } else if app.dashboard.loading {
+        ("Loading...", "-", "-", "-", "-", "-".to_string(), 0.0, 0.0, 0.0, 1)
+    } else {
+        ("-", "-", "-", "-", "-", "-".to_string(), 0.0, 0.0, 0.0, 1)
+    };
+
+    let server = current_server_label(app);
+    // Container counts derived from current list (ps -a).
+    let mut running = 0usize;
+    let mut exited = 0usize;
+    let mut paused = 0usize;
+    let mut dead = 0usize;
+    for c in &app.containers {
+        let s = c.status.trim();
+        if s.starts_with("Up") || s.starts_with("Restarting") {
+            running += 1;
+        } else if s.starts_with("Exited") {
+            exited += 1;
+        } else if s.starts_with("Paused") {
+            paused += 1;
+        } else if s.starts_with("Dead") {
+            dead += 1;
+        } else {
+            exited += 1;
+        }
+    }
+    let total = app.containers.len();
+
+    let table_w = inner.width.max(1) as usize;
+    let key_w = 12usize.min(table_w.saturating_sub(1).max(1));
+    let val_w = table_w.saturating_sub(key_w + 1).max(1);
+    let k = dim;
+    let v = bg.patch(app.theme.text.to_style());
+    let summary_rows: Vec<Row> = vec![
+        Row::new(vec![
+            Cell::from(Span::styled("Server", k)),
+            Cell::from(Span::styled(truncate_end(&server, val_w), v)),
+        ]),
+        Row::new(vec![
+            Cell::from(Span::styled("Host", k)),
+            Cell::from(Span::styled(
+                truncate_end(&format!("{os} ({kernel} {arch})"), val_w),
+                v,
+            )),
+        ]),
+        Row::new(vec![
+            Cell::from(Span::styled("Uptime", k)),
+            Cell::from(Span::styled(truncate_end(uptime, val_w), v)),
+        ]),
+        Row::new(vec![
+            Cell::from(Span::styled("Engine", k)),
+            Cell::from(Span::styled(truncate_end(engine, val_w), v)),
+        ]),
+        Row::new(vec![
+            Cell::from(Span::styled("Containers", k)),
+            Cell::from(Span::styled(
+                truncate_end(
+                    &format!(
+                        "running {running}/{total}  exited {exited}  paused {paused}  dead {dead}"
+                    ),
+                    val_w,
+                ),
+                v,
+            )),
+        ]),
+        Row::new(vec![
+            Cell::from(Span::styled("Updated", k)),
+            Cell::from(Span::styled(truncate_end(&ts, val_w), faint)),
+        ]),
+    ];
+    let summary = Table::new(
+        summary_rows,
+        [Constraint::Length(key_w as u16), Constraint::Min(1)],
+    )
+    .style(bg)
+    .column_spacing(1);
+    f.render_widget(summary, chunks[2]);
+
+    f.render_widget(Paragraph::new(" ").style(bg), chunks[3]);
+
+    // CPU (normalize load1 by cores as a coarse signal).
+    let load_ratio = if cores == 0 {
+        0.0
+    } else {
+        (load1 / (cores as f32)).clamp(0.0, 1.0)
+    };
+    // Metrics table (label | value | bar).
+    let (mem_used, mem_total2, disk_used, disk_total2) = snap
+        .map(|s| (s.mem_used_bytes, s.mem_total_bytes, s.disk_used_bytes, s.disk_total_bytes))
+        .unwrap_or((0, 0, 0, 0));
+    let mem_ratio2 = if mem_total2 == 0 {
+        0.0
+    } else {
+        (mem_used as f32) / (mem_total2 as f32)
+    };
+    let disk_ratio2 = if disk_total2 == 0 {
+        0.0
+    } else {
+        (disk_used as f32) / (disk_total2 as f32)
+    };
+
+    let metrics_w = inner.width.max(1) as usize;
+    let m_key_w = 4usize.min(metrics_w.saturating_sub(1).max(1));
+    let m_val_w = 22usize.min(metrics_w.saturating_sub(m_key_w + 2).max(8));
+    let m_bar_w = metrics_w.saturating_sub(m_key_w + m_val_w + 2).max(10);
+    let mk = dim;
+    let mv = v;
+    let mb = faint;
+
+    let metric_row =
+        |name: &str, val: String, ratio: f32, extra: Option<String>| -> Row<'static> {
+            let bar = bar_line(m_bar_w, ratio, app.ascii_only);
+            let mut val = truncate_end(&val, m_val_w);
+            if let Some(extra) = extra {
+                if !extra.trim().is_empty() {
+                    let extra = format!(" {extra}");
+                    val = truncate_end(&(val + &extra), m_val_w);
+                }
+            }
+            Row::new(vec![
+                Cell::from(Span::styled(name.to_string(), mk)),
+                Cell::from(Span::styled(val, mv)),
+                Cell::from(Span::styled(bar, mb)),
+            ])
+        };
+
+    let cpu_val = format!("{load1:.2}/{load5:.2}/{load15:.2}");
+    let mem_val = format!(
+        "{}/{} {:>3.0}%",
+        format_bytes_short(mem_used),
+        format_bytes_short(mem_total2),
+        mem_ratio2 * 100.0
+    );
+    let dsk_val = format!(
+        "{}/{} {:>3.0}%",
+        format_bytes_short(disk_used),
+        format_bytes_short(disk_total2),
+        disk_ratio2 * 100.0
+    );
+
+    let metric_rows: Vec<Row> = vec![
+        metric_row("CPU", cpu_val, load_ratio, Some(format!("{cores}c"))),
+        metric_row("MEM", mem_val, mem_ratio2, None),
+        metric_row("DSK", dsk_val, disk_ratio2, None),
+    ];
+    let metrics = Table::new(
+        metric_rows,
+        [
+            Constraint::Length(m_key_w as u16),
+            Constraint::Length(m_val_w as u16),
+            Constraint::Min(1),
+        ],
+    )
+    .style(bg)
+    .column_spacing(1);
+    f.render_widget(metrics, chunks[4]);
+
+    if let Some(err) = &app.dashboard.error {
+        let msg = truncate_end(err, inner.width.max(1) as usize);
+        f.render_widget(
+            Paragraph::new(format!("Dashboard error: {msg}"))
+                .style(bg.patch(app.theme.text_warn.to_style()))
+                .wrap(Wrap { trim: true }),
+            chunks[5],
+        );
+    }
 }
 
 fn draw_shell_stack_templates_table(
@@ -3886,6 +4281,16 @@ fn draw_shell_image_details(f: &mut ratatui::Frame, app: &App, area: ratatui::la
     let Some(img) = app.selected_image() else {
         return;
     };
+    let used_by = app
+        .image_containers_by_id
+        .get(&img.id)
+        .cloned()
+        .unwrap_or_default();
+    let used_by = if used_by.is_empty() {
+        "-".to_string()
+    } else {
+        used_by.join(", ")
+    };
     let mut lines = vec![
         Line::from(vec![
             Span::styled("Ref: ", Style::default().fg(Color::Gray)),
@@ -3898,6 +4303,10 @@ fn draw_shell_image_details(f: &mut ratatui::Frame, app: &App, area: ratatui::la
         Line::from(vec![
             Span::styled("Size: ", Style::default().fg(Color::Gray)),
             Span::raw(img.size.clone()),
+        ]),
+        Line::from(vec![
+            Span::styled("Used by: ", Style::default().fg(Color::Gray)),
+            Span::raw(used_by),
         ]),
     ];
     let key = App::image_row_key(img);
@@ -3983,6 +4392,16 @@ fn draw_shell_network_details(f: &mut ratatui::Frame, app: &App, area: ratatui::
         return;
     };
     let is_system = App::is_system_network(n);
+    let used_by = app
+        .network_containers_by_id
+        .get(&n.id)
+        .cloned()
+        .unwrap_or_default();
+    let used_by = if used_by.is_empty() {
+        "-".to_string()
+    } else {
+        used_by.join(", ")
+    };
     let mut lines = vec![
         Line::from(vec![
             Span::styled("Name: ", Style::default().fg(Color::Gray)),
@@ -3996,12 +4415,7 @@ fn draw_shell_network_details(f: &mut ratatui::Frame, app: &App, area: ratatui::
                     Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
                 )
             } else {
-                Span::styled(
-                    "User",
-                    Style::default()
-                        .fg(Color::White)
-                        ,
-                )
+                Span::styled("User", Style::default().fg(Color::White))
             },
         ]),
         Line::from(vec![
@@ -4015,6 +4429,10 @@ fn draw_shell_network_details(f: &mut ratatui::Frame, app: &App, area: ratatui::
         Line::from(vec![
             Span::styled("Scope: ", Style::default().fg(Color::Gray)),
             Span::raw(n.scope.clone()),
+        ]),
+        Line::from(vec![
+            Span::styled("Used by: ", Style::default().fg(Color::Gray)),
+            Span::raw(used_by),
         ]),
     ];
     if let Some(err) = app.network_action_error.get(&n.id) {

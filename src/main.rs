@@ -45,13 +45,6 @@ struct Args {
     #[arg(
         long,
         default_value_t = false,
-        help = "Enable mouse support in the TUI"
-    )]
-    mouse: bool,
-
-    #[arg(
-        long,
-        default_value_t = false,
         help = "Force ASCII-only UI rendering (disable Unicode line art)"
     )]
     ascii_only: bool,
@@ -203,7 +196,6 @@ async fn main() -> anyhow::Result<()> {
         keymap,
         active_server,
         config_path,
-        args.mouse,
         args.ascii_only,
     )
     .await

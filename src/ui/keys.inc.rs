@@ -222,6 +222,7 @@ fn parse_scope(raw: &str) -> Option<KeyScope> {
 
 fn parse_view_name(s: &str) -> Option<ShellView> {
     match s {
+        "dashboard" | "dash" => Some(ShellView::Dashboard),
         "containers" | "container" | "ctr" => Some(ShellView::Containers),
         "images" | "image" | "img" => Some(ShellView::Images),
         "volumes" | "volume" | "vol" => Some(ShellView::Volumes),
@@ -241,6 +242,7 @@ fn scope_to_string(scope: KeyScope) -> &'static str {
     match scope {
         KeyScope::Always => "always",
         KeyScope::Global => "global",
+        KeyScope::View(ShellView::Dashboard) => "view:dashboard",
         KeyScope::View(ShellView::Containers) => "view:containers",
         KeyScope::View(ShellView::Images) => "view:images",
         KeyScope::View(ShellView::Volumes) => "view:volumes",

@@ -21,9 +21,7 @@ use crate::runner::Runner;
 use crate::ssh::Ssh;
 use anyhow::Context as _;
 use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
-    },
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -408,6 +406,7 @@ enum ActiveView {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum ShellView {
+    Dashboard,
     Containers,
     Images,
     Volumes,
@@ -422,6 +421,7 @@ enum ShellView {
 impl ShellView {
     fn slug(self) -> &'static str {
         match self {
+            ShellView::Dashboard => "dashboard",
             ShellView::Containers => "containers",
             ShellView::Images => "images",
             ShellView::Volumes => "volumes",
@@ -436,6 +436,7 @@ impl ShellView {
 
     fn title(self) -> &'static str {
         match self {
+            ShellView::Dashboard => "Dashboard",
             ShellView::Containers => "Containers",
             ShellView::Images => "Images",
             ShellView::Volumes => "Volumes",
@@ -550,6 +551,7 @@ impl ShellAction {
 
 fn shell_module_shortcut(view: ShellView) -> char {
     match view {
+        ShellView::Dashboard => 'd',
         ShellView::Containers => 'c',
         ShellView::Images => 'm',
         ShellView::Volumes => 'v',
@@ -830,10 +832,13 @@ struct App {
     image_referenced_by_id: HashMap<String, bool>,
     image_referenced_count_by_id: HashMap<String, usize>,
     image_running_count_by_id: HashMap<String, usize>,
+    image_containers_by_id: HashMap<String, Vec<String>>,
     volume_referenced_by_name: HashMap<String, bool>,
     volume_referenced_count_by_name: HashMap<String, usize>,
     volume_running_count_by_name: HashMap<String, usize>,
     volume_containers_by_name: HashMap<String, Vec<String>>,
+    network_referenced_count_by_id: HashMap<String, usize>,
+    network_containers_by_id: HashMap<String, Vec<String>>,
     images_unused_only: bool,
     volumes_unused_only: bool,
     usage_refresh_needed: bool,
@@ -876,8 +881,7 @@ struct App {
     current_target: String,
 
     logs: LogsState,
-
-    mouse_enabled: bool,
+    dashboard: DashboardState,
 
     ip_cache: HashMap<String, (String, Instant)>,
     ip_refresh_needed: bool,
@@ -1083,11 +1087,14 @@ impl App {
             image_referenced_by_id: HashMap::new(),
             image_referenced_count_by_id: HashMap::new(),
             image_running_count_by_id: HashMap::new(),
+            image_containers_by_id: HashMap::new(),
             images_unused_only: false,
             volume_referenced_by_name: HashMap::new(),
             volume_referenced_count_by_name: HashMap::new(),
             volume_running_count_by_name: HashMap::new(),
             volume_containers_by_name: HashMap::new(),
+            network_referenced_count_by_id: HashMap::new(),
+            network_containers_by_id: HashMap::new(),
             volumes_unused_only: false,
             usage_refresh_needed: true,
             usage_loading: false,
@@ -1170,8 +1177,10 @@ impl App {
                 match_lines: Vec::new(),
                 show_line_numbers: false,
             },
-
-            mouse_enabled: false,
+            dashboard: DashboardState {
+                loading: true,
+                ..DashboardState::default()
+            },
 
             ip_cache: HashMap::new(),
             ip_refresh_needed: true,
@@ -1180,8 +1189,8 @@ impl App {
             theme_name,
             theme,
             header_logo_seed,
-            shell_view: ShellView::Containers,
-            shell_last_main_view: ShellView::Containers,
+            shell_view: ShellView::Dashboard,
+            shell_last_main_view: ShellView::Dashboard,
             shell_focus: ShellFocus::Sidebar,
             shell_sidebar_collapsed: false,
             shell_sidebar_hidden: false,
@@ -1209,7 +1218,7 @@ impl App {
             },
             shell_help: ShellHelpState {
                 scroll: 0,
-                return_view: ShellView::Containers,
+                return_view: ShellView::Dashboard,
             },
             refresh_secs: 5,
             cmd_history_max: 200,
@@ -1219,7 +1228,7 @@ impl App {
             shell_msgs: ShellMessagesState {
                 scroll: 0,
                 hscroll: 0,
-                return_view: ShellView::Containers,
+                return_view: ShellView::Dashboard,
             },
 
             keymap,
@@ -2667,10 +2676,235 @@ fn extract_container_ip(v: &Value) -> Option<String> {
 struct UsageSnapshot {
     image_ref_count_by_id: HashMap<String, usize>,
     image_run_count_by_id: HashMap<String, usize>,
+    image_containers_by_id: HashMap<String, Vec<String>>,
     volume_ref_count_by_name: HashMap<String, usize>,
     volume_run_count_by_name: HashMap<String, usize>,
     volume_containers_by_name: HashMap<String, Vec<String>>,
+    network_ref_count_by_id: HashMap<String, usize>,
+    network_containers_by_id: HashMap<String, Vec<String>>,
     ip_by_container_id: HashMap<String, String>,
+}
+
+#[derive(Clone, Debug)]
+struct DashboardSnapshot {
+    os: String,
+    kernel: String,
+    arch: String,
+    uptime: String,
+    engine: String,
+    cpu_cores: u32,
+    load1: f32,
+    load5: f32,
+    load15: f32,
+    mem_used_bytes: u64,
+    mem_total_bytes: u64,
+    disk_used_bytes: u64,
+    disk_total_bytes: u64,
+    collected_at: OffsetDateTime,
+}
+
+#[derive(Clone, Debug, Default)]
+struct DashboardState {
+    loading: bool,
+    error: Option<String>,
+    snap: Option<DashboardSnapshot>,
+}
+
+fn dashboard_command(docker_cmd: &str) -> String {
+    // Single round-trip via SSH/Local runner to collect basic host metrics.
+    // Keep dependencies minimal: rely on /proc and coreutils if present.
+    const OS: &str = "__CONTAINR_DASH_OS__";
+    const KERNEL: &str = "__CONTAINR_DASH_KERNEL__";
+    const ARCH: &str = "__CONTAINR_DASH_ARCH__";
+    const UPTIME: &str = "__CONTAINR_DASH_UPTIME__";
+    const CORES: &str = "__CONTAINR_DASH_CORES__";
+    const LOAD: &str = "__CONTAINR_DASH_LOAD__";
+    const MEM: &str = "__CONTAINR_DASH_MEM__";
+    const DISK: &str = "__CONTAINR_DASH_DISK__";
+    const ENGINE: &str = "__CONTAINR_DASH_ENGINE__";
+
+    let docker_fmt = "{{{{.Server.Version}}}}|{{{{.Server.Os}}}}|{{{{.Server.Arch}}}}|{{{{.Server.ApiVersion}}}}";
+    format!(
+        "echo {OS}; \
+         ( [ -r /etc/os-release ] && . /etc/os-release && echo \"$PRETTY_NAME\" || uname -s ); \
+         echo {KERNEL}; uname -r 2>/dev/null || true; \
+         echo {ARCH}; uname -m 2>/dev/null || true; \
+         echo {UPTIME}; ( uptime -p 2>/dev/null || cat /proc/uptime 2>/dev/null || true ); \
+         echo {CORES}; ( nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1 ); \
+         echo {LOAD}; ( cat /proc/loadavg 2>/dev/null || uptime 2>/dev/null || true ); \
+         echo {MEM}; ( cat /proc/meminfo 2>/dev/null || true ); \
+         echo {DISK}; ( df -B1 / 2>/dev/null | tail -n 1 || true ); \
+         echo {ENGINE}; ( {dc} version --format '{docker_fmt}' 2>/dev/null || {dc} --version 2>/dev/null || true )",
+        OS = OS,
+        KERNEL = KERNEL,
+        ARCH = ARCH,
+        UPTIME = UPTIME,
+        CORES = CORES,
+        LOAD = LOAD,
+        MEM = MEM,
+        DISK = DISK,
+        ENGINE = ENGINE,
+        dc = docker_cmd,
+        docker_fmt = docker_fmt,
+    )
+}
+
+fn format_uptime_from_proc(raw: &str) -> Option<String> {
+    // /proc/uptime: "<seconds> <idle_seconds>"
+    let secs = raw.split_whitespace().next()?.parse::<f64>().ok()?;
+    let mut secs = secs.max(0.0).round() as u64;
+    let days = secs / 86_400;
+    secs %= 86_400;
+    let hours = secs / 3600;
+    secs %= 3600;
+    let minutes = secs / 60;
+    let mut parts: Vec<String> = Vec::new();
+    if days > 0 {
+        parts.push(format!("{days}d"));
+    }
+    if hours > 0 {
+        parts.push(format!("{hours}h"));
+    }
+    parts.push(format!("{minutes}m"));
+    Some(parts.join(" "))
+}
+
+fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
+    const OS: &str = "__CONTAINR_DASH_OS__";
+    const KERNEL: &str = "__CONTAINR_DASH_KERNEL__";
+    const ARCH: &str = "__CONTAINR_DASH_ARCH__";
+    const UPTIME: &str = "__CONTAINR_DASH_UPTIME__";
+    const CORES: &str = "__CONTAINR_DASH_CORES__";
+    const LOAD: &str = "__CONTAINR_DASH_LOAD__";
+    const MEM: &str = "__CONTAINR_DASH_MEM__";
+    const DISK: &str = "__CONTAINR_DASH_DISK__";
+    const ENGINE: &str = "__CONTAINR_DASH_ENGINE__";
+
+    let mut cur: Option<&'static str> = None;
+    let mut sec: HashMap<&'static str, Vec<String>> = HashMap::new();
+    for line in out.lines() {
+        let t = line.trim_end_matches('\r');
+        cur = match t.trim() {
+            OS => Some(OS),
+            KERNEL => Some(KERNEL),
+            ARCH => Some(ARCH),
+            UPTIME => Some(UPTIME),
+            CORES => Some(CORES),
+            LOAD => Some(LOAD),
+            MEM => Some(MEM),
+            DISK => Some(DISK),
+            ENGINE => Some(ENGINE),
+            _ => cur,
+        };
+        if matches!(
+            t.trim(),
+            OS | KERNEL | ARCH | UPTIME | CORES | LOAD | MEM | DISK | ENGINE
+        ) {
+            sec.entry(cur.expect("cur set")).or_default();
+            continue;
+        }
+        if let Some(k) = cur {
+            sec.entry(k).or_default().push(t.to_string());
+        }
+    }
+
+    let first = |k: &'static str| -> String {
+        sec.get(k)
+            .and_then(|xs| xs.iter().find(|s| !s.trim().is_empty()).cloned())
+            .unwrap_or_else(|| "-".to_string())
+    };
+
+    let os = first(OS);
+    let kernel = first(KERNEL);
+    let arch = first(ARCH);
+
+    let uptime_raw = first(UPTIME);
+    let uptime = if uptime_raw.contains("up ") || uptime_raw.starts_with("up ") {
+        uptime_raw
+    } else if let Some(u) = format_uptime_from_proc(&uptime_raw) {
+        u
+    } else {
+        uptime_raw
+    };
+
+    let cpu_cores = first(CORES).trim().parse::<u32>().unwrap_or(1).max(1);
+
+    let load_raw = first(LOAD);
+    let mut load1 = 0.0f32;
+    let mut load5 = 0.0f32;
+    let mut load15 = 0.0f32;
+    if let Some(line) = sec
+        .get(LOAD)
+        .and_then(|xs| xs.iter().find(|s| !s.trim().is_empty()))
+    {
+        let toks: Vec<&str> = line.split_whitespace().collect();
+        if toks.len() >= 3 {
+            load1 = toks[0].parse::<f32>().unwrap_or(0.0);
+            load5 = toks[1].parse::<f32>().unwrap_or(0.0);
+            load15 = toks[2].parse::<f32>().unwrap_or(0.0);
+        }
+    } else if let Some(line) = load_raw.split("load average:").nth(1) {
+        let toks: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+        if toks.len() >= 3 {
+            load1 = toks[0].parse::<f32>().unwrap_or(0.0);
+            load5 = toks[1].parse::<f32>().unwrap_or(0.0);
+            load15 = toks[2].parse::<f32>().unwrap_or(0.0);
+        }
+    }
+
+    let mut mem_total_kb: Option<u64> = None;
+    let mut mem_avail_kb: Option<u64> = None;
+    if let Some(lines) = sec.get(MEM) {
+        for l in lines {
+            let l = l.trim();
+            if let Some(rest) = l.strip_prefix("MemTotal:") {
+                mem_total_kb = rest.split_whitespace().next().and_then(|x| x.parse().ok());
+            }
+            if let Some(rest) = l.strip_prefix("MemAvailable:") {
+                mem_avail_kb = rest.split_whitespace().next().and_then(|x| x.parse().ok());
+            }
+            if mem_total_kb.is_some() && mem_avail_kb.is_some() {
+                break;
+            }
+        }
+    }
+    let mem_total_bytes = mem_total_kb.unwrap_or(0).saturating_mul(1024);
+    let mem_avail_bytes = mem_avail_kb.unwrap_or(0).saturating_mul(1024);
+    let mem_used_bytes = mem_total_bytes.saturating_sub(mem_avail_bytes);
+
+    let disk_line = sec
+        .get(DISK)
+        .and_then(|xs| xs.iter().find(|s| !s.trim().is_empty()))
+        .cloned()
+        .unwrap_or_else(|| "-".to_string());
+    let mut disk_total_bytes = 0u64;
+    let mut disk_used_bytes = 0u64;
+    let parts: Vec<&str> = disk_line.split_whitespace().collect();
+    if parts.len() >= 3 {
+        // df: Filesystem 1B-blocks Used Available Use% Mounted
+        disk_total_bytes = parts[1].parse::<u64>().unwrap_or(0);
+        disk_used_bytes = parts[2].parse::<u64>().unwrap_or(0);
+    }
+
+    let engine_raw = first(ENGINE);
+    let engine = engine_raw.trim().to_string();
+
+    Ok(DashboardSnapshot {
+        os,
+        kernel,
+        arch,
+        uptime,
+        engine,
+        cpu_cores,
+        load1,
+        load5,
+        load15,
+        mem_used_bytes,
+        mem_total_bytes,
+        disk_used_bytes,
+        disk_total_bytes,
+        collected_at: now_local(),
+    })
 }
 
 fn normalize_image_id(id: &str) -> String {
@@ -2698,10 +2932,9 @@ pub async fn run_tui(
     keymap: Vec<KeyBinding>,
     active_server: Option<String>,
     config_path: std::path::PathBuf,
-    mouse_enabled: bool,
     ascii_only: bool,
 ) -> anyhow::Result<()> {
-    let mut terminal = setup_terminal(mouse_enabled).context("failed to setup terminal")?;
+    let mut terminal = setup_terminal().context("failed to setup terminal")?;
     let (theme_spec, theme_err) = match theme::load_theme(&config_path, &active_theme) {
         Ok(t) => (t, None),
         Err(e) => (theme::default_theme_spec(), Some(e)),
@@ -2719,7 +2952,6 @@ pub async fn run_tui(
         app.log_msg(MsgLevel::Warn, format!("failed to load theme: {:#}", e));
     }
     app.current_target = runner.key();
-    app.mouse_enabled = mouse_enabled;
     app.ascii_only = ascii_only;
     app.refresh_secs = refresh.as_secs().max(1);
     app.logs.tail = logs_tail.max(1);
@@ -2752,6 +2984,10 @@ pub async fn run_tui(
     let (logs_req_tx, mut logs_req_rx) = mpsc::unbounded_channel::<(String, usize)>();
     let (logs_res_tx, mut logs_res_rx) =
         mpsc::unbounded_channel::<(String, anyhow::Result<String>)>();
+
+    let (dash_refresh_tx, mut dash_refresh_rx) = mpsc::unbounded_channel::<()>();
+    let (dash_res_tx, mut dash_res_rx) =
+        mpsc::unbounded_channel::<(String, anyhow::Result<DashboardSnapshot>)>();
 
     let (ip_req_tx, mut ip_req_rx) = mpsc::unbounded_channel::<Vec<String>>();
     let (ip_res_tx, mut ip_res_rx) =
@@ -2852,6 +3088,93 @@ pub async fn run_tui(
             };
 
             let _ = result_tx.send((key, res));
+        }
+    });
+
+    let dash_conn_rx = conn_tx.subscribe();
+    let dash_refresh_interval_rx = refresh_interval_tx.subscribe();
+    let dash_task = tokio::spawn(async move {
+        let mut dash_refresh_interval_rx = dash_refresh_interval_rx;
+        let mut interval = tokio::time::interval(*dash_refresh_interval_rx.borrow());
+        let mut conn_rx = dash_conn_rx;
+        loop {
+            tokio::select! {
+              _ = interval.tick() => {}
+              maybe = dash_refresh_rx.recv() => {
+                if maybe.is_none() {
+                  break;
+                }
+              }
+              changed = dash_refresh_interval_rx.changed() => {
+                if changed.is_err() {
+                  break;
+                }
+                interval = tokio::time::interval(*dash_refresh_interval_rx.borrow());
+              }
+              changed = conn_rx.changed() => {
+                if changed.is_err() {
+                  break;
+                }
+              }
+            }
+
+            let conn = conn_rx.borrow().clone();
+            let key = conn.runner.key();
+            let cmd = dashboard_command(&conn.docker.docker_cmd);
+            let child = match conn.runner.spawn_killable(&cmd) {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = dash_res_tx.send((key, Err(e)));
+                    continue;
+                }
+            };
+
+            let mut child_opt = Some(child);
+            let output = tokio::select! {
+              out = async {
+                let child = child_opt.take().expect("child already taken");
+                child.wait_with_output().await
+              } => out,
+              changed = conn_rx.changed() => {
+                // Server switch: kill the in-flight command to avoid waiting.
+                if changed.is_ok() {
+                  if let Some(mut child) = child_opt.take() {
+                    let _ = child.kill().await;
+                    let _ = child.wait().await;
+                  }
+                  continue;
+                }
+                if let Some(mut child) = child_opt.take() {
+                  let _ = child.kill().await;
+                  let _ = child.wait().await;
+                }
+                break;
+              }
+            };
+
+            let res = match output {
+                Ok(out) => {
+                    if out.status.success() {
+                        match String::from_utf8(out.stdout) {
+                            Ok(s) => parse_dashboard_output(&s),
+                            Err(e) => Err(anyhow::anyhow!("ssh stdout was not valid UTF-8: {}", e)),
+                        }
+                    } else {
+                        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                        Err(anyhow::anyhow!(
+                            "ssh failed: {}",
+                            if stderr.is_empty() {
+                                "<no stderr>"
+                            } else {
+                                &stderr
+                            }
+                        ))
+                    }
+                }
+                Err(e) => Err(anyhow::anyhow!("failed to run ssh: {}", e)),
+            };
+
+            let _ = dash_res_tx.send((key, res));
         }
     });
 
@@ -3165,6 +3488,39 @@ pub async fn run_tui(
                             .map(|s| s.trim_start_matches('/').to_string())
                             .unwrap_or_else(|| "-".to_string());
 
+                        if !image_id.is_empty() {
+                            snapshot
+                                .image_containers_by_id
+                                .entry(image_id.clone())
+                                .or_default()
+                                .push(cname.clone());
+                        }
+
+                        if let Some(nets) = item
+                            .pointer("/NetworkSettings/Networks")
+                            .and_then(|x| x.as_object())
+                        {
+                            for (_name, net) in nets {
+                                let Some(net_id) = net.get("NetworkID").and_then(|x| x.as_str())
+                                else {
+                                    continue;
+                                };
+                                let net_id = net_id.trim();
+                                if net_id.is_empty() {
+                                    continue;
+                                }
+                                *snapshot
+                                    .network_ref_count_by_id
+                                    .entry(net_id.to_string())
+                                    .or_insert(0) += 1;
+                                snapshot
+                                    .network_containers_by_id
+                                    .entry(net_id.to_string())
+                                    .or_default()
+                                    .push(cname.clone());
+                            }
+                        }
+
                         if let Some(mounts) = item.get("Mounts").and_then(|x| x.as_array()) {
                             for m in mounts {
                                 let ty = m.get("Type").and_then(|x| x.as_str()).unwrap_or("");
@@ -3196,7 +3552,15 @@ pub async fn run_tui(
                     }
                 }
 
+                for v in snapshot.image_containers_by_id.values_mut() {
+                    v.sort();
+                    v.dedup();
+                }
                 for v in snapshot.volume_containers_by_name.values_mut() {
+                    v.sort();
+                    v.dedup();
+                }
+                for v in snapshot.network_containers_by_id.values_mut() {
                     v.sort();
                     v.dedup();
                 }
@@ -3209,6 +3573,7 @@ pub async fn run_tui(
     });
 
     let _ = refresh_tx.send(());
+    let _ = dash_refresh_tx.send(());
 
     loop {
         if app.should_quit {
@@ -3276,6 +3641,26 @@ pub async fn run_tui(
             }
         }
 
+        while let Ok((key, res)) = dash_res_rx.try_recv() {
+            if key != app.current_target {
+                continue;
+            }
+            app.dashboard.loading = false;
+            match res {
+                Ok(snap) => {
+                    app.dashboard.error = None;
+                    app.dashboard.snap = Some(snap);
+                }
+                Err(e) => {
+                    let msg = format!("{:#}", e);
+                    if app.dashboard.error.as_deref() != Some(&msg) {
+                        app.log_msg(MsgLevel::Warn, format!("dashboard failed: {msg}"));
+                    }
+                    app.dashboard.error = Some(msg);
+                }
+            }
+        }
+
         while let Ok((key, res)) = usage_res_rx.try_recv() {
             if key != app.current_target {
                 continue;
@@ -3293,14 +3678,21 @@ pub async fn run_tui(
                     app.image_referenced_by_id.clear();
                     app.image_referenced_count_by_id.clear();
                     app.image_running_count_by_id.clear();
+                    app.image_containers_by_id.clear();
                     for img in &app.images {
                         let id = normalize_image_id(&img.id);
                         let refs = snap.image_ref_count_by_id.get(&id).copied().unwrap_or(0);
                         let runs = snap.image_run_count_by_id.get(&id).copied().unwrap_or(0);
+                        let ctrs = snap
+                            .image_containers_by_id
+                            .get(&id)
+                            .cloned()
+                            .unwrap_or_default();
                         app.image_referenced_by_id.insert(img.id.clone(), refs > 0);
                         app.image_referenced_count_by_id
                             .insert(img.id.clone(), refs);
                         app.image_running_count_by_id.insert(img.id.clone(), runs);
+                        app.image_containers_by_id.insert(img.id.clone(), ctrs);
                     }
 
                     // Volumes by name.
@@ -3333,6 +3725,25 @@ pub async fn run_tui(
                         app.volume_containers_by_name.insert(v.name.clone(), ctrs);
                     }
 
+                    // Networks by NetworkID.
+                    app.network_referenced_count_by_id.clear();
+                    app.network_containers_by_id.clear();
+                    for n in &app.networks {
+                        let refs = snap
+                            .network_ref_count_by_id
+                            .get(&n.id)
+                            .copied()
+                            .unwrap_or(0);
+                        let ctrs = snap
+                            .network_containers_by_id
+                            .get(&n.id)
+                            .cloned()
+                            .unwrap_or_default();
+                        app.network_referenced_count_by_id
+                            .insert(n.id.clone(), refs);
+                        app.network_containers_by_id.insert(n.id.clone(), ctrs);
+                    }
+
                     // Clamp selections in case the unused-only toggles depend on usage.
                     app.images_selected = app
                         .images_selected
@@ -3340,6 +3751,9 @@ pub async fn run_tui(
                     app.volumes_selected = app
                         .volumes_selected
                         .min(app.volumes_visible_len().saturating_sub(1));
+                    app.networks_selected = app
+                        .networks_selected
+                        .min(app.networks.len().saturating_sub(1));
                     app.usage_refresh_needed = false;
                 }
                 Err(e) => {
@@ -3597,6 +4011,7 @@ pub async fn run_tui(
                         key,
                         &conn_tx,
                         &refresh_tx,
+                        &dash_refresh_tx,
                         &refresh_interval_tx,
                         &inspect_req_tx,
                         &logs_req_tx,
@@ -3604,7 +4019,7 @@ pub async fn run_tui(
                     );
                     if let Some(req) = app.shell_pending_interactive.take() {
                         let runner = current_runner_from_app(&app);
-                        restore_terminal(&mut terminal, mouse_enabled)?;
+                        restore_terminal(&mut terminal)?;
                         let res = match req {
                             ShellInteractive::RunCommand { cmd } => {
                                 run_interactive_command(&runner, &cmd)
@@ -3613,7 +4028,7 @@ pub async fn run_tui(
                                 run_interactive_local_command(&cmd)
                             }
                         };
-                        terminal = setup_terminal(mouse_enabled)?;
+                        terminal = setup_terminal()?;
                         if let Some(name) = app.templates_state.templates_refresh_after_edit.take()
                         {
                             app.refresh_templates();
@@ -3653,22 +4068,20 @@ pub async fn run_tui(
     }
 
     fetch_task.abort();
+    dash_task.abort();
     inspect_task.abort();
     action_task.abort();
     logs_task.abort();
     ip_task.abort();
     usage_task.abort();
-    restore_terminal(&mut terminal, mouse_enabled).context("failed to restore terminal")?;
+    restore_terminal(&mut terminal).context("failed to restore terminal")?;
     Ok(())
 }
 
-fn setup_terminal(mouse_enabled: bool) -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
+fn setup_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
-    if mouse_enabled {
-        execute!(stdout, EnableMouseCapture)?;
-    }
     let backend = CrosstermBackend::new(stdout);
     Ok(Terminal::new(backend)?)
 }
@@ -3782,14 +4195,8 @@ fn current_server_label(app: &App) -> String {
         .to_string()
 }
 
-fn restore_terminal(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    mouse_enabled: bool,
-) -> anyhow::Result<()> {
+fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow::Result<()> {
     disable_raw_mode()?;
-    if mouse_enabled {
-        execute!(terminal.backend_mut(), DisableMouseCapture)?;
-    }
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     Ok(())
