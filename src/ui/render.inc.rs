@@ -2432,7 +2432,9 @@ fn header_logo_spans(app: &App, base: Style, shown: &str) -> Vec<Span<'static>> 
 
     let seed = app.header_logo_seed;
     let offset = (seed as usize) % palette.len();
-    let step = (((seed >> 8) as usize) % (palette.len().saturating_sub(1)).max(1)).max(1);
+    // Ensure we don't fall into short cycles (e.g. len=8, step=2 repeats every 4).
+    let mut step = (((seed >> 8) as usize) % (palette.len().saturating_sub(1)).max(1)).max(1);
+    step = coprime_step(step, palette.len());
 
     let mut out: Vec<Span<'static>> = Vec::new();
     let mut letter_i = 0usize;
@@ -2455,6 +2457,29 @@ fn header_logo_spans(app: &App, base: Style, shown: &str) -> Vec<Span<'static>> 
         }
     }
     out
+}
+
+fn coprime_step(mut step: usize, len: usize) -> usize {
+    if len <= 1 {
+        return 1;
+    }
+    step = step.clamp(1, len - 1);
+    while gcd(step, len) != 1 {
+        step += 1;
+        if step >= len {
+            step = 1;
+        }
+    }
+    step
+}
+
+fn gcd(mut a: usize, mut b: usize) -> usize {
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
 }
 
 fn rel_luma(r: u8, g: u8, b: u8) -> f32 {
