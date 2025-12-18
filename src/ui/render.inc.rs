@@ -3335,14 +3335,18 @@ fn draw_shell_volumes_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui
             } else {
                 Style::default()
             };
+            let is_removing = app.volume_action_inflight.contains_key(&v.name);
+            let used_cell = if is_removing {
+                Cell::from("removing").style(bg.patch(app.theme.text_warn.to_style()))
+            } else if used == 0 {
+                Cell::from("unused".to_string())
+            } else {
+                Cell::from(format!("{used} ctr"))
+            };
             Row::new(vec![
                 Cell::from(v.name.clone()),
                 Cell::from(v.driver.clone()),
-                Cell::from(if used == 0 {
-                    "unused".to_string()
-                } else {
-                    format!("{used} ctr")
-                }),
+                used_cell,
             ])
             .style(st)
         })

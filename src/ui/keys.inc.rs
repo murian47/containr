@@ -284,6 +284,10 @@ fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
     let n = KeyScope::View(ShellView::Networks);
     add(n, "C-d", ":network rm");
 
+    // Volumes.
+    let v = KeyScope::View(ShellView::Volumes);
+    add(v, "C-d", ":volume rm");
+
     // Templates.
     let t = KeyScope::View(ShellView::Templates);
     add(t, "Enter", ":template edit");
