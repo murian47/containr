@@ -36,12 +36,12 @@ pub fn handle_set(
             };
             match v.parse::<usize>() {
                 Ok(n) if (1..=200_000).contains(&n) => {
-                    app.logs_tail = n;
+                    app.logs.tail = n;
                     app.persist_config();
                     if app.shell_view == ShellView::Logs {
-                        if let Some(id) = app.logs_for_id.clone() {
-                            app.logs_loading = true;
-                            let _ = logs_req_tx.send((id, app.logs_tail.max(1)));
+                        if let Some(id) = app.logs.for_id.clone() {
+                            app.logs.loading = true;
+                            let _ = logs_req_tx.send((id, app.logs.tail.max(1)));
                         }
                     }
                 }

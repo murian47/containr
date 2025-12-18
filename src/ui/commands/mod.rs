@@ -14,3 +14,5 @@ pub mod container_cmd;
 pub mod image_cmd;
 pub mod volume_cmd;
 pub mod network_cmd;
+pub mod templates_cmd;
+pub mod server_cmd;

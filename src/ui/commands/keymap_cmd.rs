@@ -112,10 +112,10 @@ pub fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bool {
                 ));
             }
         }
-        app.shell_msgs_return = app.shell_view;
+        app.shell_msgs.return_view = app.shell_view;
         app.shell_view = ShellView::Messages;
         app.shell_focus = ShellFocus::List;
-        app.shell_msgs_scroll = usize::MAX;
+        app.shell_msgs.scroll = usize::MAX;
         return true;
     }
 
@@ -219,10 +219,9 @@ pub fn handle_unmap(app: &mut App, first: &str, rest: &[&str]) -> bool {
     } else {
         app.set_info(format!("unmapped {scope_str} {key_canon}"));
     }
-    app.shell_msgs_return = app.shell_view;
+    app.shell_msgs.return_view = app.shell_view;
     app.shell_view = ShellView::Messages;
     app.shell_focus = ShellFocus::List;
-    app.shell_msgs_scroll = usize::MAX;
+    app.shell_msgs.scroll = usize::MAX;
     true
 }
-

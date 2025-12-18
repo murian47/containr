@@ -178,13 +178,13 @@ fn shell_enter_logs(app: &mut App, logs_req_tx: &mpsc::UnboundedSender<(String, 
     shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Logs));
 
     let Some(id) = shell_first_container_id(app) else {
-        app.logs_loading = false;
-        app.logs_error = Some("no container selected".to_string());
-        app.logs_text = None;
+        app.logs.loading = false;
+        app.logs.error = Some("no container selected".to_string());
+        app.logs.text = None;
         return;
     };
     app.open_logs_state(id.clone());
-    let _ = logs_req_tx.send((id, app.logs_tail.max(1)));
+    let _ = logs_req_tx.send((id, app.logs.tail.max(1)));
 }
 
 fn shell_enter_inspect(app: &mut App, inspect_req_tx: &mpsc::UnboundedSender<InspectTarget>) {
@@ -197,10 +197,10 @@ fn shell_enter_inspect(app: &mut App, inspect_req_tx: &mpsc::UnboundedSender<Ins
     shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Inspect));
 
     let Some(target) = app.selected_inspect_target() else {
-        app.inspect_loading = false;
-        app.inspect_error = Some("nothing selected".to_string());
-        app.inspect_value = None;
-        app.inspect_lines.clear();
+        app.inspect.loading = false;
+        app.inspect.error = Some("nothing selected".to_string());
+        app.inspect.value = None;
+        app.inspect.lines.clear();
         return;
     };
     app.open_inspect_state(target.clone());
@@ -216,9 +216,9 @@ fn shell_back_from_full(app: &mut App) {
         app.shell_cmdline.mode = false;
         app.shell_cmdline.confirm = None;
         app.shell_view = if app.shell_view == ShellView::Help {
-            app.shell_help_return
+            app.shell_help.return_view
         } else if app.shell_view == ShellView::Messages {
-            app.shell_msgs_return
+            app.shell_msgs.return_view
         } else {
             app.shell_last_main_view
         };
@@ -282,11 +282,11 @@ impl App {
             version: 9,
             last_server: self.active_server.clone(),
             refresh_secs: self.refresh_secs.max(1),
-            logs_tail: self.logs_tail.max(1),
+            logs_tail: self.logs.tail.max(1),
             cmd_history_max: self.cmd_history_max_effective(),
             cmd_history: self.shell_cmdline.history.entries.clone(),
             active_theme: self.theme_name.clone(),
-            templates_dir: self.templates_dir.to_string_lossy().to_string(),
+            templates_dir: self.templates_state.dir.to_string_lossy().to_string(),
             view_layout: self
                 .shell_split_by_view
                 .iter()
@@ -723,10 +723,10 @@ fn shell_execute_cmdline(
             app.shell_cmdline.confirm = None;
             app.shell_cmdline.input.clear();
             app.shell_cmdline.cursor = 0;
-            app.shell_help_return = app.shell_view;
+            app.shell_help.return_view = app.shell_view;
             app.shell_view = ShellView::Help;
             app.shell_focus = ShellFocus::List;
-            app.shell_help_scroll = 0;
+            app.shell_help.scroll = 0;
             return;
         }
         "messages" | "msgs" => {
@@ -743,17 +743,17 @@ fn shell_execute_cmdline(
             if app.shell_view == ShellView::Messages {
                 shell_back_from_full(app);
             } else {
-                app.shell_msgs_return = app.shell_view;
+                app.shell_msgs.return_view = app.shell_view;
                 app.shell_view = ShellView::Messages;
                 app.shell_focus = ShellFocus::List;
-                app.shell_msgs_scroll = usize::MAX;
-                app.shell_msgs_hscroll = 0;
+                app.shell_msgs.scroll = usize::MAX;
+                app.shell_msgs.hscroll = 0;
             }
             return;
         }
         "refresh" => {
             if app.shell_view == ShellView::Templates {
-                match app.templates_kind {
+                match app.templates_state.kind {
                     TemplatesKind::Stacks => app.refresh_templates(),
                     TemplatesKind::Networks => app.refresh_net_templates(),
                 }
@@ -767,12 +767,12 @@ fn shell_execute_cmdline(
             if sub.is_empty() || sub == "help" {
                 app.set_info(format!("active theme: {}", app.theme_name));
                 app.set_info("usage: :theme list | :theme use <name> | :theme new <name> | :theme edit [name] | :theme rm <name>");
-                app.shell_msgs_return = app.shell_view;
-                app.shell_view = ShellView::Messages;
-                app.shell_focus = ShellFocus::List;
-                app.shell_msgs_scroll = usize::MAX;
-                return;
-            }
+                        app.shell_msgs.return_view = app.shell_view;
+                        app.shell_view = ShellView::Messages;
+                        app.shell_focus = ShellFocus::List;
+                        app.shell_msgs.scroll = usize::MAX;
+                        return;
+                    }
             match sub {
                 "list" => match theme::list_theme_names(&app.config_path) {
                     Ok(mut names) => {
@@ -792,10 +792,10 @@ fn shell_execute_cmdline(
                                 }
                             }
                         }
-                        app.shell_msgs_return = app.shell_view;
+                        app.shell_msgs.return_view = app.shell_view;
                         app.shell_view = ShellView::Messages;
                         app.shell_focus = ShellFocus::List;
-                        app.shell_msgs_scroll = usize::MAX;
+                        app.shell_msgs.scroll = usize::MAX;
                     }
                     Err(e) => app.set_error(format!("theme list failed: {:#}", e)),
                 },
@@ -966,431 +966,45 @@ fn shell_execute_cmdline(
     }
 
     if cmd == "templates" {
-        let sub = it.next().unwrap_or("");
-        if sub.is_empty() {
-            app.set_info(format!(
-                "templates kind: {}",
-                match app.templates_kind {
-                    TemplatesKind::Stacks => "stacks",
-                    TemplatesKind::Networks => "networks",
-                }
-            ));
-            return;
-        }
-        if sub == "toggle" {
-            shell_execute_cmdline(
-                app,
-                "templates kind toggle",
-                conn_tx,
-                refresh_tx,
-                refresh_interval_tx,
-                logs_req_tx,
-                action_req_tx,
-            );
-            return;
-        }
-        if sub == "kind" {
-            // If no argument is provided, behave like "toggle" (convenient in command-line mode).
-            let v = it.next().unwrap_or("toggle");
-            match v.to_ascii_lowercase().as_str() {
-                "stacks" | "stack" | "compose" => app.templates_kind = TemplatesKind::Stacks,
-                "networks" | "network" | "net" => app.templates_kind = TemplatesKind::Networks,
-                "toggle" => {
-                    app.templates_kind = match app.templates_kind {
-                        TemplatesKind::Stacks => TemplatesKind::Networks,
-                        TemplatesKind::Networks => TemplatesKind::Stacks,
-                    }
-                }
-                _ => {
-                    app.set_warn("usage: :templates kind (stacks|networks|toggle)");
-                    return;
-                }
-            }
-            if app.templates_kind == TemplatesKind::Stacks {
-                app.refresh_templates();
-            } else {
-                app.refresh_net_templates();
-            }
-            shell_set_main_view(app, ShellView::Templates);
-            shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-            return;
-        }
-        app.set_warn("usage: :templates kind (stacks|networks|toggle)");
+        let args: Vec<&str> = it.collect();
+        let _ = commands::templates_cmd::handle_templates(app, &args);
         return;
     }
 
     if cmd == "template" || cmd == "tpl" {
-        let sub = it.next().unwrap_or("");
-        // Alias for :templates kind ...
-        if sub == "kind" {
-            let v = it.next().unwrap_or("");
-            shell_execute_cmdline(
-                app,
-                &format!("templates kind {v}"),
-                conn_tx,
-                refresh_tx,
-                refresh_interval_tx,
-                logs_req_tx,
-                action_req_tx,
-            );
-            return;
-        }
-        // Convenience: :template toggle <=> :templates kind toggle
-        if sub == "toggle" {
-            shell_execute_cmdline(
-                app,
-                "templates kind toggle",
-                conn_tx,
-                refresh_tx,
-                refresh_interval_tx,
-                logs_req_tx,
-                action_req_tx,
-            );
-            return;
-        }
-        if sub == "edit" {
-            shell_set_main_view(app, ShellView::Templates);
-            shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-            shell_edit_selected_template(app);
-            return;
-        }
-        if sub == "new" {
-            app.shell_cmdline.mode = true;
-            set_text_and_cursor(
-                &mut app.shell_cmdline.input,
-                &mut app.shell_cmdline.cursor,
-                match app.templates_kind {
-                    TemplatesKind::Stacks => "template add ".to_string(),
-                    TemplatesKind::Networks => "nettemplate add ".to_string(),
-                },
-            );
-            app.shell_cmdline.confirm = None;
-            return;
-        }
-        if sub == "add" || sub == "new" {
-            let Some(name) = it.next() else {
-                // Convenience: without name, open prompt for "template add".
-                app.shell_cmdline.mode = true;
-                set_text_and_cursor(
-                    &mut app.shell_cmdline.input,
-                    &mut app.shell_cmdline.cursor,
-                    match app.templates_kind {
-                        TemplatesKind::Stacks => "template add ".to_string(),
-                        TemplatesKind::Networks => "nettemplate add ".to_string(),
-                    },
-                );
-                app.shell_cmdline.confirm = None;
-                return;
-            };
-            match app.templates_kind {
-                TemplatesKind::Stacks => match create_template(app, name) {
-                    Ok(()) => {
-                        app.refresh_templates();
-                        if let Some(idx) = app.templates.iter().position(|t| t.name == name) {
-                            app.templates_selected = idx;
-                        }
-                        shell_set_main_view(app, ShellView::Templates);
-                        shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-                        shell_edit_selected_template(app);
-                    }
-                    Err(e) => app.set_error(format!("{e:#}")),
-                },
-                TemplatesKind::Networks => match create_net_template(app, name) {
-                    Ok(()) => {
-                        app.refresh_net_templates();
-                        if let Some(idx) = app.net_templates.iter().position(|t| t.name == name) {
-                            app.net_templates_selected = idx;
-                        }
-                        shell_set_main_view(app, ShellView::Templates);
-                        shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-                        shell_edit_selected_net_template(app);
-                    }
-                    Err(e) => app.set_error(format!("{e:#}")),
-                },
-            }
-            return;
-        }
-        if sub == "deploy" {
-            let name = if let Some(v) = it.next() {
-                v.to_string()
-            } else {
-                match app.templates_kind {
-                    TemplatesKind::Stacks => app.selected_template().map(|t| t.name.clone()),
-                    TemplatesKind::Networks => app.selected_net_template().map(|t| t.name.clone()),
-                }
-                .unwrap_or_default()
-            };
-            if name.trim().is_empty() {
-                app.set_warn("no template selected");
-                return;
-            }
-            match app.templates_kind {
-                TemplatesKind::Stacks => shell_deploy_template(app, &name, action_req_tx),
-                TemplatesKind::Networks => shell_deploy_net_template(app, &name, force, action_req_tx),
-            }
-            return;
-        }
-        if sub == "rm" || sub == "del" || sub == "delete" {
-            let name = if let Some(n) = it.next() {
-                n.to_string()
-            } else {
-                match app.templates_kind {
-                    TemplatesKind::Stacks => app.selected_template().map(|t| t.name.clone()),
-                    TemplatesKind::Networks => app.selected_net_template().map(|t| t.name.clone()),
-                }
-                .unwrap_or_default()
-            };
-            if name.trim().is_empty() {
-                app.set_warn("no template selected");
-                return;
-            }
-            if !force {
-                shell_begin_confirm(
-                    app,
-                    format!(
-                        "{} rm {name}",
-                        match app.templates_kind {
-                            TemplatesKind::Stacks => "template",
-                            TemplatesKind::Networks => "nettemplate",
-                        }
-                    ),
-                    cmdline_full.clone(),
-                );
-                return;
-            }
-            match app.templates_kind {
-                TemplatesKind::Stacks => match delete_template(app, &name) {
-                    Ok(()) => {
-                        app.refresh_templates();
-                        app.set_info(format!("deleted template {name}"));
-                        shell_set_main_view(app, ShellView::Templates);
-                        shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-                    }
-                    Err(e) => app.set_error(format!("{e:#}")),
-                },
-                TemplatesKind::Networks => match delete_net_template(app, &name) {
-                    Ok(()) => {
-                        app.refresh_net_templates();
-                        app.set_info(format!("deleted network template {name}"));
-                        shell_set_main_view(app, ShellView::Templates);
-                        shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-                    }
-                    Err(e) => app.set_error(format!("{e:#}")),
-                },
-            }
-            return;
-        }
-        app.set_warn("usage: :template add <name> | :template deploy[!] [name] | :template rm[!] [name] | :templates kind (stacks|networks|toggle)");
+        let args: Vec<&str> = it.collect();
+        let _ = commands::templates_cmd::handle_template(
+            app,
+            force,
+            cmdline_full.clone(),
+            &args,
+            action_req_tx,
+        );
         return;
     }
 
     if matches!(cmd, "nettemplate" | "nettpl" | "ntpl" | "nt") {
-        let sub = it.next().unwrap_or("");
-        if sub == "edit" {
-            app.templates_kind = TemplatesKind::Networks;
-            shell_set_main_view(app, ShellView::Templates);
-            shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-            shell_edit_selected_net_template(app);
-            return;
-        }
-        if sub == "new" {
-            app.shell_cmdline.mode = true;
-            set_text_and_cursor(
-                &mut app.shell_cmdline.input,
-                &mut app.shell_cmdline.cursor,
-                "nettemplate add ".to_string(),
-            );
-            app.shell_cmdline.confirm = None;
-            return;
-        }
-        if sub == "add" || sub == "new" {
-            let Some(name) = it.next() else {
-                app.shell_cmdline.mode = true;
-                set_text_and_cursor(
-                    &mut app.shell_cmdline.input,
-                    &mut app.shell_cmdline.cursor,
-                    "nettemplate add ".to_string(),
-                );
-                app.shell_cmdline.confirm = None;
-                return;
-            };
-            match create_net_template(app, name) {
-                Ok(()) => {
-                    app.refresh_net_templates();
-                    if let Some(idx) = app.net_templates.iter().position(|t| t.name == name) {
-                        app.net_templates_selected = idx;
-                    }
-                    app.templates_kind = TemplatesKind::Networks;
-                    shell_set_main_view(app, ShellView::Templates);
-                    shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-                    shell_edit_selected_net_template(app);
-                }
-                Err(e) => app.set_error(format!("{e:#}")),
-            }
-            return;
-        }
-        if sub == "deploy" {
-            let name = if let Some(v) = it.next() {
-                v.to_string()
-            } else if let Some(t) = app.selected_net_template().map(|t| t.name.clone()) {
-                t
-            } else {
-                app.set_warn("usage: :nettemplate deploy <name>");
-                return;
-            };
-            shell_deploy_net_template(app, &name, force, action_req_tx);
-            return;
-        }
-        if sub == "rm" || sub == "del" || sub == "delete" {
-            let name = if let Some(n) = it.next() {
-                n.to_string()
-            } else if let Some(t) = app.selected_net_template().map(|t| t.name.clone()) {
-                t
-            } else {
-                app.set_warn("usage: :nettemplate rm <name>");
-                return;
-            };
-            if !force {
-                shell_begin_confirm(app, format!("nettemplate rm {name}"), cmdline_full.clone());
-                return;
-            }
-            match delete_net_template(app, &name) {
-                Ok(()) => {
-                    app.refresh_net_templates();
-                    app.set_info(format!("deleted network template {name}"));
-                    app.templates_kind = TemplatesKind::Networks;
-                    shell_set_main_view(app, ShellView::Templates);
-                    shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-                }
-                Err(e) => app.set_error(format!("{e:#}")),
-            }
-            return;
-        }
-        app.set_warn(
-            "usage: :nettemplate add <name> | :nettemplate deploy <name> | :nettemplate rm <name>",
+        let args: Vec<&str> = it.collect();
+        let _ = commands::templates_cmd::handle_nettemplate(
+            app,
+            force,
+            cmdline_full.clone(),
+            &args,
+            action_req_tx,
         );
         return;
     }
 
     if cmd == "server" {
-        let sub = it.next().unwrap_or("");
-        match sub {
-            "list" => {
-                if app.servers.is_empty() {
-                    app.set_info("no servers configured");
-                } else {
-                    let lines: Vec<String> = app
-                        .servers
-                        .iter()
-                        .map(|s| {
-                            format!("server '{}' -> {} (cmd={})", s.name, s.target, s.docker_cmd)
-                        })
-                        .collect();
-                    for line in lines {
-                        app.set_info(line);
-                    }
-                }
-                app.shell_msgs_return = app.shell_view;
-                app.shell_view = ShellView::Messages;
-                app.shell_focus = ShellFocus::List;
-                app.shell_msgs_scroll = usize::MAX;
-            }
-            "use" => {
-                let Some(name) = it.next() else {
-                    app.set_warn("usage: :server use <name>");
-                    return;
-                };
-                let Some(idx) = find_server_by_name(&app.servers, name) else {
-                    app.set_warn(format!("unknown server: {name}"));
-                    return;
-                };
-                shell_switch_server(app, idx, conn_tx, refresh_tx);
-            }
-            "rm" => {
-                let Some(name) = it.next() else {
-                    app.set_warn("usage: :server rm <name>");
-                    return;
-                };
-                if !force {
-                    shell_begin_confirm(app, format!("server rm {name}"), cmdline_full.clone());
-                    return;
-                }
-                let Some(idx) = find_server_by_name(&app.servers, name) else {
-                    app.set_warn(format!("unknown server: {name}"));
-                    return;
-                };
-                let removed_active = app.active_server.as_deref() == Some(name);
-                app.servers.remove(idx);
-                app.shell_server_shortcuts = build_server_shortcuts(&app.servers);
-                if removed_active {
-                    app.active_server = None;
-                    app.server_selected = 0;
-                    if !app.servers.is_empty() {
-                        shell_switch_server(app, 0, conn_tx, refresh_tx);
-                    } else {
-                        app.persist_config();
-                    }
-                } else {
-                    app.server_selected =
-                        app.server_selected.min(app.servers.len().saturating_sub(1));
-                    app.persist_config();
-                }
-            }
-            "add" => {
-                let Some(name) = it.next() else {
-                    app.set_warn("usage: :server add <name> (ssh <target> | local) [opts]");
-                    return;
-                };
-                let Some(name) = ensure_unique_server_name(&app.servers, name) else {
-                    app.set_warn("server name already exists");
-                    return;
-                };
-                let Some(kind) = it.next() else {
-                    app.set_warn("usage: :server add <name> (ssh <target> | local) [opts]");
-                    return;
-                };
-                let mut rest: Vec<String> = it.map(|s| s.to_string()).collect();
-                let (port, identity, docker_cmd, tail) = parse_kv_args(rest.drain(..).into_iter());
-                let docker_cmd = docker_cmd.unwrap_or_else(|| "docker".to_string());
-
-                match kind {
-                    "ssh" => {
-                        let target = tail.get(0).cloned().unwrap_or_default();
-                        if target.trim().is_empty() {
-                            app.set_warn("usage: :server add <name> ssh <target> [opts]");
-                            return;
-                        }
-                        app.servers.push(ServerEntry {
-                            name,
-                            target,
-                            port,
-                            identity,
-                            docker_cmd,
-                        });
-                    }
-                    "local" => {
-                        app.servers.push(ServerEntry {
-                            name,
-                            target: "local".to_string(),
-                            port: None,
-                            identity: None,
-                            docker_cmd,
-                        });
-                    }
-                    _ => {
-                        app.set_error(
-                            "usage: :server add <name> (ssh <target> | local) [opts]".to_string(),
-                        );
-                        return;
-                    }
-                }
-                app.shell_server_shortcuts = build_server_shortcuts(&app.servers);
-                app.persist_config();
-            }
-            _ => {
-                app.set_error("usage: :server (list|use|add|rm) ...".to_string());
-            }
-        }
+        let args: Vec<&str> = it.collect();
+        let _ = commands::server_cmd::handle_server(
+            app,
+            force,
+            cmdline_full.clone(),
+            &args,
+            conn_tx,
+            refresh_tx,
+        );
         return;
     }
 
@@ -1593,7 +1207,7 @@ fn shell_execute_action(
             set_text_and_cursor(
                 &mut app.shell_cmdline.input,
                 &mut app.shell_cmdline.cursor,
-                match app.templates_kind {
+                match app.templates_state.kind {
                     TemplatesKind::Stacks => "template add ".to_string(),
                     TemplatesKind::Networks => "nettemplate add ".to_string(),
                 },
@@ -1601,7 +1215,7 @@ fn shell_execute_action(
             app.shell_cmdline.confirm = None;
         }
         ShellAction::TemplateDelete => {
-            let name = match app.templates_kind {
+            let name = match app.templates_state.kind {
                 TemplatesKind::Stacks => app.selected_template().map(|t| t.name.clone()),
                 TemplatesKind::Networks => app.selected_net_template().map(|t| t.name.clone()),
             };
@@ -1610,14 +1224,14 @@ fn shell_execute_action(
                     app,
                     format!(
                         "{} rm {name}",
-                        match app.templates_kind {
+                        match app.templates_state.kind {
                             TemplatesKind::Stacks => "template",
                             TemplatesKind::Networks => "nettemplate",
                         }
                     ),
                     format!(
                         "{} rm {name}",
-                        match app.templates_kind {
+                        match app.templates_state.kind {
                             TemplatesKind::Stacks => "template",
                             TemplatesKind::Networks => "nettemplate",
                         }
@@ -1628,7 +1242,7 @@ fn shell_execute_action(
             }
         }
         ShellAction::TemplateDeploy => {
-            match app.templates_kind {
+            match app.templates_state.kind {
                 TemplatesKind::Stacks => {
                     if let Some(name) = app.selected_template().map(|t| t.name.clone()) {
                         shell_deploy_template(app, &name, action_req_tx);
@@ -1653,11 +1267,11 @@ fn shell_deploy_template(
     name: &str,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
-    if app.template_deploy_inflight.contains_key(name) {
+    if app.templates_state.template_deploy_inflight.contains_key(name) {
         app.set_warn(format!("template '{name}' is already deploying"));
         return;
     }
-    let Some(tpl) = app.templates.iter().find(|t| t.name == name).cloned() else {
+    let Some(tpl) = app.templates_state.templates.iter().find(|t| t.name == name).cloned() else {
         app.set_warn(format!("unknown template: {name}"));
         return;
     };
@@ -1679,7 +1293,7 @@ fn shell_deploy_template(
         docker,
         local_compose: tpl.compose_path.clone(),
     });
-    app.template_deploy_inflight.insert(
+    app.templates_state.template_deploy_inflight.insert(
         tpl.name.clone(),
         DeployMarker {
             started: Instant::now(),
@@ -1694,11 +1308,11 @@ fn shell_deploy_net_template(
     force: bool,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
-    if app.net_template_deploy_inflight.contains_key(name) {
+    if app.templates_state.net_template_deploy_inflight.contains_key(name) {
         app.set_warn(format!("network template '{name}' is already deploying"));
         return;
     }
-    let Some(tpl) = app.net_templates.iter().find(|t| t.name == name).cloned() else {
+    let Some(tpl) = app.templates_state.net_templates.iter().find(|t| t.name == name).cloned() else {
         app.set_warn(format!("unknown network template: {name}"));
         return;
     };
@@ -1721,7 +1335,7 @@ fn shell_deploy_net_template(
         local_cfg: tpl.cfg_path.clone(),
         force,
     });
-    app.net_template_deploy_inflight.insert(
+    app.templates_state.net_template_deploy_inflight.insert(
         tpl.name.clone(),
         DeployMarker {
             started: Instant::now(),
@@ -1731,7 +1345,7 @@ fn shell_deploy_net_template(
 }
 
 fn shell_edit_selected_template(app: &mut App) {
-    match app.templates_kind {
+    match app.templates_state.kind {
         TemplatesKind::Stacks => {
             let Some((name, has_compose, compose_path, dir)) = app.selected_template().map(|t| {
                 (
@@ -1744,7 +1358,7 @@ fn shell_edit_selected_template(app: &mut App) {
                 app.set_warn("no template selected");
                 return;
             };
-            app.templates_refresh_after_edit = Some(name);
+            app.templates_state.templates_refresh_after_edit = Some(name);
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
             let target = if has_compose { compose_path } else { dir };
             let cmd = format!(
@@ -1770,7 +1384,7 @@ fn shell_edit_selected_net_template(app: &mut App) {
         app.set_warn("no network template selected");
         return;
     };
-    app.net_templates_refresh_after_edit = Some(name);
+    app.templates_state.net_templates_refresh_after_edit = Some(name);
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
     let target = if has_cfg { cfg_path } else { dir };
     let cmd = format!(
@@ -1925,33 +1539,33 @@ fn handle_shell_key(
 
     // Input modes first (vim-like): when editing, do not treat keys as global shortcuts.
     if app.shell_view == ShellView::Logs {
-        match app.logs_mode {
+        match app.logs.mode {
             LogsMode::Search => match key.code {
                 KeyCode::Enter => app.logs_commit_search(),
                 KeyCode::Esc => app.logs_cancel_search(),
                 KeyCode::Backspace => {
-                    backspace_at_cursor(&mut app.logs_input, &mut app.logs_input_cursor);
+                    backspace_at_cursor(&mut app.logs.input, &mut app.logs.input_cursor);
                     app.logs_rebuild_matches();
                 }
                 KeyCode::Delete => {
-                    delete_at_cursor(&mut app.logs_input, &mut app.logs_input_cursor);
+                    delete_at_cursor(&mut app.logs.input, &mut app.logs.input_cursor);
                     app.logs_rebuild_matches();
                 }
                 KeyCode::Left => {
-                    app.logs_input_cursor =
-                        clamp_cursor_to_text(&app.logs_input, app.logs_input_cursor).saturating_sub(1);
+                    app.logs.input_cursor =
+                        clamp_cursor_to_text(&app.logs.input, app.logs.input_cursor).saturating_sub(1);
                 }
                 KeyCode::Right => {
-                    let len = app.logs_input.chars().count();
-                    app.logs_input_cursor = clamp_cursor_to_text(&app.logs_input, app.logs_input_cursor)
+                    let len = app.logs.input.chars().count();
+                    app.logs.input_cursor = clamp_cursor_to_text(&app.logs.input, app.logs.input_cursor)
                         .saturating_add(1)
                         .min(len);
                 }
-                KeyCode::Home => app.logs_input_cursor = 0,
-                KeyCode::End => app.logs_input_cursor = app.logs_input.chars().count(),
+                KeyCode::Home => app.logs.input_cursor = 0,
+                KeyCode::End => app.logs.input_cursor = app.logs.input.chars().count(),
                 KeyCode::Char(ch) => {
                     if !ch.is_control() && !key.modifiers.contains(KeyModifiers::CONTROL) {
-                        insert_char_at_cursor(&mut app.logs_input, &mut app.logs_input_cursor, ch);
+                        insert_char_at_cursor(&mut app.logs.input, &mut app.logs.input_cursor, ch);
                         app.logs_rebuild_matches();
                     }
                 }
@@ -1960,13 +1574,13 @@ fn handle_shell_key(
             LogsMode::Command => match key.code {
                 KeyCode::Enter => {
                     // Minimal command mode for now.
-                    let cmdline = app.logs_command.trim().to_string();
+                    let cmdline = app.logs.command.trim().to_string();
                     app.push_cmd_history(&cmdline);
                     if let Some(path) = cmdline.strip_prefix("save").map(str::trim) {
                         if path.is_empty() {
                             app.set_warn("usage: save <file>");
                         } else {
-                            match app.logs_text.as_deref() {
+                            match app.logs.text.as_deref() {
                                 None => app.set_warn("no logs loaded"),
                                 Some(text) => match write_text_file(path, text) {
                                     Ok(p) => app.set_info(format!("saved logs to {}", p.display())),
@@ -1974,9 +1588,9 @@ fn handle_shell_key(
                                 },
                             }
                         }
-                        app.logs_mode = LogsMode::Normal;
-                        app.logs_command.clear();
-                        app.logs_command_cursor = 0;
+                        app.logs.mode = LogsMode::Normal;
+                        app.logs.command.clear();
+                        app.logs.command_cursor = 0;
                         app.logs_rebuild_matches();
                         return;
                     }
@@ -1989,148 +1603,148 @@ fn handle_shell_key(
                             let Some(n) = parts.next() else {
                                 app.set_warn("usage: j <line>");
                                 // keep mode change below
-                                app.logs_mode = LogsMode::Normal;
-                                app.logs_command.clear();
-                                app.logs_command_cursor = 0;
+                                app.logs.mode = LogsMode::Normal;
+                                app.logs.command.clear();
+                                app.logs.command_cursor = 0;
                                 app.logs_rebuild_matches();
                                 return;
                             };
                             match n.parse::<usize>() {
                                 Ok(n) if n > 0 => {
                                     let total = app.logs_total_lines();
-                                    app.logs_cursor =
+                                    app.logs.cursor =
                                         n.saturating_sub(1).min(total.saturating_sub(1));
                                 }
                                 _ => app.set_warn("usage: j <line>"),
                             }
                         }
                         "set" => match parts.next().unwrap_or("") {
-                            "number" => app.logs_show_line_numbers = true,
-                            "nonumber" => app.logs_show_line_numbers = false,
+                            "number" => app.logs.show_line_numbers = true,
+                            "nonumber" => app.logs.show_line_numbers = false,
                             "logtail" => {
                                 let Some(v) = parts.next() else {
                                     app.set_warn("usage: set logtail <lines>");
-                                    app.logs_mode = LogsMode::Normal;
-                                    app.logs_command.clear();
-                                    app.logs_command_cursor = 0;
+                                    app.logs.mode = LogsMode::Normal;
+                                    app.logs.command.clear();
+                                    app.logs.command_cursor = 0;
                                     app.logs_rebuild_matches();
                                     return;
                                 };
                                 match v.parse::<usize>() {
                                     Ok(n) if (1..=200_000).contains(&n) => {
-                                        app.logs_tail = n;
+                                        app.logs.tail = n;
                                         app.persist_config();
-                                        if let Some(id) = app.logs_for_id.clone() {
-                                            app.logs_loading = true;
-                                            let _ = logs_req_tx.send((id, app.logs_tail.max(1)));
+                                        if let Some(id) = app.logs.for_id.clone() {
+                                            app.logs.loading = true;
+                                            let _ = logs_req_tx.send((id, app.logs.tail.max(1)));
                                         }
                                     }
                                     _ => app.set_warn("logtail must be 1..200000"),
                                 }
                             }
                             "regex" => {
-                                app.logs_use_regex = true;
+                                app.logs.use_regex = true;
                                 app.logs_rebuild_matches();
                             }
                             "noregex" => {
-                                app.logs_use_regex = false;
+                                app.logs.use_regex = false;
                                 app.logs_rebuild_matches();
                             }
                             x => app.set_warn(format!("unknown option: {x}")),
                         },
                         _ => app.set_warn(format!("unknown command: {cmdline}")),
                     }
-                    app.logs_mode = LogsMode::Normal;
-                    app.logs_command.clear();
-                    app.logs_command_cursor = 0;
+                    app.logs.mode = LogsMode::Normal;
+                    app.logs.command.clear();
+                    app.logs.command_cursor = 0;
                     app.logs_rebuild_matches();
                 }
                 KeyCode::Esc => {
-                    app.logs_mode = LogsMode::Normal;
-                    app.logs_command.clear();
-                    app.logs_command_cursor = 0;
+                    app.logs.mode = LogsMode::Normal;
+                    app.logs.command.clear();
+                    app.logs.command_cursor = 0;
                     app.logs_rebuild_matches();
-                    app.logs_cmd_history.reset_nav();
+                    app.logs.cmd_history.reset_nav();
                 }
                 KeyCode::Up => {
-                    if let Some(s) = app.logs_cmd_history.prev(&app.logs_command) {
-                        set_text_and_cursor(&mut app.logs_command, &mut app.logs_command_cursor, s);
+                    if let Some(s) = app.logs.cmd_history.prev(&app.logs.command) {
+                        set_text_and_cursor(&mut app.logs.command, &mut app.logs.command_cursor, s);
                     }
                 }
                 KeyCode::Down => {
-                    if let Some(s) = app.logs_cmd_history.next() {
-                        set_text_and_cursor(&mut app.logs_command, &mut app.logs_command_cursor, s);
+                    if let Some(s) = app.logs.cmd_history.next() {
+                        set_text_and_cursor(&mut app.logs.command, &mut app.logs.command_cursor, s);
                     }
                 }
                 KeyCode::Backspace => {
-                    backspace_at_cursor(&mut app.logs_command, &mut app.logs_command_cursor);
-                    app.logs_cmd_history.on_edit();
+                    backspace_at_cursor(&mut app.logs.command, &mut app.logs.command_cursor);
+                    app.logs.cmd_history.on_edit();
                 }
                 KeyCode::Delete => {
-                    delete_at_cursor(&mut app.logs_command, &mut app.logs_command_cursor);
-                    app.logs_cmd_history.on_edit();
+                    delete_at_cursor(&mut app.logs.command, &mut app.logs.command_cursor);
+                    app.logs.cmd_history.on_edit();
                 }
                 KeyCode::Left => {
-                    app.logs_command_cursor =
-                        clamp_cursor_to_text(&app.logs_command, app.logs_command_cursor).saturating_sub(1);
+                    app.logs.command_cursor =
+                        clamp_cursor_to_text(&app.logs.command, app.logs.command_cursor).saturating_sub(1);
                 }
                 KeyCode::Right => {
-                    let len = app.logs_command.chars().count();
-                    app.logs_command_cursor = clamp_cursor_to_text(&app.logs_command, app.logs_command_cursor)
+                    let len = app.logs.command.chars().count();
+                    app.logs.command_cursor = clamp_cursor_to_text(&app.logs.command, app.logs.command_cursor)
                         .saturating_add(1)
                         .min(len);
                 }
-                KeyCode::Home => app.logs_command_cursor = 0,
-                KeyCode::End => app.logs_command_cursor = app.logs_command.chars().count(),
+                KeyCode::Home => app.logs.command_cursor = 0,
+                KeyCode::End => app.logs.command_cursor = app.logs.command.chars().count(),
                 KeyCode::Char(ch) => {
                     if !ch.is_control() {
                         insert_char_at_cursor(
-                            &mut app.logs_command,
-                            &mut app.logs_command_cursor,
+                            &mut app.logs.command,
+                            &mut app.logs.command_cursor,
                             ch,
                         );
-                        app.logs_cmd_history.on_edit();
+                        app.logs.cmd_history.on_edit();
                     }
                 }
                 _ => {}
             },
             LogsMode::Normal => {}
         }
-        if app.logs_mode != LogsMode::Normal {
+        if app.logs.mode != LogsMode::Normal {
             return;
         }
     }
 
     if app.shell_view == ShellView::Inspect {
-        match app.inspect_mode {
+        match app.inspect.mode {
             InspectMode::Search => match key.code {
                 KeyCode::Enter => app.inspect_commit_search(),
                 KeyCode::Esc => app.inspect_exit_input(),
                 KeyCode::Backspace => {
-                    backspace_at_cursor(&mut app.inspect_input, &mut app.inspect_input_cursor);
+                    backspace_at_cursor(&mut app.inspect.input, &mut app.inspect.input_cursor);
                     app.rebuild_inspect_lines();
                 }
                 KeyCode::Delete => {
-                    delete_at_cursor(&mut app.inspect_input, &mut app.inspect_input_cursor);
+                    delete_at_cursor(&mut app.inspect.input, &mut app.inspect.input_cursor);
                     app.rebuild_inspect_lines();
                 }
                 KeyCode::Left => {
-                    app.inspect_input_cursor =
-                        clamp_cursor_to_text(&app.inspect_input, app.inspect_input_cursor).saturating_sub(1);
+                    app.inspect.input_cursor =
+                        clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor).saturating_sub(1);
                 }
                 KeyCode::Right => {
-                    let len = app.inspect_input.chars().count();
-                    app.inspect_input_cursor = clamp_cursor_to_text(&app.inspect_input, app.inspect_input_cursor)
+                    let len = app.inspect.input.chars().count();
+                    app.inspect.input_cursor = clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor)
                         .saturating_add(1)
                         .min(len);
                 }
-                KeyCode::Home => app.inspect_input_cursor = 0,
-                KeyCode::End => app.inspect_input_cursor = app.inspect_input.chars().count(),
+                KeyCode::Home => app.inspect.input_cursor = 0,
+                KeyCode::End => app.inspect.input_cursor = app.inspect.input.chars().count(),
                 KeyCode::Char(ch) => {
                     if !ch.is_control() && !key.modifiers.contains(KeyModifiers::CONTROL) {
                         insert_char_at_cursor(
-                            &mut app.inspect_input,
-                            &mut app.inspect_input_cursor,
+                            &mut app.inspect.input,
+                            &mut app.inspect.input_cursor,
                             ch,
                         );
                         app.rebuild_inspect_lines();
@@ -2140,34 +1754,34 @@ fn handle_shell_key(
             },
             InspectMode::Command => match key.code {
                 KeyCode::Enter => {
-                    let cmd = app.inspect_input.trim().to_string();
+                    let cmd = app.inspect.input.trim().to_string();
                     app.push_cmd_history(&cmd);
                     if let Some(path) = cmd.strip_prefix("save").map(str::trim) {
                         if path.is_empty() {
-                            app.inspect_error = Some("usage: save <file>".to_string());
+                            app.inspect.error = Some("usage: save <file>".to_string());
                         } else {
-                            match app.inspect_value.as_ref() {
+                            match app.inspect.value.as_ref() {
                                 None => {
-                                    app.inspect_error = Some("no inspect data loaded".to_string())
+                                    app.inspect.error = Some("no inspect data loaded".to_string())
                                 }
                                 Some(v) => match serde_json::to_string_pretty(v) {
                                     Ok(s) => match write_text_file(path, &s) {
                                         Ok(p) => app
                                             .set_info(format!("saved inspect to {}", p.display())),
                                         Err(e) => {
-                                            app.inspect_error = Some(format!("save failed: {e:#}"))
+                                            app.inspect.error = Some(format!("save failed: {e:#}"))
                                         }
                                     },
                                     Err(e) => {
-                                        app.inspect_error =
+                                        app.inspect.error =
                                             Some(format!("failed to serialize inspect: {e:#}"))
                                     }
                                 },
                             }
                         }
-                        app.inspect_mode = InspectMode::Normal;
-                        app.inspect_input.clear();
-                        app.inspect_input_cursor = 0;
+                        app.inspect.mode = InspectMode::Normal;
+                        app.inspect.input.clear();
+                        app.inspect.input_cursor = 0;
                         app.rebuild_inspect_lines();
                         return;
                     }
@@ -2178,73 +1792,73 @@ fn handle_shell_key(
                         "c" | "collapse" | "collapseall" => app.inspect_collapse_all(),
                         "y" => app.inspect_copy_selected_value(true),
                         "p" => app.inspect_copy_selected_path(),
-                        _ => app.inspect_error = Some(format!("unknown command: {cmd}")),
+                        _ => app.inspect.error = Some(format!("unknown command: {cmd}")),
                     }
-                    app.inspect_mode = InspectMode::Normal;
-                    app.inspect_input.clear();
-                    app.inspect_input_cursor = 0;
+                    app.inspect.mode = InspectMode::Normal;
+                    app.inspect.input.clear();
+                    app.inspect.input_cursor = 0;
                     app.rebuild_inspect_lines();
                 }
                 KeyCode::Esc => {
-                    app.inspect_mode = InspectMode::Normal;
-                    app.inspect_input.clear();
-                    app.inspect_input_cursor = 0;
+                    app.inspect.mode = InspectMode::Normal;
+                    app.inspect.input.clear();
+                    app.inspect.input_cursor = 0;
                     app.rebuild_inspect_lines();
-                    app.inspect_cmd_history.reset_nav();
+                    app.inspect.cmd_history.reset_nav();
                 }
                 KeyCode::Up => {
-                    if let Some(s) = app.inspect_cmd_history.prev(&app.inspect_input) {
+                    if let Some(s) = app.inspect.cmd_history.prev(&app.inspect.input) {
                         set_text_and_cursor(
-                            &mut app.inspect_input,
-                            &mut app.inspect_input_cursor,
+                            &mut app.inspect.input,
+                            &mut app.inspect.input_cursor,
                             s,
                         );
                     }
                 }
                 KeyCode::Down => {
-                    if let Some(s) = app.inspect_cmd_history.next() {
+                    if let Some(s) = app.inspect.cmd_history.next() {
                         set_text_and_cursor(
-                            &mut app.inspect_input,
-                            &mut app.inspect_input_cursor,
+                            &mut app.inspect.input,
+                            &mut app.inspect.input_cursor,
                             s,
                         );
                     }
                 }
                 KeyCode::Backspace => {
-                    backspace_at_cursor(&mut app.inspect_input, &mut app.inspect_input_cursor);
-                    app.inspect_cmd_history.on_edit();
+                    backspace_at_cursor(&mut app.inspect.input, &mut app.inspect.input_cursor);
+                    app.inspect.cmd_history.on_edit();
                 }
                 KeyCode::Delete => {
-                    delete_at_cursor(&mut app.inspect_input, &mut app.inspect_input_cursor);
-                    app.inspect_cmd_history.on_edit();
+                    delete_at_cursor(&mut app.inspect.input, &mut app.inspect.input_cursor);
+                    app.inspect.cmd_history.on_edit();
                 }
                 KeyCode::Left => {
-                    app.inspect_input_cursor = clamp_cursor_to_text(&app.inspect_input, app.inspect_input_cursor)
+                    app.inspect.input_cursor = clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor)
                         .saturating_sub(1);
                 }
                 KeyCode::Right => {
-                    let len = app.inspect_input.chars().count();
-                    app.inspect_input_cursor = clamp_cursor_to_text(&app.inspect_input, app.inspect_input_cursor)
+                    let len = app.inspect.input.chars().count();
+                    app.inspect.input_cursor = clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor)
                         .saturating_add(1)
                         .min(len);
                 }
-                KeyCode::Home => app.inspect_input_cursor = 0,
-                KeyCode::End => app.inspect_input_cursor = app.inspect_input.chars().count(),
+                KeyCode::Home => app.inspect.input_cursor = 0,
+                KeyCode::End => app.inspect.input_cursor = app.inspect.input.chars().count(),
                 KeyCode::Char(ch) => {
                     if !ch.is_control() {
                         insert_char_at_cursor(
-                            &mut app.inspect_input,
-                            &mut app.inspect_input_cursor,
+                            &mut app.inspect.input,
+                            &mut app.inspect.input_cursor,
                             ch,
                         );
-                        app.inspect_cmd_history.on_edit();
+                        app.inspect.cmd_history.on_edit();
                     }
                 }
                 _ => {}
             },
             InspectMode::Normal => {}
         }
-        if app.inspect_mode != InspectMode::Normal {
+        if app.inspect.mode != InspectMode::Normal {
             return;
         }
     }
@@ -2280,9 +1894,9 @@ fn handle_shell_key(
             // In Logs/Inspect, ':' is view-local command mode (vim-like).
             match app.shell_view {
                 ShellView::Logs => {
-                    app.logs_mode = LogsMode::Command;
-                    app.logs_command.clear();
-                    app.logs_command_cursor = 0;
+                    app.logs.mode = LogsMode::Command;
+                    app.logs.command.clear();
+                    app.logs.command_cursor = 0;
                     app.logs_rebuild_matches();
                 }
                 ShellView::Inspect => app.inspect_enter_command(),
@@ -2452,111 +2066,111 @@ fn handle_shell_key(
         }
         ShellView::Templates => {
             if app.shell_focus == ShellFocus::Details {
-                match app.templates_kind {
+                match app.templates_state.kind {
                     TemplatesKind::Stacks => match key.code {
                         KeyCode::Up | KeyCode::Char('k') => {
-                            app.templates_details_scroll =
-                                app.templates_details_scroll.saturating_sub(1)
+                            app.templates_state.templates_details_scroll =
+                                app.templates_state.templates_details_scroll.saturating_sub(1)
                         }
-                        KeyCode::Down | KeyCode::Char('j') => app.templates_details_scroll += 1,
+                        KeyCode::Down | KeyCode::Char('j') => app.templates_state.templates_details_scroll += 1,
                         KeyCode::PageUp => {
-                            app.templates_details_scroll =
-                                app.templates_details_scroll.saturating_sub(10)
+                            app.templates_state.templates_details_scroll =
+                                app.templates_state.templates_details_scroll.saturating_sub(10)
                         }
-                        KeyCode::PageDown => app.templates_details_scroll += 10,
-                        KeyCode::Home => app.templates_details_scroll = 0,
-                        KeyCode::End => app.templates_details_scroll = usize::MAX,
+                        KeyCode::PageDown => app.templates_state.templates_details_scroll += 10,
+                        KeyCode::Home => app.templates_state.templates_details_scroll = 0,
+                        KeyCode::End => app.templates_state.templates_details_scroll = usize::MAX,
                         _ => {}
                     },
                     TemplatesKind::Networks => match key.code {
                         KeyCode::Up | KeyCode::Char('k') => {
-                            app.net_templates_details_scroll =
-                                app.net_templates_details_scroll.saturating_sub(1)
+                            app.templates_state.net_templates_details_scroll =
+                                app.templates_state.net_templates_details_scroll.saturating_sub(1)
                         }
-                        KeyCode::Down | KeyCode::Char('j') => app.net_templates_details_scroll += 1,
+                        KeyCode::Down | KeyCode::Char('j') => app.templates_state.net_templates_details_scroll += 1,
                         KeyCode::PageUp => {
-                            app.net_templates_details_scroll =
-                                app.net_templates_details_scroll.saturating_sub(10)
+                            app.templates_state.net_templates_details_scroll =
+                                app.templates_state.net_templates_details_scroll.saturating_sub(10)
                         }
-                        KeyCode::PageDown => app.net_templates_details_scroll += 10,
-                        KeyCode::Home => app.net_templates_details_scroll = 0,
-                        KeyCode::End => app.net_templates_details_scroll = usize::MAX,
+                        KeyCode::PageDown => app.templates_state.net_templates_details_scroll += 10,
+                        KeyCode::Home => app.templates_state.net_templates_details_scroll = 0,
+                        KeyCode::End => app.templates_state.net_templates_details_scroll = usize::MAX,
                         _ => {}
                     },
                 }
             } else {
-                match app.templates_kind {
+                match app.templates_state.kind {
                     TemplatesKind::Stacks => {
-                        let before = app.templates_selected;
+                        let before = app.templates_state.templates_selected;
                         match key.code {
                             KeyCode::Up | KeyCode::Char('k') => {
-                                app.templates_selected = app.templates_selected.saturating_sub(1);
+                                app.templates_state.templates_selected = app.templates_state.templates_selected.saturating_sub(1);
                             }
                             KeyCode::Down | KeyCode::Char('j') => {
-                                if !app.templates.is_empty() {
-                                    app.templates_selected =
-                                        (app.templates_selected + 1).min(app.templates.len() - 1);
+                                if !app.templates_state.templates.is_empty() {
+                                    app.templates_state.templates_selected =
+                                        (app.templates_state.templates_selected + 1).min(app.templates_state.templates.len() - 1);
                                 } else {
-                                    app.templates_selected = 0;
+                                    app.templates_state.templates_selected = 0;
                                 }
                             }
                             KeyCode::PageUp => {
-                                app.templates_selected = app.templates_selected.saturating_sub(10);
+                                app.templates_state.templates_selected = app.templates_state.templates_selected.saturating_sub(10);
                             }
                             KeyCode::PageDown => {
-                                if !app.templates.is_empty() {
-                                    app.templates_selected =
-                                        (app.templates_selected + 10).min(app.templates.len() - 1);
+                                if !app.templates_state.templates.is_empty() {
+                                    app.templates_state.templates_selected =
+                                        (app.templates_state.templates_selected + 10).min(app.templates_state.templates.len() - 1);
                                 } else {
-                                    app.templates_selected = 0;
+                                    app.templates_state.templates_selected = 0;
                                 }
                             }
-                            KeyCode::Home => app.templates_selected = 0,
+                            KeyCode::Home => app.templates_state.templates_selected = 0,
                             KeyCode::End => {
-                                app.templates_selected = app.templates.len().saturating_sub(1)
+                                app.templates_state.templates_selected = app.templates_state.templates.len().saturating_sub(1)
                             }
                             _ => {}
                         }
-                        if app.templates_selected != before {
-                            app.templates_details_scroll = 0;
+                        if app.templates_state.templates_selected != before {
+                            app.templates_state.templates_details_scroll = 0;
                         }
                     }
                     TemplatesKind::Networks => {
-                        let before = app.net_templates_selected;
+                        let before = app.templates_state.net_templates_selected;
                         match key.code {
                             KeyCode::Up | KeyCode::Char('k') => {
-                                app.net_templates_selected =
-                                    app.net_templates_selected.saturating_sub(1);
+                                app.templates_state.net_templates_selected =
+                                    app.templates_state.net_templates_selected.saturating_sub(1);
                             }
                             KeyCode::Down | KeyCode::Char('j') => {
-                                if !app.net_templates.is_empty() {
-                                    app.net_templates_selected = (app.net_templates_selected + 1)
-                                        .min(app.net_templates.len() - 1);
+                                if !app.templates_state.net_templates.is_empty() {
+                                    app.templates_state.net_templates_selected = (app.templates_state.net_templates_selected + 1)
+                                        .min(app.templates_state.net_templates.len() - 1);
                                 } else {
-                                    app.net_templates_selected = 0;
+                                    app.templates_state.net_templates_selected = 0;
                                 }
                             }
                             KeyCode::PageUp => {
-                                app.net_templates_selected =
-                                    app.net_templates_selected.saturating_sub(10);
+                                app.templates_state.net_templates_selected =
+                                    app.templates_state.net_templates_selected.saturating_sub(10);
                             }
                             KeyCode::PageDown => {
-                                if !app.net_templates.is_empty() {
-                                    app.net_templates_selected = (app.net_templates_selected + 10)
-                                        .min(app.net_templates.len() - 1);
+                                if !app.templates_state.net_templates.is_empty() {
+                                    app.templates_state.net_templates_selected = (app.templates_state.net_templates_selected + 10)
+                                        .min(app.templates_state.net_templates.len() - 1);
                                 } else {
-                                    app.net_templates_selected = 0;
+                                    app.templates_state.net_templates_selected = 0;
                                 }
                             }
-                            KeyCode::Home => app.net_templates_selected = 0,
+                            KeyCode::Home => app.templates_state.net_templates_selected = 0,
                             KeyCode::End => {
-                                app.net_templates_selected =
-                                    app.net_templates.len().saturating_sub(1)
+                                app.templates_state.net_templates_selected =
+                                    app.templates_state.net_templates.len().saturating_sub(1)
                             }
                             _ => {}
                         }
-                        if app.net_templates_selected != before {
-                            app.net_templates_details_scroll = 0;
+                        if app.templates_state.net_templates_selected != before {
+                            app.templates_state.net_templates_details_scroll = 0;
                         }
                     }
                 }
@@ -2567,31 +2181,31 @@ fn handle_shell_key(
             KeyCode::Down | KeyCode::Char('j') => app.logs_move_down(1),
             KeyCode::PageUp => app.logs_move_up(10),
             KeyCode::PageDown => app.logs_move_down(10),
-            KeyCode::Left => app.logs_hscroll = app.logs_hscroll.saturating_sub(4),
-            KeyCode::Right => app.logs_hscroll = app.logs_hscroll.saturating_add(4),
-            KeyCode::Home => app.logs_cursor = 0,
-            KeyCode::End => app.logs_cursor = app.logs_total_lines().saturating_sub(1),
+            KeyCode::Left => app.logs.hscroll = app.logs.hscroll.saturating_sub(4),
+            KeyCode::Right => app.logs.hscroll = app.logs.hscroll.saturating_add(4),
+            KeyCode::Home => app.logs.cursor = 0,
+            KeyCode::End => app.logs.cursor = app.logs_total_lines().saturating_sub(1),
             KeyCode::Esc => {
-                if app.logs_select_anchor.is_some() {
+                if app.logs.select_anchor.is_some() {
                     app.logs_clear_selection();
                 }
             }
             KeyCode::Char(' ') => app.logs_toggle_selection(),
             KeyCode::Char('m') => {
-                app.logs_use_regex = !app.logs_use_regex;
+                app.logs.use_regex = !app.logs.use_regex;
                 app.logs_rebuild_matches();
             }
-            KeyCode::Char('l') => app.logs_show_line_numbers = !app.logs_show_line_numbers,
+            KeyCode::Char('l') => app.logs.show_line_numbers = !app.logs.show_line_numbers,
             KeyCode::Char('/') => {
-                app.logs_mode = LogsMode::Search;
-                app.logs_input = app.logs_query.clone();
-                app.logs_input_cursor = app.logs_input.chars().count();
+                app.logs.mode = LogsMode::Search;
+                app.logs.input = app.logs.query.clone();
+                app.logs.input_cursor = app.logs.input.chars().count();
                 app.logs_rebuild_matches();
             }
             KeyCode::Char(':') => {
-                app.logs_mode = LogsMode::Command;
-                app.logs_command.clear();
-                app.logs_command_cursor = 0;
+                app.logs.mode = LogsMode::Command;
+                app.logs.command.clear();
+                app.logs.command_cursor = 0;
                 app.logs_rebuild_matches();
             }
             KeyCode::Char('n') => app.logs_next_match(),
@@ -2603,17 +2217,17 @@ fn handle_shell_key(
             KeyCode::Down | KeyCode::Char('j') => app.inspect_move_down(1),
             KeyCode::PageUp => app.inspect_move_up(10),
             KeyCode::PageDown => app.inspect_move_down(10),
-            KeyCode::Left => app.inspect_scroll = app.inspect_scroll.saturating_sub(4),
-            KeyCode::Right => app.inspect_scroll = app.inspect_scroll.saturating_add(4),
+            KeyCode::Left => app.inspect.scroll = app.inspect.scroll.saturating_sub(4),
+            KeyCode::Right => app.inspect.scroll = app.inspect.scroll.saturating_add(4),
             KeyCode::Home => {
-                app.inspect_selected = 0;
-                app.inspect_scroll = 0;
+                app.inspect.selected = 0;
+                app.inspect.scroll = 0;
             }
             KeyCode::End => {
-                if !app.inspect_lines.is_empty() {
-                    app.inspect_selected = app.inspect_lines.len() - 1;
+                if !app.inspect.lines.is_empty() {
+                    app.inspect.selected = app.inspect.lines.len() - 1;
                 } else {
-                    app.inspect_selected = 0;
+                    app.inspect.selected = 0;
                 }
             }
             KeyCode::Enter => app.inspect_toggle_selected(),
@@ -2625,30 +2239,30 @@ fn handle_shell_key(
         },
         ShellView::Help => match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
-                app.shell_help_scroll = app.shell_help_scroll.saturating_sub(1)
+                app.shell_help.scroll = app.shell_help.scroll.saturating_sub(1)
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                app.shell_help_scroll = app.shell_help_scroll.saturating_add(1)
+                app.shell_help.scroll = app.shell_help.scroll.saturating_add(1)
             }
-            KeyCode::PageUp => app.shell_help_scroll = app.shell_help_scroll.saturating_sub(10),
-            KeyCode::PageDown => app.shell_help_scroll = app.shell_help_scroll.saturating_add(10),
-            KeyCode::Home => app.shell_help_scroll = 0,
-            KeyCode::End => app.shell_help_scroll = usize::MAX,
+            KeyCode::PageUp => app.shell_help.scroll = app.shell_help.scroll.saturating_sub(10),
+            KeyCode::PageDown => app.shell_help.scroll = app.shell_help.scroll.saturating_add(10),
+            KeyCode::Home => app.shell_help.scroll = 0,
+            KeyCode::End => app.shell_help.scroll = usize::MAX,
             _ => {}
         },
         ShellView::Messages => match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
-                app.shell_msgs_scroll = app.shell_msgs_scroll.saturating_sub(1)
+                app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(1)
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                app.shell_msgs_scroll = app.shell_msgs_scroll.saturating_add(1)
+                app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(1)
             }
-            KeyCode::PageUp => app.shell_msgs_scroll = app.shell_msgs_scroll.saturating_sub(10),
-            KeyCode::PageDown => app.shell_msgs_scroll = app.shell_msgs_scroll.saturating_add(10),
-            KeyCode::Left => app.shell_msgs_hscroll = app.shell_msgs_hscroll.saturating_sub(4),
-            KeyCode::Right => app.shell_msgs_hscroll = app.shell_msgs_hscroll.saturating_add(4),
-            KeyCode::Home => app.shell_msgs_scroll = 0,
-            KeyCode::End => app.shell_msgs_scroll = usize::MAX,
+            KeyCode::PageUp => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(10),
+            KeyCode::PageDown => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(10),
+            KeyCode::Left => app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_sub(4),
+            KeyCode::Right => app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_add(4),
+            KeyCode::Home => app.shell_msgs.scroll = 0,
+            KeyCode::End => app.shell_msgs.scroll = usize::MAX,
             _ => {}
         },
     }
@@ -2683,7 +2297,7 @@ fn draw_shell_header(
     };
 
     let left = " containr  ";
-    let deploy = if let Some((name, marker)) = app.template_deploy_inflight.iter().next() {
+    let deploy = if let Some((name, marker)) = app.templates_state.template_deploy_inflight.iter().next() {
         let secs = marker.started.elapsed().as_secs();
         let spin = spinner_char(marker.started, app.ascii_only);
         format!("  Deploy: {name} {spin} {secs}s")
@@ -2786,7 +2400,7 @@ fn shell_breadcrumbs(app: &App) -> String {
             .selected_network()
             .map(|n| format!("/{}", n.name))
             .unwrap_or_default(),
-        ShellView::Templates => match app.templates_kind {
+        ShellView::Templates => match app.templates_state.kind {
             TemplatesKind::Stacks => app
                 .selected_template()
                 .map(|t| format!("/{}", t.name))
@@ -2797,12 +2411,12 @@ fn shell_breadcrumbs(app: &App) -> String {
                 .unwrap_or_default(),
         },
         ShellView::Inspect => app
-            .inspect_target
+            .inspect.target
             .as_ref()
             .map(|t| format!("/{}", t.label))
             .unwrap_or_default(),
         ShellView::Logs => app
-            .logs_for_id
+            .logs.for_id
             .as_ref()
             .and_then(|_| app.selected_container().map(|c| c.name.clone()))
             .map(|n| format!("/{n}"))
@@ -2830,13 +2444,9 @@ fn draw_shell_body(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout:
 
 fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
     let bg = if app.shell_focus == ShellFocus::Sidebar {
-        Style::default()
-            .bg(Color::Rgb(26, 26, 30))
-            .fg(Color::Rgb(220, 220, 220))
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default()
-            .bg(Color::Rgb(20, 20, 20))
-            .fg(Color::Rgb(220, 220, 220))
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner_area = area.inner(ratatui::layout::Margin {
@@ -2859,7 +2469,7 @@ fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layo
             ShellSidebarItem::Separator => {
                 rendered.push(ListItem::new(Line::from(Span::styled(
                     "─".repeat(inner_w),
-                    bg.fg(Color::Rgb(45, 45, 45)),
+                    app.theme.divider.to_style(),
                 ))));
             }
             ShellSidebarItem::Gap => {
@@ -2892,7 +2502,7 @@ fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layo
                     let hint_style = if selected {
                         shell_row_highlight(app).fg(Color::White)
                     } else {
-                        bg.fg(Color::Rgb(140, 140, 140))
+                        bg.fg(theme::parse_color(&app.theme.text_dim.fg))
                     };
                     rendered.push(ListItem::new(Line::from(vec![
                         Span::styled(base_shown, base_style),
@@ -2926,9 +2536,9 @@ fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layo
                         st
                     };
                     let hint_style = if selected {
-                        shell_row_highlight(app).fg(Color::White)
+                        shell_row_highlight(app).fg(theme::parse_color(&app.theme.panel.fg))
                     } else {
-                        bg.fg(Color::Rgb(140, 140, 140))
+                        bg.patch(app.theme.text_dim.to_style())
                     };
                     rendered.push(ListItem::new(Line::from(vec![
                         Span::styled(base_shown, base_style),
@@ -2943,7 +2553,7 @@ fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layo
                 let base_style = if selected {
                     shell_row_highlight(app)
                 } else {
-                    bg.fg(Color::Rgb(200, 200, 200))
+                    bg.patch(app.theme.text.to_style())
                 };
                 if app.shell_sidebar_collapsed {
                     rendered.push(ListItem::new(Line::from(Span::styled(base, base_style))));
@@ -2956,9 +2566,9 @@ fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layo
                     let base_len = base_shown.chars().count();
                     let gap = inner_w.saturating_sub(base_len.saturating_add(hint_len));
                     let hint_style = if selected {
-                        shell_row_highlight(app).fg(Color::White)
+                        shell_row_highlight(app).fg(theme::parse_color(&app.theme.panel.fg))
                     } else {
-                        bg.fg(Color::Rgb(140, 140, 140))
+                        bg.patch(app.theme.text_dim.to_style())
                     };
                     rendered.push(ListItem::new(Line::from(vec![
                         Span::styled(base_shown, base_style),
@@ -2982,7 +2592,7 @@ fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layo
 }
 
 fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    let bg = Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White);
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
 
     let is_full = matches!(app.shell_view, ShellView::Logs | ShellView::Inspect);
@@ -3005,7 +2615,7 @@ fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout:
             ])
             .split(area);
         draw_shell_main_list(f, app, parts[0]);
-        draw_shell_vr(f, parts[1]);
+        draw_shell_vr(f, app, parts[1]);
         draw_shell_main_details(f, app, parts[2]);
         return;
     }
@@ -3040,14 +2650,12 @@ fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout:
         .split(area);
 
     draw_shell_main_list(f, app, parts[0]);
-    draw_shell_hr(f, parts[1]);
+    draw_shell_hr(f, app, parts[1]);
     draw_shell_main_details(f, app, parts[2]);
 }
 
-fn draw_shell_hr(f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
-    let st = Style::default()
-        .fg(Color::Rgb(45, 45, 45))
-        .bg(Color::Rgb(16, 16, 16));
+fn draw_shell_hr(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
+    let st = app.theme.divider.to_style();
     let line = "─".repeat(area.width.max(1) as usize);
     f.render_widget(
         Paragraph::new(line).style(st).wrap(Wrap { trim: false }),
@@ -3055,10 +2663,8 @@ fn draw_shell_hr(f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
     );
 }
 
-fn draw_shell_vr(f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
-    let st = Style::default()
-        .fg(Color::Rgb(45, 45, 45))
-        .bg(Color::Rgb(16, 16, 16));
+fn draw_shell_vr(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
+    let st = app.theme.divider.to_style();
     let line = "│".repeat(area.height.max(1) as usize);
     f.render_widget(
         Paragraph::new(line).style(st).wrap(Wrap { trim: false }),
@@ -3075,20 +2681,21 @@ fn draw_shell_title(
 ) {
     // Subtle focus indication: highlight the list title when list has focus.
     let bg = if app.shell_focus == ShellFocus::List {
-        Style::default().bg(Color::Rgb(30, 30, 36)).fg(Color::White)
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White)
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let left = format!(" {title} ({count})");
     let shown = truncate_end(&left, area.width.max(1) as usize);
+    let fg = if app.shell_focus == ShellFocus::List {
+        theme::parse_color(&app.theme.panel_focused.fg)
+    } else {
+        theme::parse_color(&app.theme.syntax_text.fg)
+    };
     f.render_widget(
         Paragraph::new(shown)
-            .style(bg.fg(if app.shell_focus == ShellFocus::List {
-                Color::Rgb(235, 235, 235)
-            } else {
-                Color::Rgb(200, 200, 200)
-            }))
+            .style(bg.fg(fg))
             .wrap(Wrap { trim: false }),
         area,
     );
@@ -3120,16 +2727,16 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             draw_shell_networks_table(f, app, content_area);
         }
         ShellView::Templates => {
-            match app.templates_kind {
+            match app.templates_state.kind {
                 TemplatesKind::Stacks => {
-                    draw_shell_title(f, app, "Templates: Stacks", app.templates.len(), title_area);
+                    draw_shell_title(f, app, "Templates: Stacks", app.templates_state.templates.len(), title_area);
                 }
                 TemplatesKind::Networks => {
                     draw_shell_title(
                         f,
                         app,
                         "Templates: Networks",
-                        app.net_templates.len(),
+                        app.templates_state.net_templates.len(),
                         title_area,
                     );
                 }
@@ -3141,7 +2748,7 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             draw_shell_logs_view(f, app, content_area);
         }
         ShellView::Inspect => {
-            draw_shell_title(f, app, "Inspect", app.inspect_lines.len(), title_area);
+            draw_shell_title(f, app, "Inspect", app.inspect.lines.len(), title_area);
             draw_shell_inspect_view(f, app, content_area);
         }
         ShellView::Help => {
@@ -3225,31 +2832,31 @@ fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::
             }
         } else {
             match app.shell_view {
-                ShellView::Logs => match app.logs_mode {
+                ShellView::Logs => match app.logs.mode {
                     LogsMode::Normal => ("NORMAL", "", String::new(), 0, false),
-                    LogsMode::Search => ("SEARCH", "/", app.logs_input.clone(), app.logs_input_cursor, true),
+                    LogsMode::Search => ("SEARCH", "/", app.logs.input.clone(), app.logs.input_cursor, true),
                     LogsMode::Command => (
                         "COMMAND",
                         ":",
-                        app.logs_command.clone(),
-                        app.logs_command_cursor,
+                        app.logs.command.clone(),
+                        app.logs.command_cursor,
                         true,
                     ),
                 },
-                ShellView::Inspect => match app.inspect_mode {
+                ShellView::Inspect => match app.inspect.mode {
                     InspectMode::Normal => ("NORMAL", "", String::new(), 0, false),
                     InspectMode::Search => (
                         "SEARCH",
                         "/",
-                        app.inspect_input.clone(),
-                        app.inspect_input_cursor,
+                        app.inspect.input.clone(),
+                        app.inspect.input_cursor,
                         true,
                     ),
                     InspectMode::Command => (
                         "COMMAND",
                         ":",
-                        app.inspect_input.clone(),
-                        app.inspect_input_cursor,
+                        app.inspect.input.clone(),
+                        app.inspect.input_cursor,
                         true,
                     ),
                 },
@@ -3261,9 +2868,7 @@ fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::
     let mut spans: Vec<Span> = Vec::new();
     spans.push(Span::styled(
         format!(" {mode} "),
-        Style::default()
-            .fg(Color::Rgb(160, 160, 160))
-            .bg(Color::Rgb(16, 16, 16)),
+        app.theme.cmdline_label.to_style(),
     ));
 
     if !prefix.is_empty() {
@@ -3283,16 +2888,19 @@ fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::
             spans.push(Span::styled(before, bg));
             spans.push(Span::styled(
                 at,
-                Style::default().fg(Color::Black).bg(Color::Rgb(220, 220, 220)),
+                app.theme.cmdline_cursor.to_style(),
             ));
             spans.push(Span::styled(after, bg));
         } else {
-            spans.push(Span::styled(truncate_end(&input, avail), bg.fg(Color::Rgb(180, 180, 180))));
+            spans.push(Span::styled(
+                truncate_end(&input, avail),
+                app.theme.cmdline_inactive.to_style(),
+            ));
         }
     } else {
         spans.push(Span::styled(
             "  (press : for commands)",
-            Style::default().fg(Color::Rgb(120, 120, 120)),
+            app.theme.text_faint.to_style(),
         ));
     }
 
@@ -3317,7 +2925,7 @@ fn shell_header_style(app: &App) -> Style {
 
 fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
     // Reuse existing container row computation logic, but render without outer borders.
-    let bg = Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White);
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
 
     app.ensure_view();
@@ -3333,9 +2941,7 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
         f.render_widget(
             Paragraph::new(msg)
                 .style(
-                    Style::default()
-                        .fg(Color::Rgb(140, 140, 140))
-                        .bg(Color::Rgb(16, 16, 16)),
+                    bg.patch(app.theme.text_dim.to_style()),
                 )
                 .wrap(Wrap { trim: true }),
             area.inner(ratatui::layout::Margin {
@@ -3369,8 +2975,9 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
         let row_style = if marked {
             app.theme.marked.to_style()
         } else if stopped {
-            Style::default()
-                .fg(Color::Rgb(120, 120, 120))
+            app.theme
+                .text_faint
+                .to_style()
                 .add_modifier(Modifier::DIM)
         } else {
             Style::default()
@@ -3411,8 +3018,9 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
                     expanded,
                 } => {
                     let st = if *running == 0 {
-                        Style::default()
-                            .fg(Color::Rgb(110, 110, 110))
+                        app.theme
+                            .text_faint
+                            .to_style()
                             .add_modifier(Modifier::BOLD)
                     } else if *running == *total {
                         Style::default()
@@ -3437,9 +3045,7 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
                     );
                 }
                 ViewEntry::UngroupedHeader { total, running } => {
-                    let st = Style::default()
-                        .fg(Color::Rgb(180, 180, 180))
-                        .add_modifier(Modifier::BOLD);
+                    let st = app.theme.text.to_style().add_modifier(Modifier::BOLD);
                     rows.push(
                         Row::new(vec![
                             Cell::from("Ungrouped").style(st),
@@ -3490,7 +3096,7 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
 }
 
 fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    let bg = Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White);
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 0,
@@ -3571,7 +3177,7 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
 }
 
 fn draw_shell_volumes_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    let bg = Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White);
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 0,
@@ -3633,7 +3239,7 @@ fn draw_shell_volumes_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui
 }
 
 fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    let bg = Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White);
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 0,
@@ -3699,36 +3305,28 @@ fn draw_shell_stack_templates_table(
     app: &mut App,
     area: ratatui::layout::Rect,
 ) {
-    let bg = Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White);
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 0,
         horizontal: 1,
     });
 
-    if let Some(err) = &app.templates_error {
+    if let Some(err) = &app.templates_state.templates_error {
         f.render_widget(
             Paragraph::new(format!("Templates error: {err}"))
-                .style(
-                    Style::default()
-                        .fg(Color::Rgb(220, 120, 120))
-                        .bg(Color::Rgb(16, 16, 16)),
-                )
+                .style(bg.patch(app.theme.text_error.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
         return;
     }
 
-    if app.templates.is_empty() {
+    if app.templates_state.templates.is_empty() {
         let msg = format!("No templates in {}", app.stack_templates_dir().display());
         f.render_widget(
             Paragraph::new(msg)
-                .style(
-                    Style::default()
-                        .fg(Color::Rgb(140, 140, 140))
-                        .bg(Color::Rgb(16, 16, 16)),
-                )
+                .style(bg.patch(app.theme.text_dim.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
@@ -3737,10 +3335,11 @@ fn draw_shell_stack_templates_table(
 
     let now = Instant::now();
     let rows: Vec<Row> = app
+        .templates_state
         .templates
         .iter()
         .map(|t| {
-            let state = if let Some(m) = app.template_deploy_inflight.get(&t.name) {
+            let state = if let Some(m) = app.templates_state.template_deploy_inflight.get(&t.name) {
                 let secs = now.duration_since(m.started).as_secs();
                 format!("deploy {secs}s")
             } else {
@@ -3757,7 +3356,7 @@ fn draw_shell_stack_templates_table(
 
     let mut state = TableState::default();
     state.select(Some(
-        app.templates_selected.min(rows.len().saturating_sub(1)),
+        app.templates_state.templates_selected.min(rows.len().saturating_sub(1)),
     ));
     let table = Table::new(
         rows,
@@ -3785,7 +3384,7 @@ fn draw_shell_stack_templates_table(
 }
 
 fn draw_shell_templates_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    match app.templates_kind {
+    match app.templates_state.kind {
         TemplatesKind::Stacks => draw_shell_stack_templates_table(f, app, area),
         TemplatesKind::Networks => draw_shell_net_templates_table(f, app, area),
     }
@@ -3796,36 +3395,28 @@ fn draw_shell_net_templates_table(
     app: &mut App,
     area: ratatui::layout::Rect,
 ) {
-    let bg = Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White);
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 0,
         horizontal: 1,
     });
 
-    if let Some(err) = &app.net_templates_error {
+    if let Some(err) = &app.templates_state.net_templates_error {
         f.render_widget(
             Paragraph::new(format!("Net templates error: {err}"))
-                .style(
-                    Style::default()
-                        .fg(Color::Rgb(220, 120, 120))
-                        .bg(Color::Rgb(16, 16, 16)),
-                )
+                .style(bg.patch(app.theme.text_error.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
         return;
     }
 
-    if app.net_templates.is_empty() {
+    if app.templates_state.net_templates.is_empty() {
         let msg = format!("No network templates in {}", app.net_templates_dir().display());
         f.render_widget(
             Paragraph::new(msg)
-                .style(
-                    Style::default()
-                        .fg(Color::Rgb(140, 140, 140))
-                        .bg(Color::Rgb(16, 16, 16)),
-                )
+                .style(bg.patch(app.theme.text_dim.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
@@ -3834,10 +3425,11 @@ fn draw_shell_net_templates_table(
 
     let now = Instant::now();
     let rows: Vec<Row> = app
+        .templates_state
         .net_templates
         .iter()
         .map(|t| {
-            let state = if let Some(m) = app.net_template_deploy_inflight.get(&t.name) {
+            let state = if let Some(m) = app.templates_state.net_template_deploy_inflight.get(&t.name) {
                 let secs = now.duration_since(m.started).as_secs();
                 format!("deploy {secs}s")
             } else {
@@ -3854,7 +3446,7 @@ fn draw_shell_net_templates_table(
 
     let mut state = TableState::default();
     state.select(Some(
-        app.net_templates_selected
+        app.templates_state.net_templates_selected
             .min(rows.len().saturating_sub(1)),
     ));
     let table = Table::new(
@@ -3884,9 +3476,9 @@ fn draw_shell_net_templates_table(
 
 fn draw_shell_container_details(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
     let bg = if app.shell_focus == ShellFocus::Details {
-        Style::default().bg(Color::Rgb(24, 24, 30)).fg(Color::White)
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White)
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -3896,16 +3488,14 @@ fn draw_shell_container_details(f: &mut ratatui::Frame, app: &App, area: ratatui
     let Some(c) = app.selected_container() else {
         f.render_widget(
             Paragraph::new("Select a container to see details.")
-                .style(bg.fg(Color::Rgb(140, 140, 140)))
+                .style(bg.patch(app.theme.text_dim.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
         return;
     };
-    let key = Style::default()
-        .fg(Color::Rgb(140, 140, 140))
-        .bg(Color::Rgb(16, 16, 16));
-    let val = Style::default().fg(Color::White).bg(Color::Rgb(16, 16, 16));
+    let key = bg.patch(app.theme.text_dim.to_style());
+    let val = bg;
     let kv = |k: &str, v: String| -> Line<'static> {
         Line::from(vec![
             Span::styled(format!("{k}: "), key),
@@ -3936,9 +3526,9 @@ fn draw_shell_container_details(f: &mut ratatui::Frame, app: &App, area: ratatui
 
 fn draw_shell_image_details(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
     let bg = if app.shell_focus == ShellFocus::Details {
-        Style::default().bg(Color::Rgb(24, 24, 30)).fg(Color::White)
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White)
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -3970,9 +3560,9 @@ fn draw_shell_image_details(f: &mut ratatui::Frame, app: &App, area: ratatui::la
 
 fn draw_shell_volume_details(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
     let bg = if app.shell_focus == ShellFocus::Details {
-        Style::default().bg(Color::Rgb(24, 24, 30)).fg(Color::White)
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White)
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -4009,9 +3599,9 @@ fn draw_shell_volume_details(f: &mut ratatui::Frame, app: &App, area: ratatui::l
 
 fn draw_shell_network_details(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
     let bg = if app.shell_focus == ShellFocus::Details {
-        Style::default().bg(Color::Rgb(24, 24, 30)).fg(Color::White)
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default().bg(Color::Rgb(16, 16, 16)).fg(Color::White)
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -4068,13 +3658,9 @@ fn draw_shell_stack_template_details(
     area: ratatui::layout::Rect,
 ) {
     let bg = if app.shell_focus == ShellFocus::Details {
-        Style::default()
-            .bg(Color::Rgb(24, 24, 30))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default()
-            .bg(Color::Rgb(16, 16, 16))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -4082,10 +3668,10 @@ fn draw_shell_stack_template_details(
         horizontal: 1,
     });
 
-    if let Some(err) = &app.templates_error {
+    if let Some(err) = &app.templates_state.templates_error {
         f.render_widget(
             Paragraph::new(format!("Templates error: {err}"))
-                .style(bg.fg(Color::Rgb(220, 120, 120)))
+                .style(bg.patch(app.theme.text_error.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
@@ -4095,7 +3681,7 @@ fn draw_shell_stack_template_details(
     let Some(t) = app.selected_template() else {
         f.render_widget(
             Paragraph::new("No template selected.")
-                .style(bg.fg(Color::Rgb(140, 140, 140)))
+                .style(bg.patch(app.theme.text_dim.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
@@ -4105,7 +3691,7 @@ fn draw_shell_stack_template_details(
     if !t.has_compose {
         f.render_widget(
             Paragraph::new("compose.yaml not found in template directory.")
-                .style(bg.fg(Color::Rgb(220, 120, 120)))
+                .style(bg.patch(app.theme.text_error.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
@@ -4118,18 +3704,16 @@ fn draw_shell_stack_template_details(
     let lnw = lines.len().max(1).to_string().len();
     let view_h = inner.height.max(1) as usize;
     let max_scroll = lines.len().saturating_sub(view_h);
-    app.templates_details_scroll = app.templates_details_scroll.min(max_scroll);
+    app.templates_state.templates_details_scroll = app.templates_state.templates_details_scroll.min(max_scroll);
 
     let mut out: Vec<Line<'static>> = Vec::with_capacity(lines.len().max(1));
-    let ln_style = Style::default()
-        .fg(Color::Rgb(110, 110, 110))
-        .bg(bg.bg.unwrap_or(Color::Reset));
+    let ln_style = bg.patch(app.theme.text_faint.to_style());
 
     for (i, l) in lines.iter().enumerate() {
         let ln = format!("{:>lnw$} ", i + 1);
         let mut spans: Vec<Span<'static>> = Vec::new();
         spans.push(Span::styled(ln, ln_style));
-        spans.extend(yaml_highlight_line(l, bg));
+        spans.extend(yaml_highlight_line(l, bg, &app.theme));
         out.push(Line::from(spans));
     }
     if out.is_empty() {
@@ -4138,7 +3722,7 @@ fn draw_shell_stack_template_details(
 
     f.render_widget(
         Paragraph::new(Text::from(out)).style(bg).scroll((
-            app.templates_details_scroll.min(u16::MAX as usize) as u16,
+            app.templates_state.templates_details_scroll.min(u16::MAX as usize) as u16,
             0,
         )),
         inner,
@@ -4146,7 +3730,7 @@ fn draw_shell_stack_template_details(
 }
 
 fn draw_shell_template_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    match app.templates_kind {
+    match app.templates_state.kind {
         TemplatesKind::Stacks => draw_shell_stack_template_details(f, app, area),
         TemplatesKind::Networks => draw_shell_net_template_details(f, app, area),
     }
@@ -4158,13 +3742,9 @@ fn draw_shell_net_template_details(
     area: ratatui::layout::Rect,
 ) {
     let bg = if app.shell_focus == ShellFocus::Details {
-        Style::default()
-            .bg(Color::Rgb(24, 24, 30))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default()
-            .bg(Color::Rgb(16, 16, 16))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -4172,10 +3752,10 @@ fn draw_shell_net_template_details(
         horizontal: 1,
     });
 
-    if let Some(err) = &app.net_templates_error {
+    if let Some(err) = &app.templates_state.net_templates_error {
         f.render_widget(
             Paragraph::new(format!("Net templates error: {err}"))
-                .style(bg.fg(Color::Rgb(220, 120, 120)))
+                .style(bg.patch(app.theme.text_error.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
@@ -4185,7 +3765,7 @@ fn draw_shell_net_template_details(
     let Some(t) = app.selected_net_template() else {
         f.render_widget(
             Paragraph::new("No network template selected.")
-                .style(bg.fg(Color::Rgb(140, 140, 140)))
+                .style(bg.patch(app.theme.text_dim.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
@@ -4195,7 +3775,7 @@ fn draw_shell_net_template_details(
     if !t.has_cfg {
         f.render_widget(
             Paragraph::new("network.json not found in template directory.")
-                .style(bg.fg(Color::Rgb(220, 120, 120)))
+                .style(bg.patch(app.theme.text_error.to_style()))
                 .wrap(Wrap { trim: true }),
             inner,
         );
@@ -4207,18 +3787,16 @@ fn draw_shell_net_template_details(
     let lnw = lines.len().max(1).to_string().len();
     let view_h = inner.height.max(1) as usize;
     let max_scroll = lines.len().saturating_sub(view_h);
-    app.net_templates_details_scroll = app.net_templates_details_scroll.min(max_scroll);
+    app.templates_state.net_templates_details_scroll = app.templates_state.net_templates_details_scroll.min(max_scroll);
 
     let mut out: Vec<Line<'static>> = Vec::with_capacity(lines.len().max(1));
-    let ln_style = Style::default()
-        .fg(Color::Rgb(110, 110, 110))
-        .bg(bg.bg.unwrap_or(Color::Reset));
+    let ln_style = bg.patch(app.theme.text_faint.to_style());
 
     for (i, l) in lines.iter().enumerate() {
         let ln = format!("{:>lnw$} ", i + 1);
         let mut spans: Vec<Span<'static>> = Vec::new();
         spans.push(Span::styled(ln, ln_style));
-        spans.extend(json_highlight_line(l, bg));
+        spans.extend(json_highlight_line(l, bg, &app.theme));
         out.push(Line::from(spans));
     }
     if out.is_empty() {
@@ -4227,7 +3805,7 @@ fn draw_shell_net_template_details(
 
     f.render_widget(
         Paragraph::new(Text::from(out)).style(bg).scroll((
-            app.net_templates_details_scroll
+            app.templates_state.net_templates_details_scroll
                 .min(u16::MAX as usize) as u16,
             0,
         )),
@@ -4235,13 +3813,13 @@ fn draw_shell_net_template_details(
     );
 }
 
-fn yaml_highlight_line(line: &str, base: Style) -> Vec<Span<'static>> {
+fn yaml_highlight_line(line: &str, base: Style, theme: &theme::ThemeSpec) -> Vec<Span<'static>> {
     // Very small YAML-ish highlighter:
     // - comments: dim
     // - mapping keys: light blue
-    let normal = base.fg(Color::Rgb(200, 200, 200));
-    let comment = base.fg(Color::Rgb(120, 120, 120));
-    let key_style = base.fg(Color::Rgb(140, 190, 255));
+    let normal = base.patch(theme.syntax_text.to_style());
+    let comment = base.patch(theme.syntax_comment.to_style());
+    let key_style = base.patch(theme.syntax_key.to_style());
 
     let (code, comment_part) = split_yaml_comment(line);
     let mut spans: Vec<Span<'static>> = Vec::new();
@@ -4268,11 +3846,11 @@ fn yaml_highlight_line(line: &str, base: Style) -> Vec<Span<'static>> {
     spans
 }
 
-fn json_highlight_line(line: &str, base: Style) -> Vec<Span<'static>> {
+fn json_highlight_line(line: &str, base: Style, theme: &theme::ThemeSpec) -> Vec<Span<'static>> {
     // Minimal JSON-ish highlighter:
     // - keys ("...":) in light blue
-    let normal = base.fg(Color::Rgb(200, 200, 200));
-    let key_style = base.fg(Color::Rgb(140, 190, 255));
+    let normal = base.patch(theme.syntax_text.to_style());
+    let key_style = base.patch(theme.syntax_key.to_style());
 
     let mut spans: Vec<Span<'static>> = Vec::new();
     let Some(start) = line.find('"') else {
@@ -4385,7 +3963,7 @@ fn split_yaml_key(line: &str) -> Option<(&str, &str, &str)> {
 
 fn draw_shell_logs_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
     // Reuse the underlying log renderer, but in a borderless main view.
-    let bg = Style::default().bg(Color::Rgb(12, 12, 12)).fg(Color::White);
+    let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
 
     let inner = area.inner(ratatui::layout::Margin {
@@ -4406,9 +3984,9 @@ fn draw_shell_logs_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     let list_area = rows[0];
     let hbar_area = rows[1];
 
-    let effective_query = match app.logs_mode {
-        LogsMode::Search => app.logs_input.trim(),
-        LogsMode::Normal | LogsMode::Command => app.logs_query.trim(),
+    let effective_query = match app.logs.mode {
+        LogsMode::Search => app.logs.input.trim(),
+        LogsMode::Normal | LogsMode::Command => app.logs.query.trim(),
     };
 
     let view_height = list_area.height.max(1) as usize;
@@ -4417,9 +3995,9 @@ fn draw_shell_logs_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     let cursor = if total_lines == 0 {
         0usize
     } else {
-        app.logs_cursor.min(total_lines.saturating_sub(1))
+        app.logs.cursor.min(total_lines.saturating_sub(1))
     };
-    let mut scroll_top = app.logs_scroll_top.min(max_scroll);
+    let mut scroll_top = app.logs.scroll_top.min(max_scroll);
     if cursor < scroll_top {
         scroll_top = cursor;
     } else if cursor >= scroll_top.saturating_add(view_height) {
@@ -4428,12 +4006,12 @@ fn draw_shell_logs_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             .saturating_sub(view_height)
             .min(max_scroll);
     }
-    app.logs_scroll_top = scroll_top;
+    app.logs.scroll_top = scroll_top;
 
-    if app.logs_loading || app.logs_error.is_some() || app.logs_text.is_none() {
-        let msg = if app.logs_loading {
+    if app.logs.loading || app.logs.error.is_some() || app.logs.text.is_none() {
+        let msg = if app.logs.loading {
             "Loading…".to_string()
-        } else if let Some(e) = &app.logs_error {
+        } else if let Some(e) = &app.logs.error {
             format!("error: {e}")
         } else {
             "No logs loaded.".to_string()
@@ -4441,9 +4019,7 @@ fn draw_shell_logs_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
         f.render_widget(
             Paragraph::new(msg)
                 .style(
-                    Style::default()
-                        .fg(Color::Rgb(140, 140, 140))
-                        .bg(Color::Rgb(12, 12, 12)),
+                    bg.patch(app.theme.text_dim.to_style()),
                 )
                 .wrap(Wrap { trim: true }),
             list_area,
@@ -4451,47 +4027,45 @@ fn draw_shell_logs_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
         return;
     }
 
-    let Some(txt) = &app.logs_text else {
+    let Some(txt) = &app.logs.text else {
         return;
     };
     let total = total_lines.max(1);
     let digits = total.to_string().len().max(1);
     let start = scroll_top;
     let end = (start + view_height).min(total_lines);
-    let prefix_w = if app.logs_show_line_numbers {
+    let prefix_w = if app.logs.show_line_numbers {
         digits.saturating_add(1)
     } else {
         0
     };
     let avail_w = list_area.width.max(1) as usize;
     let body_w = avail_w.saturating_sub(prefix_w).max(1);
-    let max_hscroll = app.logs_max_width.saturating_sub(body_w);
-    app.logs_hscroll = app.logs_hscroll.min(max_hscroll);
+    let max_hscroll = app.logs.max_width.saturating_sub(body_w);
+    app.logs.hscroll = app.logs.hscroll.min(max_hscroll);
 
     let q = effective_query;
     let sel = app.logs_selection_range();
     let mut items: Vec<ListItem> = Vec::with_capacity(end.saturating_sub(start));
     for (idx, line) in txt.lines().enumerate().take(end).skip(start) {
-        let visible = slice_window(line, app.logs_hscroll, body_w);
-        let mut l = if app.logs_use_regex {
-            let matcher = if q.is_empty() || app.logs_regex_error.is_some() {
+        let visible = slice_window(line, app.logs.hscroll, body_w);
+        let mut l = if app.logs.use_regex {
+            let matcher = if q.is_empty() || app.logs.regex_error.is_some() {
                 None
             } else {
-                app.logs_regex.as_ref()
+                app.logs.regex.as_ref()
             };
             highlight_log_line_regex(&visible, matcher)
         } else {
             highlight_log_line_literal(&visible, q)
         };
-        if app.logs_show_line_numbers {
+        if app.logs.show_line_numbers {
             let prefix = format!("{:>width$} ", idx + 1, width = digits);
             l.spans.insert(
                 0,
                 Span::styled(
                     prefix,
-                    Style::default()
-                        .fg(Color::Rgb(140, 140, 140))
-                        .bg(Color::Rgb(12, 12, 12)),
+                    bg.patch(app.theme.text_dim.to_style()),
                 ),
             );
         }
@@ -4522,49 +4096,47 @@ fn draw_shell_logs_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
         total_lines,
         view_height,
         app.ascii_only,
+        &app.theme,
     );
     draw_shell_scrollbar_h(
         f,
         hbar_area,
-        app.logs_hscroll,
+        app.logs.hscroll,
         max_hscroll,
-        app.logs_max_width,
+        app.logs.max_width,
         body_w,
         app.ascii_only,
+        &app.theme,
     );
 }
 
 fn draw_shell_logs_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
     let bg = if app.shell_focus == ShellFocus::Details {
-        Style::default()
-            .bg(Color::Rgb(24, 24, 30))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default()
-            .bg(Color::Rgb(16, 16, 16))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 1,
         horizontal: 1,
     });
-    let q = app.logs_query.trim();
+    let q = app.logs.query.trim();
     let matches = if q.is_empty() {
         "Matches: -".to_string()
-    } else if app.logs_use_regex && app.logs_regex_error.is_some() {
+    } else if app.logs.use_regex && app.logs.regex_error.is_some() {
         "Regex: invalid".to_string()
     } else {
-        format!("Matches: {}", app.logs_match_lines.len())
+        format!("Matches: {}", app.logs.match_lines.len())
     };
-    let re = if app.logs_use_regex {
+    let re = if app.logs.use_regex {
         "regex:on"
     } else {
         "regex:off"
     };
     let pos = format!(
         "Line: {}/{}",
-        app.logs_cursor.saturating_add(1),
+        app.logs.cursor.saturating_add(1),
         app.logs_total_lines().max(1)
     );
     let line = Line::from(vec![
@@ -4587,8 +4159,8 @@ fn draw_shell_logs_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::layout
 }
 
 fn draw_shell_inspect_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    // Reuse inspect tree lines computed in app.inspect_lines.
-    let bg = Style::default().bg(Color::Rgb(12, 12, 12)).fg(Color::White);
+    // Reuse inspect tree lines computed in app.inspect.lines.
+    let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 0,
@@ -4602,10 +4174,10 @@ fn draw_shell_inspect_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
     let vbar_area = cols[1];
 
     let view_height = content.height.max(1) as usize;
-    let total_lines = app.inspect_lines.len();
+    let total_lines = app.inspect.lines.len();
     let max_scroll = total_lines.saturating_sub(view_height);
-    let cursor = app.inspect_selected.min(total_lines.saturating_sub(1));
-    let mut scroll_top = app.inspect_scroll_top.min(max_scroll);
+    let cursor = app.inspect.selected.min(total_lines.saturating_sub(1));
+    let mut scroll_top = app.inspect.scroll_top.min(max_scroll);
     if cursor < scroll_top {
         scroll_top = cursor;
     } else if cursor >= scroll_top.saturating_add(view_height) {
@@ -4614,7 +4186,7 @@ fn draw_shell_inspect_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
             .saturating_sub(view_height)
             .min(max_scroll);
     }
-    app.inspect_scroll_top = scroll_top;
+    app.inspect.scroll_top = scroll_top;
 
     let start = scroll_top;
     let end = (start + view_height).min(total_lines);
@@ -4622,7 +4194,7 @@ fn draw_shell_inspect_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
 
     // Clamp horizontal scroll so it does not "virtually" exceed the content width.
     let mut max_len: usize = 0;
-    for l in &app.inspect_lines {
+    for l in &app.inspect.lines {
         let label_len = l.label.chars().count();
         let summary_len = l.summary.chars().count();
         let line_len = l.depth.saturating_mul(2)
@@ -4632,11 +4204,11 @@ fn draw_shell_inspect_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
         max_len = max_len.max(line_len);
     }
     let max_hscroll = max_len.saturating_sub(avail_w);
-    app.inspect_scroll = app.inspect_scroll.min(max_hscroll);
+    app.inspect.scroll = app.inspect.scroll.min(max_hscroll);
 
-    let q = app.inspect_query.trim();
+    let q = app.inspect.query.trim();
     let mut items: Vec<ListItem> = Vec::with_capacity(end.saturating_sub(start));
-    for l in app.inspect_lines.iter().take(end).skip(start) {
+    for l in app.inspect.lines.iter().take(end).skip(start) {
         let indent = "  ".repeat(l.depth);
         let glyph = if l.expandable {
             if l.expanded { "▾ " } else { "▸ " }
@@ -4648,8 +4220,8 @@ fn draw_shell_inspect_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
             text.push_str(": ");
             text.push_str(&l.summary);
         }
-        let visible = slice_window(&text, app.inspect_scroll, avail_w);
-        let line = if app.inspect_mode == InspectMode::Search && !q.is_empty() {
+        let visible = slice_window(&text, app.inspect.scroll, avail_w);
+        let line = if app.inspect.mode == InspectMode::Search && !q.is_empty() {
             highlight_log_line_literal(&visible, q)
         } else {
             if l.matches {
@@ -4680,18 +4252,15 @@ fn draw_shell_inspect_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
         total_lines,
         view_height,
         app.ascii_only,
+        &app.theme,
     );
 }
 
 fn draw_shell_inspect_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
     let bg = if app.shell_focus == ShellFocus::Details {
-        Style::default()
-            .bg(Color::Rgb(24, 24, 30))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default()
-            .bg(Color::Rgb(16, 16, 16))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -4699,15 +4268,15 @@ fn draw_shell_inspect_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::lay
         horizontal: 1,
     });
     let (cur, total) = current_match_pos(app);
-    let matches = if app.inspect_query.trim().is_empty() {
+    let matches = if app.inspect.query.trim().is_empty() {
         "Matches: -".to_string()
     } else {
         format!("Matches: {cur}/{total}")
     };
-    let q = app.inspect_query.trim();
+    let q = app.inspect.query.trim();
     let path = app
-        .inspect_lines
-        .get(app.inspect_selected)
+        .inspect.lines
+        .get(app.inspect.selected)
         .map(|l| l.path.clone())
         .unwrap_or_else(|| "-".to_string());
     let line = Line::from(vec![
@@ -4732,23 +4301,23 @@ fn draw_shell_inspect_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::lay
 }
 
 fn draw_shell_help_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    let bg = Style::default().bg(Color::Rgb(12, 12, 12)).fg(Color::White);
+    let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 0,
         horizontal: 1,
     });
 
-    let lines = shell_help_lines();
+    let lines = shell_help_lines(&app.theme);
     let total = lines.len().max(1);
     let view_h = inner.height.max(1) as usize;
     let max_scroll = total.saturating_sub(view_h);
-    let top = if app.shell_help_scroll == usize::MAX {
+    let top = if app.shell_help.scroll == usize::MAX {
         max_scroll
     } else {
-        app.shell_help_scroll.min(max_scroll)
+        app.shell_help.scroll.min(max_scroll)
     };
-    app.shell_help_scroll = top;
+    app.shell_help.scroll = top;
     let shown: Vec<Line> = lines.into_iter().skip(top).take(view_h).collect();
     f.render_widget(
         Paragraph::new(shown).style(bg).wrap(Wrap { trim: false }),
@@ -4758,13 +4327,9 @@ fn draw_shell_help_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
 
 fn draw_shell_help_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
     let bg = if app.shell_focus == ShellFocus::Details {
-        Style::default()
-            .bg(Color::Rgb(24, 24, 30))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default()
-            .bg(Color::Rgb(16, 16, 16))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -4775,7 +4340,7 @@ fn draw_shell_help_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::layout
     f.render_widget(
         Paragraph::new(hint)
             .alignment(Alignment::Center)
-            .style(bg.fg(Color::Rgb(160, 160, 160)))
+            .style(bg.patch(app.theme.text_dim.to_style()))
             .wrap(Wrap { trim: true }),
         inner,
     );
@@ -4794,7 +4359,7 @@ fn format_session_ts(d: Duration) -> String {
 }
 
 fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    let bg = Style::default().bg(Color::Rgb(12, 12, 12)).fg(Color::White);
+    let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 0,
@@ -4814,13 +4379,13 @@ fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui
     let w = list_area.width.max(1) as usize;
     let cursor = if total_msgs == 0 {
         0usize
-    } else if app.shell_msgs_scroll == usize::MAX {
+    } else if app.shell_msgs.scroll == usize::MAX {
         total_msgs.saturating_sub(1)
     } else {
-        app.shell_msgs_scroll.min(total_msgs.saturating_sub(1))
+        app.shell_msgs.scroll.min(total_msgs.saturating_sub(1))
     };
     if total_msgs > 0 {
-        app.shell_msgs_scroll = cursor;
+        app.shell_msgs.scroll = cursor;
     }
     let top = cursor.saturating_sub(view_h / 2).min(max_scroll);
 
@@ -4835,9 +4400,9 @@ fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui
         let fixed_len = format!("{ts} {lvl} ").chars().count();
         let msg_w = w.saturating_sub(fixed_len).max(1);
         let max_h = m.text.chars().count().saturating_sub(msg_w);
-        app.shell_msgs_hscroll = app.shell_msgs_hscroll.min(max_h);
+        app.shell_msgs.hscroll = app.shell_msgs.hscroll.min(max_h);
     } else {
-        app.shell_msgs_hscroll = 0;
+        app.shell_msgs.hscroll = 0;
     }
 
     let mut items: Vec<ListItem> = Vec::new();
@@ -4848,32 +4413,23 @@ fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui
             MsgLevel::Error => "ERROR",
         };
         let lvl_style = match m.level {
-            MsgLevel::Info => Style::default()
-                .fg(Color::Rgb(160, 160, 160))
-                .bg(Color::Rgb(12, 12, 12)),
-            MsgLevel::Warn => Style::default()
-                .fg(Color::Yellow)
-                .bg(Color::Rgb(12, 12, 12)),
-            MsgLevel::Error => Style::default().fg(Color::Red).bg(Color::Rgb(12, 12, 12)),
+            MsgLevel::Info => bg.patch(app.theme.text_dim.to_style()),
+            MsgLevel::Warn => bg.patch(app.theme.text_warn.to_style()),
+            MsgLevel::Error => bg.patch(app.theme.text_error.to_style()),
         };
         let ts = format_session_ts(m.at);
-        let ts_style = Style::default()
-            .fg(Color::Rgb(120, 120, 120))
-            .bg(Color::Rgb(12, 12, 12));
+        let ts_style = bg.patch(app.theme.text_faint.to_style());
         let fixed = format!("{ts} {lvl} ");
         let fixed_len = fixed.chars().count();
         let msg_w = w.saturating_sub(fixed_len).max(1);
-        let msg = window_hscroll(&m.text, app.shell_msgs_hscroll, msg_w);
+        let msg = window_hscroll(&m.text, app.shell_msgs.hscroll, msg_w);
 
         let line = Line::from(vec![
             Span::styled(ts, ts_style),
             Span::raw(" "),
             Span::styled(lvl.to_string(), lvl_style),
             Span::raw(" "),
-            Span::styled(
-                msg,
-                Style::default().fg(Color::White).bg(Color::Rgb(12, 12, 12)),
-            ),
+            Span::styled(msg, bg),
         ]);
         items.push(ListItem::new(line));
     }
@@ -4888,7 +4444,16 @@ fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui
     state.select(Some(cursor.saturating_sub(top)));
     f.render_stateful_widget(list, list_area, &mut state);
 
-    draw_shell_scrollbar_v(f, vbar_area, top, max_scroll, total, view_h, app.ascii_only);
+    draw_shell_scrollbar_v(
+        f,
+        vbar_area,
+        top,
+        max_scroll,
+        total,
+        view_h,
+        app.ascii_only,
+        &app.theme,
+    );
 }
 
 fn window_hscroll(s: &str, start: usize, max: usize) -> String {
@@ -4941,13 +4506,9 @@ fn window_hscroll(s: &str, start: usize, max: usize) -> String {
 
 fn draw_shell_messages_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
     let bg = if app.shell_focus == ShellFocus::Details {
-        Style::default()
-            .bg(Color::Rgb(24, 24, 30))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel_focused.to_style()
     } else {
-        Style::default()
-            .bg(Color::Rgb(16, 16, 16))
-            .fg(Color::Rgb(200, 200, 200))
+        app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -4957,13 +4518,13 @@ fn draw_shell_messages_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::la
     let hint = "Up/Down select  Left/Right hscroll  PageUp/PageDown  Home/End  ^c copy  q back";
     f.render_widget(
         Paragraph::new(hint)
-            .style(bg.fg(Color::Rgb(160, 160, 160)))
+            .style(bg.patch(app.theme.text_dim.to_style()))
             .wrap(Wrap { trim: true }),
         inner,
     );
 }
 
-fn shell_help_lines() -> Vec<Line<'static>> {
+fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     let h = |title: &str| -> Line<'static> {
         Line::from(Span::styled(
             title.to_string(),
@@ -4974,14 +4535,11 @@ fn shell_help_lines() -> Vec<Line<'static>> {
     };
     let item = |scope: &str, syntax: &str, desc: &str| -> Line<'static> {
         Line::from(vec![
-            Span::styled(
-                format!("{scope:<10} "),
-                Style::default().fg(Color::Rgb(140, 140, 140)),
-            ),
+            Span::styled(format!("{scope:<10} "), theme.text_dim.to_style()),
             Span::styled(format!("{syntax:<22} "), Style::default().fg(Color::White)),
             Span::styled(
                 desc.to_string(),
-                Style::default().fg(Color::Rgb(200, 200, 200)),
+                theme.text.to_style(),
             ),
         ])
     };
@@ -5244,6 +4802,7 @@ fn draw_shell_scrollbar_v(
     total_lines: usize,
     view_height: usize,
     ascii_only: bool,
+    theme: &theme::ThemeSpec,
 ) {
     if area.height == 0 || total_lines == 0 {
         return;
@@ -5259,8 +4818,8 @@ fn draw_shell_scrollbar_v(
         .end_symbol(None)
         .track_symbol(Some(track))
         .thumb_symbol(track)
-        .track_style(Style::default().fg(Color::Rgb(55, 55, 55)))
-        .thumb_style(Style::default().fg(Color::White));
+        .track_style(theme.scroll_track.to_style())
+        .thumb_style(theme.scroll_thumb.to_style());
     let mut sb_state = ScrollbarState::new(total_lines)
         .position(mapped_pos)
         .viewport_content_length(view_height.max(1));
@@ -5275,6 +4834,7 @@ fn draw_shell_scrollbar_h(
     content_width: usize,
     view_width: usize,
     ascii_only: bool,
+    theme: &theme::ThemeSpec,
 ) {
     if area.height == 0 || area.width == 0 || content_width == 0 {
         return;
@@ -5290,8 +4850,8 @@ fn draw_shell_scrollbar_h(
         .end_symbol(None)
         .track_symbol(Some(track))
         .thumb_symbol(track)
-        .track_style(Style::default().fg(Color::Rgb(55, 55, 55)))
-        .thumb_style(Style::default().fg(Color::White));
+        .track_style(theme.scroll_track.to_style())
+        .thumb_style(theme.scroll_thumb.to_style());
     let mut sb_state = ScrollbarState::new(content_width)
         .position(mapped_pos)
         .viewport_content_length(view_width.max(1));
@@ -5774,17 +5334,17 @@ fn collect_path_rank_inner(
 }
 
 fn current_match_pos(app: &App) -> (usize, usize) {
-    let total = app.inspect_match_paths.len();
+    let total = app.inspect.match_paths.len();
     if total == 0 {
         return (0, 0);
     }
     let path = app
-        .inspect_lines
-        .get(app.inspect_selected)
+        .inspect.lines
+        .get(app.inspect.selected)
         .map(|l| l.path.as_str())
         .unwrap_or("");
     let idx = app
-        .inspect_match_paths
+        .inspect.match_paths
         .iter()
         .position(|p| p == path)
         .map(|i| i + 1)

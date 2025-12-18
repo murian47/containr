@@ -81,10 +81,18 @@ pub struct ThemeSpec {
     pub panel_focused: StyleSpec,
     #[serde(default = "default_cmdline")]
     pub cmdline: StyleSpec,
+    #[serde(default = "default_overlay")]
+    pub overlay: StyleSpec,
+    #[serde(default = "default_divider")]
+    pub divider: StyleSpec,
 
     // Text roles.
+    #[serde(default = "default_text")]
+    pub text: StyleSpec,
     #[serde(default = "default_text_dim")]
     pub text_dim: StyleSpec,
+    #[serde(default = "default_text_faint")]
+    pub text_faint: StyleSpec,
     #[serde(default = "default_text_error")]
     pub text_error: StyleSpec,
     #[serde(default = "default_text_warn")]
@@ -107,6 +115,22 @@ pub struct ThemeSpec {
     pub scroll_track: StyleSpec,
     #[serde(default = "default_scroll_thumb")]
     pub scroll_thumb: StyleSpec,
+
+    // Syntax highlighting (YAML/JSON viewers).
+    #[serde(default = "default_syntax_text")]
+    pub syntax_text: StyleSpec,
+    #[serde(default = "default_syntax_comment")]
+    pub syntax_comment: StyleSpec,
+    #[serde(default = "default_syntax_key")]
+    pub syntax_key: StyleSpec,
+
+    // Command line accents.
+    #[serde(default = "default_cmdline_label")]
+    pub cmdline_label: StyleSpec,
+    #[serde(default = "default_cmdline_cursor")]
+    pub cmdline_cursor: StyleSpec,
+    #[serde(default = "default_cmdline_inactive")]
+    pub cmdline_inactive: StyleSpec,
 }
 
 fn default_theme_version() -> u32 {
@@ -157,9 +181,50 @@ fn default_panel_focused() -> StyleSpec {
     }
 }
 
+fn default_cmdline() -> StyleSpec {
+    // Command line / prompt row at the bottom.
+    StyleSpec {
+        fg: "#dcdcdc".to_string(),
+        bg: "#101010".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
+fn default_overlay() -> StyleSpec {
+    StyleSpec {
+        fg: "#ffffff".to_string(),
+        bg: "#0c0c0c".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
+fn default_divider() -> StyleSpec {
+    StyleSpec {
+        fg: "#2d2d2d".to_string(),
+        bg: "#101010".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
+fn default_text() -> StyleSpec {
+    StyleSpec {
+        fg: "#c8c8c8".to_string(),
+        bg: "default".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
 fn default_text_dim() -> StyleSpec {
     StyleSpec {
         fg: "#8c8c8c".to_string(),
+        bg: "default".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
+fn default_text_faint() -> StyleSpec {
+    StyleSpec {
+        fg: "#787878".to_string(),
         bg: "default".to_string(),
         ..StyleSpec::default()
     }
@@ -240,10 +305,49 @@ fn default_scroll_thumb() -> StyleSpec {
     }
 }
 
-fn default_cmdline() -> StyleSpec {
-    // Command line / prompt row at the bottom.
+fn default_syntax_text() -> StyleSpec {
     StyleSpec {
-        fg: "#dcdcdc".to_string(),
+        fg: "#c8c8c8".to_string(),
+        bg: "default".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
+fn default_syntax_comment() -> StyleSpec {
+    StyleSpec {
+        fg: "#787878".to_string(),
+        bg: "default".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
+fn default_syntax_key() -> StyleSpec {
+    StyleSpec {
+        fg: "#8cbeff".to_string(),
+        bg: "default".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
+fn default_cmdline_label() -> StyleSpec {
+    StyleSpec {
+        fg: "#a0a0a0".to_string(),
+        bg: "#101010".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
+fn default_cmdline_cursor() -> StyleSpec {
+    StyleSpec {
+        fg: "#000000".to_string(),
+        bg: "#dcdcdc".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
+fn default_cmdline_inactive() -> StyleSpec {
+    StyleSpec {
+        fg: "#b4b4b4".to_string(),
         bg: "#101010".to_string(),
         ..StyleSpec::default()
     }
@@ -259,7 +363,11 @@ pub fn default_theme_spec() -> ThemeSpec {
         panel: default_panel(),
         panel_focused: default_panel_focused(),
         cmdline: default_cmdline(),
+        overlay: default_overlay(),
+        divider: default_divider(),
+        text: default_text(),
         text_dim: default_text_dim(),
+        text_faint: default_text_faint(),
         text_error: default_text_error(),
         text_warn: default_text_warn(),
         text_ok: default_text_ok(),
@@ -269,6 +377,12 @@ pub fn default_theme_spec() -> ThemeSpec {
         marked: default_marked(),
         scroll_track: default_scroll_track(),
         scroll_thumb: default_scroll_thumb(),
+        syntax_text: default_syntax_text(),
+        syntax_comment: default_syntax_comment(),
+        syntax_key: default_syntax_key(),
+        cmdline_label: default_cmdline_label(),
+        cmdline_cursor: default_cmdline_cursor(),
+        cmdline_inactive: default_cmdline_inactive(),
     }
 }
 

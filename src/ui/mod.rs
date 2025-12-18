@@ -162,6 +162,86 @@ struct ShellCmdlineState {
     history: CmdHistory,
 }
 
+#[derive(Debug, Clone)]
+struct ShellMessagesState {
+    scroll: usize,  // cursor (absolute); usize::MAX = last
+    hscroll: usize, // horizontal scroll
+    return_view: ShellView,
+}
+
+#[derive(Debug, Clone)]
+struct ShellHelpState {
+    scroll: usize,
+    return_view: ShellView,
+}
+
+#[derive(Debug, Clone)]
+struct InspectState {
+    loading: bool,
+    error: Option<String>,
+    value: Option<Value>,
+    target: Option<InspectTarget>,
+    for_id: Option<String>,
+    lines: Vec<InspectLine>,
+    selected: usize,
+    scroll_top: usize,
+    scroll: usize,
+    query: String,
+    expanded: HashSet<String>,
+    match_paths: Vec<String>,
+    path_rank: HashMap<String, usize>,
+    mode: InspectMode,
+    input: String,
+    input_cursor: usize,
+    cmd_history: CmdHistory,
+}
+
+#[derive(Debug, Clone)]
+struct LogsState {
+    loading: bool,
+    error: Option<String>,
+    text: Option<String>,
+    for_id: Option<String>,
+    tail: usize,
+    cursor: usize,
+    scroll_top: usize,
+    select_anchor: Option<usize>,
+    hscroll: usize,
+    max_width: usize,
+    mode: LogsMode,
+    input: String,
+    query: String,
+    command: String,
+    input_cursor: usize,
+    command_cursor: usize,
+    cmd_history: CmdHistory,
+    use_regex: bool,
+    regex: Option<Regex>,
+    regex_error: Option<String>,
+    match_lines: Vec<usize>,
+    show_line_numbers: bool,
+}
+
+#[derive(Debug, Clone)]
+struct TemplatesState {
+    dir: PathBuf,
+    kind: TemplatesKind,
+
+    templates: Vec<TemplateEntry>,
+    templates_selected: usize,
+    templates_error: Option<String>,
+    templates_details_scroll: usize,
+    templates_refresh_after_edit: Option<String>,
+    template_deploy_inflight: HashMap<String, DeployMarker>,
+
+    net_templates: Vec<NetTemplateEntry>,
+    net_templates_selected: usize,
+    net_templates_error: Option<String>,
+    net_templates_details_scroll: usize,
+    net_templates_refresh_after_edit: Option<String>,
+    net_template_deploy_inflight: HashMap<String, DeployMarker>,
+}
+
 fn shell_begin_confirm(app: &mut App, label: impl Into<String>, cmdline: impl Into<String>) {
     app.shell_cmdline.mode = true;
     app.shell_cmdline.input.clear();
@@ -731,23 +811,7 @@ struct App {
     image_action_inflight: HashMap<String, SimpleMarker>,
     volume_action_inflight: HashMap<String, SimpleMarker>,
     network_action_inflight: HashMap<String, SimpleMarker>,
-    inspect_loading: bool,
-    inspect_error: Option<String>,
-    inspect_value: Option<Value>,
-    inspect_target: Option<InspectTarget>,
-    inspect_for_id: Option<String>,
-    inspect_lines: Vec<InspectLine>,
-    inspect_selected: usize,
-    inspect_scroll_top: usize,
-    inspect_scroll: usize,
-    inspect_query: String,
-    inspect_expanded: HashSet<String>,
-    inspect_match_paths: Vec<String>,
-    inspect_path_rank: HashMap<String, usize>,
-	inspect_mode: InspectMode,
-	inspect_input: String,
-	inspect_input_cursor: usize,
-	inspect_cmd_history: CmdHistory,
+    inspect: InspectState,
 
     servers: Vec<ServerEntry>,
     active_server: Option<String>,
@@ -755,28 +819,7 @@ struct App {
     config_path: std::path::PathBuf,
     current_target: String,
 
-    logs_loading: bool,
-    logs_error: Option<String>,
-    logs_text: Option<String>,
-    logs_for_id: Option<String>,
-    logs_tail: usize,
-    logs_cursor: usize,
-    logs_scroll_top: usize,
-    logs_select_anchor: Option<usize>,
-    logs_hscroll: usize,
-    logs_max_width: usize,
-	logs_mode: LogsMode,
-	logs_input: String,
-	logs_query: String,
-	logs_command: String,
-	logs_input_cursor: usize,
-	logs_command_cursor: usize,
-	logs_cmd_history: CmdHistory,
-    logs_use_regex: bool,
-    logs_regex: Option<Regex>,
-    logs_regex_error: Option<String>,
-    logs_match_lines: Vec<usize>,
-    logs_show_line_numbers: bool,
+    logs: LogsState,
 
     mouse_enabled: bool,
 
@@ -799,36 +842,19 @@ struct App {
     shell_server_shortcuts: Vec<char>,
 	shell_pending_interactive: Option<ShellInteractive>,
     shell_cmdline: ShellCmdlineState,
-    shell_help_scroll: usize,
-    shell_help_return: ShellView,
+    shell_help: ShellHelpState,
     refresh_secs: u64,
     cmd_history_max: usize,
 
     session_start: Instant,
     session_msgs: Vec<SessionMsg>,
-    shell_msgs_scroll: usize, // cursor (absolute); usize::MAX = last
-    shell_msgs_hscroll: usize,
-    shell_msgs_return: ShellView,
+    shell_msgs: ShellMessagesState,
 
     keymap: Vec<KeyBinding>,
     keymap_parsed: HashMap<(KeyScope, KeySpec), String>,
     keymap_defaults: HashMap<(KeyScope, KeySpec), String>,
 
-    templates_dir: PathBuf,
-    templates_kind: TemplatesKind,
-    templates: Vec<TemplateEntry>,
-    templates_selected: usize,
-    templates_error: Option<String>,
-    templates_details_scroll: usize,
-    templates_refresh_after_edit: Option<String>,
-    template_deploy_inflight: HashMap<String, DeployMarker>,
-
-    net_templates: Vec<NetTemplateEntry>,
-    net_templates_selected: usize,
-    net_templates_error: Option<String>,
-    net_templates_details_scroll: usize,
-    net_templates_refresh_after_edit: Option<String>,
-    net_template_deploy_inflight: HashMap<String, DeployMarker>,
+    templates_state: TemplatesState,
 
     theme_refresh_after_edit: Option<String>,
 }
@@ -868,10 +894,10 @@ impl App {
         }
         self.shell_cmdline.history.entries = entries.clone();
         self.shell_cmdline.history.reset_nav();
-        self.logs_cmd_history.entries = entries.clone();
-        self.logs_cmd_history.reset_nav();
-        self.inspect_cmd_history.entries = entries;
-        self.inspect_cmd_history.reset_nav();
+        self.logs.cmd_history.entries = entries.clone();
+        self.logs.cmd_history.reset_nav();
+        self.inspect.cmd_history.entries = entries;
+        self.inspect.cmd_history.reset_nav();
     }
 
     fn push_cmd_history(&mut self, cmd: &str) {
@@ -879,11 +905,11 @@ impl App {
         self.shell_cmdline.history.push(cmd, max);
         // Keep all command modes in sync.
         let entries = self.shell_cmdline.history.entries.clone();
-        self.logs_cmd_history.entries = entries.clone();
-        self.inspect_cmd_history.entries = entries;
+        self.logs.cmd_history.entries = entries.clone();
+        self.inspect.cmd_history.entries = entries;
         self.shell_cmdline.history.reset_nav();
-        self.logs_cmd_history.reset_nav();
-        self.inspect_cmd_history.reset_nav();
+        self.logs.cmd_history.reset_nav();
+        self.inspect.cmd_history.reset_nav();
         self.persist_config();
     }
 
@@ -912,10 +938,10 @@ impl App {
             self.set_warn("no messages");
             return;
         }
-        let idx = if self.shell_msgs_scroll == usize::MAX {
+        let idx = if self.shell_msgs.scroll == usize::MAX {
             self.session_msgs.len().saturating_sub(1)
         } else {
-            self.shell_msgs_scroll
+            self.shell_msgs.scroll
                 .min(self.session_msgs.len().saturating_sub(1))
         };
         let m = &self.session_msgs[idx];
@@ -1013,23 +1039,25 @@ impl App {
             image_action_inflight: HashMap::new(),
             volume_action_inflight: HashMap::new(),
             network_action_inflight: HashMap::new(),
-            inspect_loading: false,
-            inspect_error: None,
-            inspect_value: None,
-            inspect_target: None,
-            inspect_for_id: None,
-            inspect_lines: Vec::new(),
-            inspect_selected: 0,
-            inspect_scroll_top: 0,
-            inspect_scroll: 0,
-            inspect_query: String::new(),
-            inspect_expanded: HashSet::new(),
-            inspect_match_paths: Vec::new(),
-            inspect_path_rank: HashMap::new(),
-            inspect_mode: InspectMode::Normal,
-            inspect_input: String::new(),
-            inspect_input_cursor: 0,
-            inspect_cmd_history: CmdHistory::new(),
+            inspect: InspectState {
+                loading: false,
+                error: None,
+                value: None,
+                target: None,
+                for_id: None,
+                lines: Vec::new(),
+                selected: 0,
+                scroll_top: 0,
+                scroll: 0,
+                query: String::new(),
+                expanded: HashSet::new(),
+                match_paths: Vec::new(),
+                path_rank: HashMap::new(),
+                mode: InspectMode::Normal,
+                input: String::new(),
+                input_cursor: 0,
+                cmd_history: CmdHistory::new(),
+            },
 
             servers,
             active_server,
@@ -1037,28 +1065,30 @@ impl App {
             config_path,
             current_target: String::new(),
 
-            logs_loading: false,
-            logs_error: None,
-            logs_text: None,
-            logs_for_id: None,
-            logs_tail: 500,
-            logs_cursor: 0,
-            logs_scroll_top: 0,
-            logs_select_anchor: None,
-            logs_hscroll: 0,
-            logs_max_width: 0,
-            logs_mode: LogsMode::Normal,
-            logs_input: String::new(),
-            logs_query: String::new(),
-            logs_command: String::new(),
-            logs_input_cursor: 0,
-            logs_command_cursor: 0,
-            logs_cmd_history: CmdHistory::new(),
-            logs_use_regex: false,
-            logs_regex: None,
-            logs_regex_error: None,
-            logs_match_lines: Vec::new(),
-            logs_show_line_numbers: false,
+            logs: LogsState {
+                loading: false,
+                error: None,
+                text: None,
+                for_id: None,
+                tail: 500,
+                cursor: 0,
+                scroll_top: 0,
+                select_anchor: None,
+                hscroll: 0,
+                max_width: 0,
+                mode: LogsMode::Normal,
+                input: String::new(),
+                query: String::new(),
+                command: String::new(),
+                input_cursor: 0,
+                command_cursor: 0,
+                cmd_history: CmdHistory::new(),
+                use_regex: false,
+                regex: None,
+                regex_error: None,
+                match_lines: Vec::new(),
+                show_line_numbers: false,
+            },
 
             mouse_enabled: false,
 
@@ -1095,36 +1125,41 @@ impl App {
                 confirm: None,
                 history: CmdHistory::new(),
             },
-            shell_help_scroll: 0,
-            shell_help_return: ShellView::Containers,
+            shell_help: ShellHelpState {
+                scroll: 0,
+                return_view: ShellView::Containers,
+            },
             refresh_secs: 5,
             cmd_history_max: 200,
 
             session_start: Instant::now(),
             session_msgs: Vec::new(),
-            shell_msgs_scroll: 0,
-            shell_msgs_hscroll: 0,
-            shell_msgs_return: ShellView::Containers,
+            shell_msgs: ShellMessagesState {
+                scroll: 0,
+                hscroll: 0,
+                return_view: ShellView::Containers,
+            },
 
             keymap,
             keymap_parsed: HashMap::new(),
             keymap_defaults: HashMap::new(),
 
-            templates_dir: PathBuf::from("templates"),
-            templates_kind: TemplatesKind::Stacks,
-            templates: Vec::new(),
-            templates_selected: 0,
-            templates_error: None,
-            templates_details_scroll: 0,
-            templates_refresh_after_edit: None,
-            template_deploy_inflight: HashMap::new(),
-
-            net_templates: Vec::new(),
-            net_templates_selected: 0,
-            net_templates_error: None,
-            net_templates_details_scroll: 0,
-            net_templates_refresh_after_edit: None,
-            net_template_deploy_inflight: HashMap::new(),
+            templates_state: TemplatesState {
+                dir: PathBuf::from("templates"),
+                kind: TemplatesKind::Stacks,
+                templates: Vec::new(),
+                templates_selected: 0,
+                templates_error: None,
+                templates_details_scroll: 0,
+                templates_refresh_after_edit: None,
+                template_deploy_inflight: HashMap::new(),
+                net_templates: Vec::new(),
+                net_templates_selected: 0,
+                net_templates_error: None,
+                net_templates_details_scroll: 0,
+                net_templates_refresh_after_edit: None,
+                net_template_deploy_inflight: HashMap::new(),
+            },
 
             theme_refresh_after_edit: None,
         };
@@ -1137,21 +1172,21 @@ impl App {
     }
 
     fn refresh_templates(&mut self) {
-        self.templates_error = None;
-        self.templates.clear();
-        self.templates_details_scroll = 0;
+        self.templates_state.templates_error = None;
+        self.templates_state.templates.clear();
+        self.templates_state.templates_details_scroll = 0;
 
         self.migrate_templates_layout_if_needed();
 
         let dir = self.stack_templates_dir();
         if let Err(e) = fs::create_dir_all(&dir) {
-            self.templates_error = Some(format!("failed to create templates dir: {e}"));
+            self.templates_state.templates_error = Some(format!("failed to create templates dir: {e}"));
             return;
         }
         let entries = match fs::read_dir(&dir) {
             Ok(e) => e,
             Err(e) => {
-                self.templates_error = Some(format!("failed to read templates dir: {e}"));
+                self.templates_state.templates_error = Some(format!("failed to read templates dir: {e}"));
                 return;
             }
         };
@@ -1185,22 +1220,22 @@ impl App {
             });
         }
         out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-        self.templates = out;
-        if self.templates_selected >= self.templates.len() {
-            self.templates_selected = self.templates.len().saturating_sub(1);
+        self.templates_state.templates = out;
+        if self.templates_state.templates_selected >= self.templates_state.templates.len() {
+            self.templates_state.templates_selected = self.templates_state.templates.len().saturating_sub(1);
         }
     }
 
     fn selected_template(&self) -> Option<&TemplateEntry> {
-        self.templates.get(self.templates_selected)
+        self.templates_state.templates.get(self.templates_state.templates_selected)
     }
 
     fn net_templates_dir(&self) -> PathBuf {
-        self.templates_dir.join("networks")
+        self.templates_state.dir.join("networks")
     }
 
     fn stack_templates_dir(&self) -> PathBuf {
-        self.templates_dir.join("stacks")
+        self.templates_state.dir.join("stacks")
     }
 
     fn migrate_templates_layout_if_needed(&mut self) {
@@ -1210,7 +1245,7 @@ impl App {
         if stacks.exists() {
             return;
         }
-        let root = self.templates_dir.clone();
+        let root = self.templates_state.dir.clone();
         let entries = match fs::read_dir(&root) {
             Ok(e) => e,
             Err(_) => return,
@@ -1265,21 +1300,21 @@ impl App {
     }
 
     fn refresh_net_templates(&mut self) {
-        self.net_templates_error = None;
-        self.net_templates.clear();
-        self.net_templates_details_scroll = 0;
+        self.templates_state.net_templates_error = None;
+        self.templates_state.net_templates.clear();
+        self.templates_state.net_templates_details_scroll = 0;
 
         self.migrate_templates_layout_if_needed();
 
         let dir = self.net_templates_dir();
         if let Err(e) = fs::create_dir_all(&dir) {
-            self.net_templates_error = Some(format!("failed to create net templates dir: {e}"));
+            self.templates_state.net_templates_error = Some(format!("failed to create net templates dir: {e}"));
             return;
         }
         let entries = match fs::read_dir(&dir) {
             Ok(e) => e,
             Err(e) => {
-                self.net_templates_error = Some(format!("failed to read net templates dir: {e}"));
+                self.templates_state.net_templates_error = Some(format!("failed to read net templates dir: {e}"));
                 return;
             }
         };
@@ -1313,14 +1348,14 @@ impl App {
             });
         }
         out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-        self.net_templates = out;
-        if self.net_templates_selected >= self.net_templates.len() {
-            self.net_templates_selected = self.net_templates.len().saturating_sub(1);
+        self.templates_state.net_templates = out;
+        if self.templates_state.net_templates_selected >= self.templates_state.net_templates.len() {
+            self.templates_state.net_templates_selected = self.templates_state.net_templates.len().saturating_sub(1);
         }
     }
 
     fn selected_net_template(&self) -> Option<&NetTemplateEntry> {
-        self.net_templates.get(self.net_templates_selected)
+        self.templates_state.net_templates.get(self.templates_state.net_templates_selected)
     }
 
     fn rebuild_keymap(&mut self) {
@@ -1899,161 +1934,161 @@ impl App {
     }
 
     fn open_inspect_state(&mut self, target: InspectTarget) {
-        self.inspect_loading = true;
-        self.inspect_error = None;
-        self.inspect_value = None;
-        self.inspect_target = Some(target.clone());
-        self.inspect_for_id = Some(target.key);
-        self.inspect_lines.clear();
-        self.inspect_selected = 0;
-        self.inspect_scroll_top = 0;
-        self.inspect_scroll = 0;
-        self.inspect_query.clear();
-        self.inspect_expanded.clear();
-        self.inspect_expanded.insert("".to_string()); // root expanded by default
-        self.inspect_match_paths.clear();
-        self.inspect_path_rank.clear();
-        self.inspect_mode = InspectMode::Normal;
-        self.inspect_input.clear();
+        self.inspect.loading = true;
+        self.inspect.error = None;
+        self.inspect.value = None;
+        self.inspect.target = Some(target.clone());
+        self.inspect.for_id = Some(target.key);
+        self.inspect.lines.clear();
+        self.inspect.selected = 0;
+        self.inspect.scroll_top = 0;
+        self.inspect.scroll = 0;
+        self.inspect.query.clear();
+        self.inspect.expanded.clear();
+        self.inspect.expanded.insert("".to_string()); // root expanded by default
+        self.inspect.match_paths.clear();
+        self.inspect.path_rank.clear();
+        self.inspect.mode = InspectMode::Normal;
+        self.inspect.input.clear();
     }
 
     fn rebuild_inspect_lines(&mut self) {
-        self.inspect_path_rank = collect_path_rank(self.inspect_value.as_ref());
+        self.inspect.path_rank = collect_path_rank(self.inspect.value.as_ref());
         let effective_query = self.inspect_effective_query().to_string();
-        self.inspect_match_paths =
-            collect_match_paths(self.inspect_value.as_ref(), &effective_query);
-        let match_set: HashSet<String> = self.inspect_match_paths.iter().cloned().collect();
-        self.inspect_lines = build_inspect_lines(
-            self.inspect_value.as_ref(),
-            &self.inspect_expanded,
+        self.inspect.match_paths =
+            collect_match_paths(self.inspect.value.as_ref(), &effective_query);
+        let match_set: HashSet<String> = self.inspect.match_paths.iter().cloned().collect();
+        self.inspect.lines = build_inspect_lines(
+            self.inspect.value.as_ref(),
+            &self.inspect.expanded,
             &match_set,
             &effective_query,
         );
-        if self.inspect_selected >= self.inspect_lines.len() {
-            self.inspect_selected = self.inspect_lines.len().saturating_sub(1);
+        if self.inspect.selected >= self.inspect.lines.len() {
+            self.inspect.selected = self.inspect.lines.len().saturating_sub(1);
         }
-        if self.inspect_scroll > self.inspect_selected {
-            self.inspect_scroll = self.inspect_selected;
+        if self.inspect.scroll > self.inspect.selected {
+            self.inspect.scroll = self.inspect.selected;
         }
     }
 
     fn inspect_move_up(&mut self, by: usize) {
-        if self.inspect_lines.is_empty() {
-            self.inspect_selected = 0;
-            self.inspect_scroll = 0;
+        if self.inspect.lines.is_empty() {
+            self.inspect.selected = 0;
+            self.inspect.scroll = 0;
             return;
         }
-        self.inspect_selected = self.inspect_selected.saturating_sub(by);
-        if self.inspect_selected < self.inspect_scroll {
-            self.inspect_scroll = self.inspect_selected;
+        self.inspect.selected = self.inspect.selected.saturating_sub(by);
+        if self.inspect.selected < self.inspect.scroll {
+            self.inspect.scroll = self.inspect.selected;
         }
     }
 
     fn inspect_move_down(&mut self, by: usize) {
-        if self.inspect_lines.is_empty() {
-            self.inspect_selected = 0;
-            self.inspect_scroll = 0;
+        if self.inspect.lines.is_empty() {
+            self.inspect.selected = 0;
+            self.inspect.scroll = 0;
             return;
         }
-        self.inspect_selected = self
-            .inspect_selected
+        self.inspect.selected = self
+            .inspect.selected
             .saturating_add(by)
-            .min(self.inspect_lines.len() - 1);
+            .min(self.inspect.lines.len() - 1);
     }
 
     fn inspect_toggle_selected(&mut self) {
-        let Some(line) = self.inspect_lines.get(self.inspect_selected) else {
+        let Some(line) = self.inspect.lines.get(self.inspect.selected) else {
             return;
         };
         if !line.expandable {
             return;
         }
-        if self.inspect_expanded.contains(&line.path) {
-            self.inspect_expanded.remove(&line.path);
+        if self.inspect.expanded.contains(&line.path) {
+            self.inspect.expanded.remove(&line.path);
         } else {
-            self.inspect_expanded.insert(line.path.clone());
+            self.inspect.expanded.insert(line.path.clone());
         }
         self.rebuild_inspect_lines();
     }
 
     fn inspect_expand_all(&mut self) {
-        let Some(root) = self.inspect_value.as_ref() else {
+        let Some(root) = self.inspect.value.as_ref() else {
             return;
         };
-        self.inspect_expanded = collect_expandable_paths(root);
-        self.inspect_expanded.insert("".to_string());
+        self.inspect.expanded = collect_expandable_paths(root);
+        self.inspect.expanded.insert("".to_string());
         self.rebuild_inspect_lines();
     }
 
     fn inspect_collapse_all(&mut self) {
-        self.inspect_expanded.clear();
-        self.inspect_expanded.insert("".to_string());
+        self.inspect.expanded.clear();
+        self.inspect.expanded.insert("".to_string());
         self.rebuild_inspect_lines();
     }
 
     fn inspect_jump_next_match(&mut self) {
-        if self.inspect_mode != InspectMode::Normal {
+        if self.inspect.mode != InspectMode::Normal {
             return;
         }
-        if self.inspect_match_paths.is_empty() {
+        if self.inspect.match_paths.is_empty() {
             return;
         }
         let current_path = self
-            .inspect_lines
-            .get(self.inspect_selected)
+            .inspect.lines
+            .get(self.inspect.selected)
             .map(|l| l.path.as_str())
             .unwrap_or("");
 
         let current_rank = self
-            .inspect_path_rank
+            .inspect.path_rank
             .get(current_path)
             .copied()
             .unwrap_or(0);
 
         let mut best: Option<(usize, String)> = None;
-        for p in &self.inspect_match_paths {
-            let r = self.inspect_path_rank.get(p).copied().unwrap_or(usize::MAX);
+        for p in &self.inspect.match_paths {
+            let r = self.inspect.path_rank.get(p).copied().unwrap_or(usize::MAX);
             if r > current_rank && best.as_ref().map(|(br, _)| r < *br).unwrap_or(true) {
                 best = Some((r, p.clone()));
             }
         }
         let target = best
             .map(|(_, p)| p)
-            .or_else(|| self.inspect_match_paths.first().cloned());
+            .or_else(|| self.inspect.match_paths.first().cloned());
         if let Some(target) = target {
             self.inspect_focus_path(&target);
         }
     }
 
     fn inspect_jump_prev_match(&mut self) {
-        if self.inspect_mode != InspectMode::Normal {
+        if self.inspect.mode != InspectMode::Normal {
             return;
         }
-        if self.inspect_match_paths.is_empty() {
+        if self.inspect.match_paths.is_empty() {
             return;
         }
         let current_path = self
-            .inspect_lines
-            .get(self.inspect_selected)
+            .inspect.lines
+            .get(self.inspect.selected)
             .map(|l| l.path.as_str())
             .unwrap_or("");
 
         let current_rank = self
-            .inspect_path_rank
+            .inspect.path_rank
             .get(current_path)
             .copied()
             .unwrap_or(0);
 
         let mut best: Option<(usize, String)> = None;
-        for p in &self.inspect_match_paths {
-            let r = self.inspect_path_rank.get(p).copied().unwrap_or(0);
+        for p in &self.inspect.match_paths {
+            let r = self.inspect.path_rank.get(p).copied().unwrap_or(0);
             if r < current_rank && best.as_ref().map(|(br, _)| r > *br).unwrap_or(true) {
                 best = Some((r, p.clone()));
             }
         }
         let target = best
             .map(|(_, p)| p)
-            .or_else(|| self.inspect_match_paths.last().cloned());
+            .or_else(|| self.inspect.match_paths.last().cloned());
         if let Some(target) = target {
             self.inspect_focus_path(&target);
         }
@@ -2061,61 +2096,61 @@ impl App {
 
     fn inspect_focus_path(&mut self, path: &str) {
         for parent in ancestors_of_pointer(path) {
-            self.inspect_expanded.insert(parent);
+            self.inspect.expanded.insert(parent);
         }
         self.rebuild_inspect_lines();
-        if let Some(idx) = self.inspect_lines.iter().position(|l| l.path == path) {
-            self.inspect_selected = idx;
+        if let Some(idx) = self.inspect.lines.iter().position(|l| l.path == path) {
+            self.inspect.selected = idx;
         }
     }
 
     fn inspect_effective_query(&self) -> &str {
-        match self.inspect_mode {
-            InspectMode::Search => &self.inspect_input,
-            _ => &self.inspect_query,
+        match self.inspect.mode {
+            InspectMode::Search => &self.inspect.input,
+            _ => &self.inspect.query,
         }
     }
 
     fn inspect_enter_search(&mut self) {
-        self.inspect_mode = InspectMode::Search;
-        self.inspect_input = self.inspect_query.clone();
-        self.inspect_input_cursor = self.inspect_input.chars().count();
+        self.inspect.mode = InspectMode::Search;
+        self.inspect.input = self.inspect.query.clone();
+        self.inspect.input_cursor = self.inspect.input.chars().count();
         self.rebuild_inspect_lines();
     }
 
     fn inspect_enter_command(&mut self) {
-        self.inspect_mode = InspectMode::Command;
-        self.inspect_input.clear();
-        self.inspect_input_cursor = 0;
+        self.inspect.mode = InspectMode::Command;
+        self.inspect.input.clear();
+        self.inspect.input_cursor = 0;
     }
 
     fn inspect_exit_input(&mut self) {
-        self.inspect_mode = InspectMode::Normal;
-        self.inspect_input.clear();
-        self.inspect_input_cursor = 0;
+        self.inspect.mode = InspectMode::Normal;
+        self.inspect.input.clear();
+        self.inspect.input_cursor = 0;
         self.rebuild_inspect_lines();
     }
 
     fn inspect_commit_search(&mut self) {
-        self.inspect_query = self.inspect_input.clone();
-        self.inspect_mode = InspectMode::Normal;
-        self.inspect_input.clear();
-        self.inspect_input_cursor = 0;
+        self.inspect.query = self.inspect.input.clone();
+        self.inspect.mode = InspectMode::Normal;
+        self.inspect.input.clear();
+        self.inspect.input_cursor = 0;
         self.rebuild_inspect_lines();
-        if let Some(first) = self.inspect_match_paths.first().cloned() {
+        if let Some(first) = self.inspect.match_paths.first().cloned() {
             self.inspect_focus_path(&first);
         }
     }
 
     fn inspect_copy_selected_value(&mut self, pretty: bool) {
-        let Some(root) = self.inspect_value.as_ref() else {
+        let Some(root) = self.inspect.value.as_ref() else {
             return;
         };
-        let Some(line) = self.inspect_lines.get(self.inspect_selected) else {
+        let Some(line) = self.inspect.lines.get(self.inspect.selected) else {
             return;
         };
         let Some(value) = root.pointer(&line.path) else {
-            self.inspect_error = Some("failed to locate selected value".to_string());
+            self.inspect.error = Some("failed to locate selected value".to_string());
             return;
         };
 
@@ -2123,7 +2158,7 @@ impl App {
             match serde_json::to_string_pretty(value) {
                 Ok(s) => s,
                 Err(e) => {
-                    self.inspect_error = Some(format!("failed to serialize value: {:#}", e));
+                    self.inspect.error = Some(format!("failed to serialize value: {:#}", e));
                     return;
                 }
             }
@@ -2132,78 +2167,78 @@ impl App {
         };
 
         if let Err(e) = copy_to_clipboard(&text) {
-            self.inspect_error = Some(format!("{:#}", e));
+            self.inspect.error = Some(format!("{:#}", e));
         }
     }
 
     fn inspect_copy_selected_path(&mut self) {
-        let Some(line) = self.inspect_lines.get(self.inspect_selected) else {
+        let Some(line) = self.inspect.lines.get(self.inspect.selected) else {
             return;
         };
         if let Err(e) = copy_to_clipboard(&line.path) {
-            self.inspect_error = Some(format!("{:#}", e));
+            self.inspect.error = Some(format!("{:#}", e));
         }
     }
 
     fn open_logs_state(&mut self, id: String) {
-        self.logs_loading = true;
-        self.logs_error = None;
-        self.logs_text = None;
-        self.logs_for_id = Some(id);
-        self.logs_cursor = 0;
-        self.logs_scroll_top = 0;
-        self.logs_select_anchor = None;
-        self.logs_hscroll = 0;
-        self.logs_max_width = 0;
-        self.logs_mode = LogsMode::Normal;
-        self.logs_input.clear();
-        self.logs_query.clear();
-        self.logs_command.clear();
-        self.logs_regex = None;
-        self.logs_regex_error = None;
-        self.logs_match_lines.clear();
-        self.logs_show_line_numbers = false;
+        self.logs.loading = true;
+        self.logs.error = None;
+        self.logs.text = None;
+        self.logs.for_id = Some(id);
+        self.logs.cursor = 0;
+        self.logs.scroll_top = 0;
+        self.logs.select_anchor = None;
+        self.logs.hscroll = 0;
+        self.logs.max_width = 0;
+        self.logs.mode = LogsMode::Normal;
+        self.logs.input.clear();
+        self.logs.query.clear();
+        self.logs.command.clear();
+        self.logs.regex = None;
+        self.logs.regex_error = None;
+        self.logs.match_lines.clear();
+        self.logs.show_line_numbers = false;
     }
 
     fn logs_move_up(&mut self, by: usize) {
-        self.logs_cursor = self.logs_cursor.saturating_sub(by);
+        self.logs.cursor = self.logs.cursor.saturating_sub(by);
     }
 
     fn logs_move_down(&mut self, by: usize) {
         let total = self.logs_total_lines();
         if total == 0 {
-            self.logs_cursor = 0;
+            self.logs.cursor = 0;
             return;
         }
-        self.logs_cursor = self.logs_cursor.saturating_add(by).min(total - 1);
+        self.logs.cursor = self.logs.cursor.saturating_add(by).min(total - 1);
     }
 
     fn logs_total_lines(&self) -> usize {
-        self.logs_text
+        self.logs.text
             .as_ref()
             .map(|t| t.lines().count())
             .unwrap_or(0)
     }
 
     fn logs_toggle_selection(&mut self) {
-        if self.logs_select_anchor.take().is_none() {
-            self.logs_select_anchor = Some(self.logs_cursor);
+        if self.logs.select_anchor.take().is_none() {
+            self.logs.select_anchor = Some(self.logs.cursor);
         }
     }
 
     fn logs_clear_selection(&mut self) {
-        self.logs_select_anchor = None;
+        self.logs.select_anchor = None;
     }
 
     fn logs_selection_range(&self) -> Option<(usize, usize)> {
-        let anchor = self.logs_select_anchor?;
-        let a = anchor.min(self.logs_cursor);
-        let b = anchor.max(self.logs_cursor);
+        let anchor = self.logs.select_anchor?;
+        let a = anchor.min(self.logs.cursor);
+        let b = anchor.max(self.logs.cursor);
         Some((a, b))
     }
 
     fn logs_copy_selection(&mut self) {
-        let Some(text) = self.logs_text.as_deref() else {
+        let Some(text) = self.logs.text.as_deref() else {
             self.set_warn("no logs loaded");
             return;
         };
@@ -2216,7 +2251,7 @@ impl App {
 
         let (start, end) = self
             .logs_selection_range()
-            .unwrap_or((self.logs_cursor, self.logs_cursor));
+            .unwrap_or((self.logs.cursor, self.logs.cursor));
         let start = start.min(total.saturating_sub(1));
         let end = end.min(total.saturating_sub(1));
 
@@ -2247,50 +2282,50 @@ impl App {
     }
 
     fn logs_rebuild_matches(&mut self) {
-        let q = match self.logs_mode {
-            LogsMode::Search => self.logs_input.trim(),
-            LogsMode::Normal | LogsMode::Command => self.logs_query.trim(),
+        let q = match self.logs.mode {
+            LogsMode::Search => self.logs.input.trim(),
+            LogsMode::Normal | LogsMode::Command => self.logs.query.trim(),
         };
         if q.is_empty() {
-            self.logs_match_lines.clear();
-            self.logs_regex = None;
-            self.logs_regex_error = None;
+            self.logs.match_lines.clear();
+            self.logs.regex = None;
+            self.logs.regex_error = None;
             return;
         }
 
-        let Some(text) = &self.logs_text else {
-            self.logs_match_lines.clear();
+        let Some(text) = &self.logs.text else {
+            self.logs.match_lines.clear();
             return;
         };
 
-        if self.logs_use_regex {
+        if self.logs.use_regex {
             match RegexBuilder::new(q).case_insensitive(true).build() {
                 Ok(re) => {
-                    self.logs_regex = Some(re);
-                    self.logs_regex_error = None;
+                    self.logs.regex = Some(re);
+                    self.logs.regex_error = None;
                 }
                 Err(e) => {
-                    self.logs_regex = None;
-                    self.logs_regex_error = Some(format!("{e}"));
-                    self.logs_match_lines.clear();
+                    self.logs.regex = None;
+                    self.logs.regex_error = Some(format!("{e}"));
+                    self.logs.match_lines.clear();
                     return;
                 }
             }
 
-            let Some(re) = self.logs_regex.as_ref() else {
-                self.logs_match_lines.clear();
+            let Some(re) = self.logs.regex.as_ref() else {
+                self.logs.match_lines.clear();
                 return;
             };
-            self.logs_match_lines = text
+            self.logs.match_lines = text
                 .lines()
                 .enumerate()
                 .filter_map(|(i, line)| if re.is_match(line) { Some(i) } else { None })
                 .collect();
         } else {
-            self.logs_regex = None;
-            self.logs_regex_error = None;
+            self.logs.regex = None;
+            self.logs.regex_error = None;
             let q_lc = q.to_ascii_lowercase();
-            self.logs_match_lines = text
+            self.logs.match_lines = text
                 .lines()
                 .enumerate()
                 .filter_map(|(i, line)| {
@@ -2305,57 +2340,57 @@ impl App {
     }
 
     fn logs_commit_search(&mut self) {
-        self.logs_query = self.logs_input.clone();
-        self.logs_mode = LogsMode::Normal;
-        self.logs_input.clear();
-        self.logs_input_cursor = 0;
+        self.logs.query = self.logs.input.clone();
+        self.logs.mode = LogsMode::Normal;
+        self.logs.input.clear();
+        self.logs.input_cursor = 0;
         self.logs_rebuild_matches();
-        if let Some(first) = self.logs_match_lines.first().copied() {
-            self.logs_cursor = first;
+        if let Some(first) = self.logs.match_lines.first().copied() {
+            self.logs.cursor = first;
         }
     }
 
     fn logs_cancel_search(&mut self) {
-        self.logs_mode = LogsMode::Normal;
-        self.logs_input.clear();
-        self.logs_input_cursor = 0;
+        self.logs.mode = LogsMode::Normal;
+        self.logs.input.clear();
+        self.logs.input_cursor = 0;
         self.logs_rebuild_matches();
     }
 
     fn logs_next_match(&mut self) {
-        if self.logs_mode != LogsMode::Normal {
+        if self.logs.mode != LogsMode::Normal {
             return;
         }
-        if self.logs_match_lines.is_empty() {
+        if self.logs.match_lines.is_empty() {
             return;
         }
-        let cur = self.logs_cursor;
+        let cur = self.logs.cursor;
         let next = self
-            .logs_match_lines
+            .logs.match_lines
             .iter()
             .copied()
             .find(|&i| i > cur)
-            .or_else(|| self.logs_match_lines.first().copied())
+            .or_else(|| self.logs.match_lines.first().copied())
             .unwrap();
-        self.logs_cursor = next;
+        self.logs.cursor = next;
     }
 
     fn logs_prev_match(&mut self) {
-        if self.logs_mode != LogsMode::Normal {
+        if self.logs.mode != LogsMode::Normal {
             return;
         }
-        if self.logs_match_lines.is_empty() {
+        if self.logs.match_lines.is_empty() {
             return;
         }
-        let cur = self.logs_cursor;
+        let cur = self.logs.cursor;
         let prev = self
-            .logs_match_lines
+            .logs.match_lines
             .iter()
             .copied()
             .rfind(|&i| i < cur)
-            .or_else(|| self.logs_match_lines.last().copied())
+            .or_else(|| self.logs.match_lines.last().copied())
             .unwrap();
-        self.logs_cursor = prev;
+        self.logs.cursor = prev;
     }
 
     fn selected_image(&self) -> Option<&ImageRow> {
@@ -2574,10 +2609,10 @@ pub async fn run_tui(
     app.mouse_enabled = mouse_enabled;
     app.ascii_only = ascii_only;
     app.refresh_secs = refresh.as_secs().max(1);
-    app.logs_tail = logs_tail.max(1);
+    app.logs.tail = logs_tail.max(1);
     app.cmd_history_max = cmd_history_max.clamp(1, 5000);
     app.set_cmd_history_entries(cmd_history);
-    app.templates_dir = expand_user_path(&templates_dir);
+    app.templates_state.dir = expand_user_path(&templates_dir);
     app.refresh_templates();
 
     // Background fetch: container list, inspect, logs, and actions are done via
@@ -3233,20 +3268,20 @@ pub async fn run_tui(
         }
 
         while let Ok((id, res)) = inspect_res_rx.try_recv() {
-            if app.inspect_for_id.as_deref() != Some(&id) {
+            if app.inspect.for_id.as_deref() != Some(&id) {
                 continue;
             }
-            app.inspect_loading = false;
+            app.inspect.loading = false;
             match res {
                 Ok(value) => {
-                    app.inspect_value = Some(value);
-                    app.inspect_error = None;
+                    app.inspect.value = Some(value);
+                    app.inspect.error = None;
                     app.rebuild_inspect_lines();
                 }
                 Err(e) => {
-                    app.inspect_value = None;
+                    app.inspect.value = None;
                     let msg = format!("{:#}", e);
-                    app.inspect_error = Some(msg.clone());
+                    app.inspect.error = Some(msg.clone());
                     app.log_msg(MsgLevel::Error, format!("inspect failed: {msg}"));
                     app.rebuild_inspect_lines();
                 }
@@ -3258,11 +3293,11 @@ pub async fn run_tui(
                 Ok(out) => {
                     app.clear_last_error();
                     if let ActionRequest::TemplateDeploy { name, .. } = &req {
-                        app.template_deploy_inflight.remove(name);
+                        app.templates_state.template_deploy_inflight.remove(name);
                         app.set_info(format!("deployed template {name}"));
                     }
                     if let ActionRequest::NetTemplateDeploy { name, .. } = &req {
-                        app.net_template_deploy_inflight.remove(name);
+                        app.templates_state.net_template_deploy_inflight.remove(name);
                         if out.trim() == "exists" {
                             app.set_warn(format!(
                                 "network '{name}' already exists (use :nettemplate deploy! to recreate)"
@@ -3281,12 +3316,12 @@ pub async fn run_tui(
                             app.action_inflight.remove(id);
                         }
                         ActionRequest::TemplateDeploy { name, .. } => {
-                            app.template_deploy_inflight.remove(name);
+                            app.templates_state.template_deploy_inflight.remove(name);
                             app.set_error(format!("deploy failed for {name}: {:#}", e));
                             continue;
                         }
                         ActionRequest::NetTemplateDeploy { name, .. } => {
-                            app.net_template_deploy_inflight.remove(name);
+                            app.templates_state.net_template_deploy_inflight.remove(name);
                             app.set_error(format!("deploy failed for {name}: {:#}", e));
                             continue;
                         }
@@ -3309,28 +3344,28 @@ pub async fn run_tui(
         }
 
         while let Ok((id, res)) = logs_res_rx.try_recv() {
-            if app.logs_for_id.as_deref() != Some(&id) {
+            if app.logs.for_id.as_deref() != Some(&id) {
                 continue;
             }
-            app.logs_loading = false;
+            app.logs.loading = false;
             match res {
                 Ok(text) => {
-                    app.logs_max_width = text.lines().map(|l| l.chars().count()).max().unwrap_or(0);
-                    app.logs_text = Some(text);
-                    app.logs_error = None;
-                    if app.logs_cursor >= app.logs_total_lines() {
-                        app.logs_cursor = app.logs_total_lines().saturating_sub(1);
+                    app.logs.max_width = text.lines().map(|l| l.chars().count()).max().unwrap_or(0);
+                    app.logs.text = Some(text);
+                    app.logs.error = None;
+                    if app.logs.cursor >= app.logs_total_lines() {
+                        app.logs.cursor = app.logs_total_lines().saturating_sub(1);
                     }
                     app.logs_rebuild_matches();
                 }
                 Err(e) => {
-                    app.logs_text = None;
+                    app.logs.text = None;
                     let msg = format!("{:#}", e);
-                    app.logs_error = Some(msg.clone());
+                    app.logs.error = Some(msg.clone());
                     app.log_msg(MsgLevel::Error, format!("logs failed: {msg}"));
-                    app.logs_cursor = 0;
-                    app.logs_hscroll = 0;
-                    app.logs_max_width = 0;
+                    app.logs.cursor = 0;
+                    app.logs.hscroll = 0;
+                    app.logs.max_width = 0;
                     app.logs_rebuild_matches();
                 }
             }
@@ -3368,17 +3403,17 @@ pub async fn run_tui(
                             }
                         };
                         terminal = setup_terminal(mouse_enabled)?;
-                        if let Some(name) = app.templates_refresh_after_edit.take() {
+                        if let Some(name) = app.templates_state.templates_refresh_after_edit.take() {
                             app.refresh_templates();
-                            if let Some(idx) = app.templates.iter().position(|t| t.name == name) {
-                                app.templates_selected = idx;
+                            if let Some(idx) = app.templates_state.templates.iter().position(|t| t.name == name) {
+                                app.templates_state.templates_selected = idx;
                             }
                         }
-                        if let Some(name) = app.net_templates_refresh_after_edit.take() {
+                        if let Some(name) = app.templates_state.net_templates_refresh_after_edit.take() {
                             app.refresh_net_templates();
-                            if let Some(idx) = app.net_templates.iter().position(|t| t.name == name)
+                            if let Some(idx) = app.templates_state.net_templates.iter().position(|t| t.name == name)
                             {
-                                app.net_templates_selected = idx;
+                                app.templates_state.net_templates_selected = idx;
                             }
                         }
                         if let Some(name) = app.theme_refresh_after_edit.take() {
