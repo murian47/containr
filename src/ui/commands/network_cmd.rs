@@ -1,7 +1,7 @@
 //! Network commands (`:network ...` / `:net ...`).
 
-use super::super::shell_begin_confirm;
 use super::super::App;
+use super::super::shell_begin_confirm;
 use tokio::sync::mpsc;
 
 pub fn handle_network(
@@ -38,4 +38,3 @@ pub fn handle_network(
     }
     true
 }
-

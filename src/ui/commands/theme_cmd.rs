@@ -6,7 +6,7 @@
 //!
 //! The active theme name is persisted in the main config file.
 
-use super::super::{shell_escape_sh_arg, App, MsgLevel, ShellInteractive};
+use super::super::{App, MsgLevel, ShellInteractive, shell_escape_sh_arg};
 use crate::ui::theme;
 use anyhow::Context as _;
 use std::fs;
@@ -19,10 +19,7 @@ fn validate_theme_name(raw: &str) -> anyhow::Result<String> {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'),
         "theme name must be [A-Za-z0-9._-]"
     );
-    anyhow::ensure!(
-        !name.starts_with('.'),
-        "theme name must not start with '.'"
-    );
+    anyhow::ensure!(!name.starts_with('.'), "theme name must not start with '.'");
     anyhow::ensure!(name != "." && name != "..", "invalid theme name");
     Ok(name.to_string())
 }
@@ -64,7 +61,11 @@ pub fn edit_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
         theme::save_theme(&app.config_path, &name, &spec)?;
     }
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-    let cmd = format!("{} {}", editor, shell_escape_sh_arg(&path.to_string_lossy()));
+    let cmd = format!(
+        "{} {}",
+        editor,
+        shell_escape_sh_arg(&path.to_string_lossy())
+    );
     if name == app.theme_name {
         app.theme_refresh_after_edit = Some(name);
     }

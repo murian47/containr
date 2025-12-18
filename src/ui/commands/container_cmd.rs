@@ -1,8 +1,6 @@
 //! Container commands (`:container ...` / `:ctr ...`).
 
-use super::super::{
-    shell_begin_confirm, ActiveView, App, ListMode, ViewEntry,
-};
+use super::super::{ActiveView, App, ListMode, ViewEntry, shell_begin_confirm};
 use crate::docker::ContainerAction;
 use tokio::sync::mpsc;
 
@@ -77,4 +75,3 @@ pub fn handle_container(
     }
     true
 }
-

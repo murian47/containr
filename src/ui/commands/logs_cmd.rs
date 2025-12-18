@@ -34,4 +34,3 @@ pub fn handle_logs(
     app.set_warn("usage: :logs reload|copy");
     true
 }
-

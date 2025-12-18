@@ -1,8 +1,8 @@
 //! Server commands (`:server ...`).
 
 use super::super::{
-    build_server_shortcuts, ensure_unique_server_name, find_server_by_name, parse_kv_args,
-    shell_begin_confirm, shell_switch_server, App, Connection, ShellFocus, ShellView,
+    App, Connection, ShellFocus, ShellView, build_server_shortcuts, ensure_unique_server_name,
+    find_server_by_name, parse_kv_args, shell_begin_confirm, shell_switch_server,
 };
 use crate::config::ServerEntry;
 use tokio::sync::{mpsc, watch};
@@ -121,7 +121,9 @@ pub fn handle_server(
                     });
                 }
                 _ => {
-                    app.set_error("usage: :server add <name> (ssh <target> | local) [opts]".to_string());
+                    app.set_error(
+                        "usage: :server add <name> (ssh <target> | local) [opts]".to_string(),
+                    );
                     return true;
                 }
             }

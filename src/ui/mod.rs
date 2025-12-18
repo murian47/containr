@@ -10,8 +10,8 @@
 //! - IO/runner functions should not mutate UI widgets directly.
 //! - UI code should use semantic theme roles (`theme::ThemeSpec`) instead of hard-coded colors.
 
-pub mod theme;
 mod commands;
+pub mod theme;
 
 use crate::config::{self, ContainrConfig, KeyBinding, ServerEntry};
 use crate::docker::{
@@ -373,7 +373,9 @@ fn cmdline_is_destructive(raw: &str) -> bool {
     match cmd.as_str() {
         "container" | "ctr" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
         "template" | "tpl" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
-        "nettemplate" | "nettpl" | "ntpl" | "nt" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
+        "nettemplate" | "nettpl" | "ntpl" | "nt" => {
+            matches!(sub.as_str(), "rm" | "remove" | "delete")
+        }
         "theme" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
         "server" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
         "image" | "img" => matches!(sub.as_str(), "rm" | "remove" | "delete" | "untag"),
@@ -840,7 +842,7 @@ struct App {
     shell_split_mode: ShellSplitMode,
     shell_split_by_view: HashMap<String, ShellSplitMode>,
     shell_server_shortcuts: Vec<char>,
-	shell_pending_interactive: Option<ShellInteractive>,
+    shell_pending_interactive: Option<ShellInteractive>,
     shell_cmdline: ShellCmdlineState,
     shell_help: ShellHelpState,
     refresh_secs: u64,
@@ -941,7 +943,8 @@ impl App {
         let idx = if self.shell_msgs.scroll == usize::MAX {
             self.session_msgs.len().saturating_sub(1)
         } else {
-            self.shell_msgs.scroll
+            self.shell_msgs
+                .scroll
                 .min(self.session_msgs.len().saturating_sub(1))
         };
         let m = &self.session_msgs[idx];
@@ -1180,13 +1183,15 @@ impl App {
 
         let dir = self.stack_templates_dir();
         if let Err(e) = fs::create_dir_all(&dir) {
-            self.templates_state.templates_error = Some(format!("failed to create templates dir: {e}"));
+            self.templates_state.templates_error =
+                Some(format!("failed to create templates dir: {e}"));
             return;
         }
         let entries = match fs::read_dir(&dir) {
             Ok(e) => e,
             Err(e) => {
-                self.templates_state.templates_error = Some(format!("failed to read templates dir: {e}"));
+                self.templates_state.templates_error =
+                    Some(format!("failed to read templates dir: {e}"));
                 return;
             }
         };
@@ -1222,12 +1227,15 @@ impl App {
         out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         self.templates_state.templates = out;
         if self.templates_state.templates_selected >= self.templates_state.templates.len() {
-            self.templates_state.templates_selected = self.templates_state.templates.len().saturating_sub(1);
+            self.templates_state.templates_selected =
+                self.templates_state.templates.len().saturating_sub(1);
         }
     }
 
     fn selected_template(&self) -> Option<&TemplateEntry> {
-        self.templates_state.templates.get(self.templates_state.templates_selected)
+        self.templates_state
+            .templates
+            .get(self.templates_state.templates_selected)
     }
 
     fn net_templates_dir(&self) -> PathBuf {
@@ -1270,7 +1278,10 @@ impl App {
         if let Err(e) = fs::create_dir_all(&stacks) {
             self.log_msg(
                 MsgLevel::Warn,
-                format!("failed to create stacks templates dir '{}': {e}", stacks.display()),
+                format!(
+                    "failed to create stacks templates dir '{}': {e}",
+                    stacks.display()
+                ),
             );
             return;
         }
@@ -1289,11 +1300,7 @@ impl App {
             if let Err(e) = fs::rename(&from, &to) {
                 self.log_msg(
                     MsgLevel::Warn,
-                    format!(
-                        "template migration failed for '{}': {}",
-                        name,
-                        e
-                    ),
+                    format!("template migration failed for '{}': {}", name, e),
                 );
             }
         }
@@ -1308,13 +1315,15 @@ impl App {
 
         let dir = self.net_templates_dir();
         if let Err(e) = fs::create_dir_all(&dir) {
-            self.templates_state.net_templates_error = Some(format!("failed to create net templates dir: {e}"));
+            self.templates_state.net_templates_error =
+                Some(format!("failed to create net templates dir: {e}"));
             return;
         }
         let entries = match fs::read_dir(&dir) {
             Ok(e) => e,
             Err(e) => {
-                self.templates_state.net_templates_error = Some(format!("failed to read net templates dir: {e}"));
+                self.templates_state.net_templates_error =
+                    Some(format!("failed to read net templates dir: {e}"));
                 return;
             }
         };
@@ -1350,12 +1359,15 @@ impl App {
         out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         self.templates_state.net_templates = out;
         if self.templates_state.net_templates_selected >= self.templates_state.net_templates.len() {
-            self.templates_state.net_templates_selected = self.templates_state.net_templates.len().saturating_sub(1);
+            self.templates_state.net_templates_selected =
+                self.templates_state.net_templates.len().saturating_sub(1);
         }
     }
 
     fn selected_net_template(&self) -> Option<&NetTemplateEntry> {
-        self.templates_state.net_templates.get(self.templates_state.net_templates_selected)
+        self.templates_state
+            .net_templates
+            .get(self.templates_state.net_templates_selected)
     }
 
     fn rebuild_keymap(&mut self) {
@@ -1991,7 +2003,8 @@ impl App {
             return;
         }
         self.inspect.selected = self
-            .inspect.selected
+            .inspect
+            .selected
             .saturating_add(by)
             .min(self.inspect.lines.len() - 1);
     }
@@ -2034,13 +2047,15 @@ impl App {
             return;
         }
         let current_path = self
-            .inspect.lines
+            .inspect
+            .lines
             .get(self.inspect.selected)
             .map(|l| l.path.as_str())
             .unwrap_or("");
 
         let current_rank = self
-            .inspect.path_rank
+            .inspect
+            .path_rank
             .get(current_path)
             .copied()
             .unwrap_or(0);
@@ -2068,13 +2083,15 @@ impl App {
             return;
         }
         let current_path = self
-            .inspect.lines
+            .inspect
+            .lines
             .get(self.inspect.selected)
             .map(|l| l.path.as_str())
             .unwrap_or("");
 
         let current_rank = self
-            .inspect.path_rank
+            .inspect
+            .path_rank
             .get(current_path)
             .copied()
             .unwrap_or(0);
@@ -2214,7 +2231,8 @@ impl App {
     }
 
     fn logs_total_lines(&self) -> usize {
-        self.logs.text
+        self.logs
+            .text
             .as_ref()
             .map(|t| t.lines().count())
             .unwrap_or(0)
@@ -2366,7 +2384,8 @@ impl App {
         }
         let cur = self.logs.cursor;
         let next = self
-            .logs.match_lines
+            .logs
+            .match_lines
             .iter()
             .copied()
             .find(|&i| i > cur)
@@ -2384,7 +2403,8 @@ impl App {
         }
         let cur = self.logs.cursor;
         let prev = self
-            .logs.match_lines
+            .logs
+            .match_lines
             .iter()
             .copied()
             .rfind(|&i| i < cur)
@@ -2813,8 +2833,8 @@ pub async fn run_tui(
                     async {
                         let raw = fs::read_to_string(local_cfg)
                             .with_context(|| format!("failed to read {}", local_cfg.display()))?;
-                        let spec: NetworkTemplateSpec =
-                            serde_json::from_str(&raw).context("network.json was not valid JSON")?;
+                        let spec: NetworkTemplateSpec = serde_json::from_str(&raw)
+                            .context("network.json was not valid JSON")?;
                         let net_name = spec.name.trim();
                         anyhow::ensure!(!net_name.is_empty(), "network template: name is empty");
 
@@ -2833,7 +2853,8 @@ pub async fn run_tui(
 
                         let docker_cmd = &docker.docker_cmd;
                         let net_q = shell_single_quote(net_name);
-                        let exists_cmd = format!("{docker_cmd} network inspect {net_q} >/dev/null 2>&1");
+                        let exists_cmd =
+                            format!("{docker_cmd} network inspect {net_q} >/dev/null 2>&1");
                         let exists = runner.run(&exists_cmd).await.is_ok();
                         if exists && !*force {
                             return Ok::<_, anyhow::Error>("exists".to_string());
@@ -2865,15 +2886,21 @@ pub async fn run_tui(
                         }
 
                         if let Some(ipv4) = &spec.ipv4 {
-                            if let Some(subnet) = ipv4.subnet.as_deref().filter(|s| !s.trim().is_empty()) {
+                            if let Some(subnet) =
+                                ipv4.subnet.as_deref().filter(|s| !s.trim().is_empty())
+                            {
                                 parts.push("--subnet".to_string());
                                 parts.push(shell_single_quote(subnet.trim()));
                             }
-                            if let Some(gw) = ipv4.gateway.as_deref().filter(|s| !s.trim().is_empty()) {
+                            if let Some(gw) =
+                                ipv4.gateway.as_deref().filter(|s| !s.trim().is_empty())
+                            {
                                 parts.push("--gateway".to_string());
                                 parts.push(shell_single_quote(gw.trim()));
                             }
-                            if let Some(r) = ipv4.ip_range.as_deref().filter(|s| !s.trim().is_empty()) {
+                            if let Some(r) =
+                                ipv4.ip_range.as_deref().filter(|s| !s.trim().is_empty())
+                            {
                                 parts.push("--ip-range".to_string());
                                 parts.push(shell_single_quote(r.trim()));
                             }
@@ -2885,9 +2912,14 @@ pub async fn run_tui(
                             anyhow::ensure!(!parent.is_empty(), "ipvlan requires 'parent'");
                             parts.push("--opt".to_string());
                             parts.push(shell_single_quote(&format!("parent={parent}")));
-                            if let Some(mode) = spec.ipvlan_mode.as_deref().filter(|s| !s.trim().is_empty()) {
+                            if let Some(mode) =
+                                spec.ipvlan_mode.as_deref().filter(|s| !s.trim().is_empty())
+                            {
                                 parts.push("--opt".to_string());
-                                parts.push(shell_single_quote(&format!("ipvlan_mode={}", mode.trim())));
+                                parts.push(shell_single_quote(&format!(
+                                    "ipvlan_mode={}",
+                                    mode.trim()
+                                )));
                             }
                         }
 
@@ -3297,7 +3329,9 @@ pub async fn run_tui(
                         app.set_info(format!("deployed template {name}"));
                     }
                     if let ActionRequest::NetTemplateDeploy { name, .. } = &req {
-                        app.templates_state.net_template_deploy_inflight.remove(name);
+                        app.templates_state
+                            .net_template_deploy_inflight
+                            .remove(name);
                         if out.trim() == "exists" {
                             app.set_warn(format!(
                                 "network '{name}' already exists (use :nettemplate deploy! to recreate)"
@@ -3321,7 +3355,9 @@ pub async fn run_tui(
                             continue;
                         }
                         ActionRequest::NetTemplateDeploy { name, .. } => {
-                            app.templates_state.net_template_deploy_inflight.remove(name);
+                            app.templates_state
+                                .net_template_deploy_inflight
+                                .remove(name);
                             app.set_error(format!("deploy failed for {name}: {:#}", e));
                             continue;
                         }
@@ -3403,15 +3439,27 @@ pub async fn run_tui(
                             }
                         };
                         terminal = setup_terminal(mouse_enabled)?;
-                        if let Some(name) = app.templates_state.templates_refresh_after_edit.take() {
+                        if let Some(name) = app.templates_state.templates_refresh_after_edit.take()
+                        {
                             app.refresh_templates();
-                            if let Some(idx) = app.templates_state.templates.iter().position(|t| t.name == name) {
+                            if let Some(idx) = app
+                                .templates_state
+                                .templates
+                                .iter()
+                                .position(|t| t.name == name)
+                            {
                                 app.templates_state.templates_selected = idx;
                             }
                         }
-                        if let Some(name) = app.templates_state.net_templates_refresh_after_edit.take() {
+                        if let Some(name) =
+                            app.templates_state.net_templates_refresh_after_edit.take()
+                        {
                             app.refresh_net_templates();
-                            if let Some(idx) = app.templates_state.net_templates.iter().position(|t| t.name == name)
+                            if let Some(idx) = app
+                                .templates_state
+                                .net_templates
+                                .iter()
+                                .position(|t| t.name == name)
                             {
                                 app.templates_state.net_templates_selected = idx;
                             }
@@ -3573,3 +3621,121 @@ fn restore_terminal(
 }
 
 include!("render.inc.rs");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    fn mk_temp_path(prefix: &str) -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::from_secs(0))
+            .as_nanos();
+        dir.push(format!(
+            "containr-tests-{prefix}-{now}-{}",
+            std::process::id()
+        ));
+        dir
+    }
+
+    fn mk_test_app() -> App {
+        let tmp = mk_temp_path("config");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let config_path = tmp.join("config.json");
+        App::new(
+            vec![ServerEntry {
+                name: "local".to_string(),
+                target: "local".to_string(),
+                port: None,
+                identity: None,
+                docker_cmd: "docker".to_string(),
+            }],
+            Vec::new(),
+            Some("local".to_string()),
+            config_path,
+            HashMap::new(),
+            "default".to_string(),
+            theme::default_theme_spec(),
+        )
+    }
+
+    fn render_screen(app: &mut App, width: u16, height: u16) -> String {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                draw_shell(f, app, Duration::from_secs(5));
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let area = buf.area;
+        let mut out = String::new();
+        for y in 0..area.height {
+            let mut line = String::new();
+            for x in 0..area.width {
+                line.push_str(buf[(x, y)].symbol());
+            }
+            out.push_str(line.trim_end());
+            out.push('\n');
+        }
+        out
+    }
+
+    #[test]
+    fn parse_key_spec_allows_ctrl_shift_char_chord() {
+        let ks = parse_key_spec("C-S-C").expect("parse C-S-C");
+        assert_eq!(ks.mods, 1 | 2);
+        assert_eq!(ks.code, KeyCodeNorm::Char('C'));
+    }
+
+    #[test]
+    fn default_keymap_contains_ctrl_shift_c_console_sh() {
+        let km = build_default_keymap();
+        let key = KeySpec {
+            mods: 1 | 2,
+            code: KeyCodeNorm::Char('C'),
+        };
+        let cmd = km
+            .get(&(KeyScope::View(ShellView::Containers), key))
+            .cloned();
+        assert_eq!(cmd.as_deref(), Some("container console sh"));
+    }
+
+    #[test]
+    fn render_help_contains_core_sections() {
+        let mut app = mk_test_app();
+        app.loading = false;
+        app.shell_view = ShellView::Help;
+        let screen = render_screen(&mut app, 120, 40);
+        assert!(screen.contains("General"));
+        assert!(screen.contains(":map"));
+        assert!(screen.contains(":messages"));
+        assert!(screen.contains(":set refresh"));
+    }
+
+    #[test]
+    fn render_logs_shows_query_and_matches() {
+        let mut app = mk_test_app();
+        app.loading = false;
+        app.shell_view = ShellView::Logs;
+        app.logs.loading = false;
+        app.logs.error = None;
+        app.logs.text = Some(
+            "first line\nerror: something failed\nsecond line\nERROR: another one\n".to_string(),
+        );
+        app.logs.show_line_numbers = true;
+        app.logs.query = "error".to_string();
+        app.logs.mode = LogsMode::Normal;
+        app.logs_rebuild_matches();
+
+        let screen = render_screen(&mut app, 120, 30);
+        assert!(screen.contains("error: something failed"));
+        assert!(screen.contains("Matches:"));
+        assert!(screen.contains("Query:"));
+        assert!(screen.contains("error"));
+    }
+}

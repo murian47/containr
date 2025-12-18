@@ -1,8 +1,8 @@
 //! Template commands (`:templates ...`, `:template ...`, `:nettemplate ...`).
 
 use super::super::{
-    shell_begin_confirm, shell_set_main_view, shell_sidebar_select_item, ActionRequest, App,
-    ShellSidebarItem, ShellView, TemplatesKind,
+    ActionRequest, App, ShellSidebarItem, ShellView, TemplatesKind, shell_begin_confirm,
+    shell_set_main_view, shell_sidebar_select_item,
 };
 use tokio::sync::mpsc;
 
@@ -83,9 +83,7 @@ pub fn handle_template(
             let v = args.get(1).copied().unwrap_or("toggle");
             set_templates_kind(app, v)
         }
-        "toggle" => {
-            set_templates_kind(app, "toggle")
-        }
+        "toggle" => set_templates_kind(app, "toggle"),
         "edit" => {
             shell_set_main_view(app, ShellView::Templates);
             shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
@@ -105,11 +103,19 @@ pub fn handle_template(
                 TemplatesKind::Stacks => match super::super::create_template(app, name) {
                     Ok(()) => {
                         app.refresh_templates();
-                        if let Some(idx) = app.templates_state.templates.iter().position(|t| t.name == name) {
+                        if let Some(idx) = app
+                            .templates_state
+                            .templates
+                            .iter()
+                            .position(|t| t.name == name)
+                        {
                             app.templates_state.templates_selected = idx;
                         }
                         shell_set_main_view(app, ShellView::Templates);
-                        shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
+                        shell_sidebar_select_item(
+                            app,
+                            ShellSidebarItem::Module(ShellView::Templates),
+                        );
                         super::super::shell_edit_selected_template(app);
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
@@ -117,11 +123,19 @@ pub fn handle_template(
                 TemplatesKind::Networks => match super::super::create_net_template(app, name) {
                     Ok(()) => {
                         app.refresh_net_templates();
-                        if let Some(idx) = app.templates_state.net_templates.iter().position(|t| t.name == name) {
+                        if let Some(idx) = app
+                            .templates_state
+                            .net_templates
+                            .iter()
+                            .position(|t| t.name == name)
+                        {
                             app.templates_state.net_templates_selected = idx;
                         }
                         shell_set_main_view(app, ShellView::Templates);
-                        shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
+                        shell_sidebar_select_item(
+                            app,
+                            ShellSidebarItem::Module(ShellView::Templates),
+                        );
                         super::super::shell_edit_selected_net_template(app);
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
@@ -144,7 +158,9 @@ pub fn handle_template(
                 return true;
             }
             match app.templates_state.kind {
-                TemplatesKind::Stacks => super::super::shell_deploy_template(app, &name, action_req_tx),
+                TemplatesKind::Stacks => {
+                    super::super::shell_deploy_template(app, &name, action_req_tx)
+                }
                 TemplatesKind::Networks => {
                     super::super::shell_deploy_net_template(app, &name, force, action_req_tx)
                 }
@@ -185,7 +201,10 @@ pub fn handle_template(
                         app.refresh_templates();
                         app.set_info(format!("deleted template {name}"));
                         shell_set_main_view(app, ShellView::Templates);
-                        shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
+                        shell_sidebar_select_item(
+                            app,
+                            ShellSidebarItem::Module(ShellView::Templates),
+                        );
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
                 },
@@ -194,7 +213,10 @@ pub fn handle_template(
                         app.refresh_net_templates();
                         app.set_info(format!("deleted network template {name}"));
                         shell_set_main_view(app, ShellView::Templates);
-                        shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
+                        shell_sidebar_select_item(
+                            app,
+                            ShellSidebarItem::Module(ShellView::Templates),
+                        );
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
                 },
@@ -248,7 +270,12 @@ pub fn handle_nettemplate(
             match super::super::create_net_template(app, name) {
                 Ok(()) => {
                     app.refresh_net_templates();
-                    if let Some(idx) = app.templates_state.net_templates.iter().position(|t| t.name == name) {
+                    if let Some(idx) = app
+                        .templates_state
+                        .net_templates
+                        .iter()
+                        .position(|t| t.name == name)
+                    {
                         app.templates_state.net_templates_selected = idx;
                     }
                     app.templates_state.kind = TemplatesKind::Networks;

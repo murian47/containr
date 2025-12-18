@@ -66,7 +66,9 @@ pub fn handle_set(
             true
         }
         _ => {
-            app.set_warn("usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries>");
+            app.set_warn(
+                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries>",
+            );
             true
         }
     }

@@ -134,29 +134,26 @@ fn parse_key_spec(s: &str) -> Result<KeySpec, String> {
         };
     }
 
+    // Multi-part spec: treat all but the last part as modifiers, and the last part as the key.
+    // This keeps the syntax unambiguous and allows chords like "C-S-C" (Ctrl+Shift+C).
     let mut mods: u8 = 0;
-    let mut key_part: Option<&str> = None;
-    for p in parts {
+    let (mods_parts, key_part) = parts.split_at(parts.len().saturating_sub(1));
+    let key_part = key_part.first().ok_or_else(|| "missing key".to_string())?;
+
+    for p in mods_parts {
         let p_lc = p.to_ascii_lowercase();
         // Modifiers are accepted case-insensitively for words ("ctrl", "shift", ...).
-        // For single-letter shorthands we require uppercase to avoid ambiguity with keys
-        // like "C-s" where the "s" should be the key, not Shift.
-        match (p, p_lc.as_str()) {
+        // For single-letter shorthands we require uppercase to avoid ambiguity with keys.
+        match (*p, p_lc.as_str()) {
             ("C", _) | (_, "ctrl") | (_, "control") | (_, "strg") => mods |= 1,
             ("S", _) | (_, "shift") => mods |= 2,
             ("A", _) | (_, "alt") => mods |= 4,
             (_, "cmd") | (_, "meta") | (_, "super") => {
-                return Err(
-                    "CMD/META/SUPER is not supported by terminals via crossterm".to_string()
-                );
+                return Err("CMD/META/SUPER is not supported by terminals via crossterm".to_string());
             }
-            _ => {
-                key_part = Some(p);
-            }
+            _ => return Err(format!("invalid modifier: {p}")),
         }
     }
-
-    let key_part = key_part.ok_or_else(|| "missing key".to_string())?;
     let kp_u = key_part.to_ascii_uppercase();
     // F-keys: allow with modifiers too (e.g. C-F5).
     if let Some(n_str) = kp_u.strip_prefix('F') {
@@ -332,4 +329,3 @@ fn lookup_scoped_binding(app: &App, spec: KeySpec) -> Option<BindingHit> {
         .or_else(|| lookup_binding(app, view_scope, spec))
         .or_else(|| lookup_binding(app, KeyScope::Global, spec))
 }
-

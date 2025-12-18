@@ -1,7 +1,7 @@
 //! Image commands (`:image ...` / `:img ...`).
 
-use super::super::shell_begin_confirm;
 use super::super::App;
+use super::super::shell_begin_confirm;
 use tokio::sync::mpsc;
 
 pub fn handle_image(
@@ -31,4 +31,3 @@ pub fn handle_image(
     }
     true
 }
-

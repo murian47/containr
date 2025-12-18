@@ -1,7 +1,7 @@
 //! Volume commands (`:volume ...` / `:vol ...`).
 
-use super::super::shell_begin_confirm;
 use super::super::App;
+use super::super::shell_begin_confirm;
 use tokio::sync::mpsc;
 
 pub fn handle_volume(
@@ -24,4 +24,3 @@ pub fn handle_volume(
     }
     true
 }
-

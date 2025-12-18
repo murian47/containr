@@ -1,8 +1,8 @@
 //! Key mapping commands (`:map ...`, `:unmap ...`).
 
 use super::super::{
-    cmdline_is_destructive, is_single_letter_without_modifiers, parse_key_spec, parse_scope,
-    scope_to_string, App, KeyCodeNorm, KeyScope, KeySpec, ShellFocus, ShellView,
+    App, KeyCodeNorm, KeyScope, KeySpec, ShellFocus, ShellView, cmdline_is_destructive,
+    is_single_letter_without_modifiers, parse_key_spec, parse_scope, scope_to_string,
 };
 use crate::config::KeyBinding;
 use std::collections::{HashMap, HashSet};
@@ -47,7 +47,9 @@ fn format_key_spec(spec: KeySpec) -> String {
 pub fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bool {
     let sub = first;
     if sub.is_empty() {
-        app.set_warn("usage: :map [scope] <KEY> <COMMAND...>  |  :map list  |  :unmap [scope] <KEY>");
+        app.set_warn(
+            "usage: :map [scope] <KEY> <COMMAND...>  |  :map list  |  :unmap [scope] <KEY>",
+        );
         return true;
     }
 
@@ -63,7 +65,9 @@ pub fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bool {
                 continue;
             };
             let cmd = kb.cmd.trim().trim_start_matches(':').to_string();
-            if !cmd.is_empty() && is_single_letter_without_modifiers(spec) && cmdline_is_destructive(&cmd)
+            if !cmd.is_empty()
+                && is_single_letter_without_modifiers(spec)
+                && cmdline_is_destructive(&cmd)
             {
                 unsafe_entries.push((
                     scope_to_string(scope).to_string(),
@@ -125,7 +129,12 @@ pub fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bool {
             app.set_warn("usage: :map [scope] <KEY> <COMMAND...>");
             return true;
         };
-        let cmd_rest = rest.iter().skip(1).copied().collect::<Vec<&str>>().join(" ");
+        let cmd_rest = rest
+            .iter()
+            .skip(1)
+            .copied()
+            .collect::<Vec<&str>>()
+            .join(" ");
         (scope, key_str, cmd_rest)
     } else {
         let cmd_rest = rest.iter().copied().collect::<Vec<&str>>().join(" ");
@@ -197,7 +206,8 @@ pub fn handle_unmap(app: &mut App, first: &str, rest: &[&str]) -> bool {
     let mut removed = false;
     let before = app.keymap.len();
     app.keymap.retain(|kb| {
-        let same = parse_scope(&kb.scope) == Some(scope) && parse_key_spec(&kb.key).ok() == Some(spec);
+        let same =
+            parse_scope(&kb.scope) == Some(scope) && parse_key_spec(&kb.key).ok() == Some(spec);
         if same {
             removed = true;
         }
@@ -215,7 +225,9 @@ pub fn handle_unmap(app: &mut App, first: &str, rest: &[&str]) -> bool {
     app.rebuild_keymap();
     app.persist_config();
     if removed && app.keymap.len() < before {
-        app.set_info(format!("unmapped {scope_str} {key_canon} (restored defaults)"));
+        app.set_info(format!(
+            "unmapped {scope_str} {key_canon} (restored defaults)"
+        ));
     } else {
         app.set_info(format!("unmapped {scope_str} {key_canon}"));
     }

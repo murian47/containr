@@ -42,7 +42,9 @@ impl Default for StyleSpec {
 
 impl StyleSpec {
     pub fn to_style(&self) -> Style {
-        let mut st = Style::default().fg(parse_color(&self.fg)).bg(parse_color(&self.bg));
+        let mut st = Style::default()
+            .fg(parse_color(&self.fg))
+            .bg(parse_color(&self.bg));
         let mut m = Modifier::empty();
         if self.bold {
             m |= Modifier::BOLD;
@@ -441,10 +443,9 @@ pub fn load_theme(config_path: &Path, name: &str) -> anyhow::Result<ThemeSpec> {
         return serde_json::from_slice(&bytes)
             .with_context(|| format!("failed to parse {}", fallback.display()));
     }
-    let bytes =
-        fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
-    let mut spec: ThemeSpec =
-        serde_json::from_slice(&bytes).with_context(|| format!("failed to parse {}", path.display()))?;
+    let bytes = fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let mut spec: ThemeSpec = serde_json::from_slice(&bytes)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
     if spec.name.trim().is_empty() {
         spec.name = name.to_string();
     }

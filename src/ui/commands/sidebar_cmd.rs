@@ -16,4 +16,3 @@ pub fn handle_sidebar(app: &mut App, args: &[&str]) -> bool {
     }
     true
 }
-

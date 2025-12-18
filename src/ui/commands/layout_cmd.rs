@@ -38,4 +38,3 @@ pub fn handle_layout(app: &mut App, args: &[&str]) -> bool {
     ));
     true
 }
-
