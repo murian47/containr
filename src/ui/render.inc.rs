@@ -2968,7 +2968,7 @@ fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::
         } else {
             match app.shell_view {
                 ShellView::Logs => match app.logs.mode {
-                    LogsMode::Normal => ("NORMAL", "", String::new(), 0, false),
+                    LogsMode::Normal => ("CONTAINR", "", String::new(), 0, false),
                     LogsMode::Search => ("SEARCH", "/", app.logs.input.clone(), app.logs.input_cursor, true),
                     LogsMode::Command => (
                         "COMMAND",
@@ -2979,7 +2979,7 @@ fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::
                     ),
                 },
                 ShellView::Inspect => match app.inspect.mode {
-                    InspectMode::Normal => ("NORMAL", "", String::new(), 0, false),
+                    InspectMode::Normal => ("CONTAINR", "", String::new(), 0, false),
                     InspectMode::Search => (
                         "SEARCH",
                         "/",
@@ -2995,7 +2995,7 @@ fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::
                         true,
                     ),
                 },
-                _ => ("NORMAL", "", String::new(), 0, false),
+                _ => ("CONTAINR", "", String::new(), 0, false),
             }
         };
 
