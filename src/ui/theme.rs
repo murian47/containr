@@ -42,9 +42,19 @@ impl Default for StyleSpec {
 
 impl StyleSpec {
     pub fn to_style(&self) -> Style {
-        let mut st = Style::default()
-            .fg(parse_color(&self.fg))
-            .bg(parse_color(&self.bg));
+        // "default" means: do not set the channel so it can inherit the surrounding widget style.
+        // This is different from Color::Reset which forces the terminal's default color.
+        let mut st = Style::default();
+        if self.fg.trim().eq_ignore_ascii_case("default") {
+            // leave fg unset
+        } else {
+            st = st.fg(parse_color(&self.fg));
+        }
+        if self.bg.trim().eq_ignore_ascii_case("default") {
+            // leave bg unset
+        } else {
+            st = st.bg(parse_color(&self.bg));
+        }
         let mut m = Modifier::empty();
         if self.bold {
             m |= Modifier::BOLD;
