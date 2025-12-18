@@ -22,7 +22,7 @@ struct Args {
 
     #[arg(
         long,
-        help = "Server name from ~/.config/containr/servers.json (or $XDG_CONFIG_HOME)"
+        help = "Server name from ~/.config/containr/config.json (or $XDG_CONFIG_HOME)"
     )]
     server: Option<String>,
 

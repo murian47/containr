@@ -34,12 +34,12 @@ cargo build --release
 
 ## Serverliste (lokal)
 
-Containr kann eine lokale Serverliste laden/speichern:
+Containr kann eine lokale Konfiguration laden/speichern:
 
-- Pfad: `$XDG_CONFIG_HOME/containr/serverlist.json`
-- Fallback: `$HOME/.config/containr/serverlist.json`
+- Pfad: `$XDG_CONFIG_HOME/containr/config.json`
+- Fallback: `$HOME/.config/containr/config.json`
 
-Legacy: falls die neue Datei nicht existiert, wird auch `$XDG_CONFIG_HOME/dockdash/serverlist.json` bzw. `$HOME/.config/dockdash/serverlist.json` gelesen.
+Legacy: falls die neue Datei nicht existiert, werden auch `servers.json`/`serverlist.json` (containr/mcdoc/dockdash) eingelesen.
 
 Beispiel:
 

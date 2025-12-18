@@ -1,7 +1,7 @@
 //! On-disk configuration handling.
 //!
-//! The config file is JSON and stored under `$XDG_CONFIG_HOME/containr/servers.json`
-//! (fallback: `$HOME/.config/containr/servers.json`).
+//! The config file is JSON and stored under `$XDG_CONFIG_HOME/containr/config.json`
+//! (fallback: `$HOME/.config/containr/config.json`).
 //! No secrets are stored; only non-sensitive connection metadata and UI preferences.
 
 use anyhow::Context as _;
@@ -130,20 +130,20 @@ impl Default for ContainrConfig {
 pub fn config_path() -> anyhow::Result<PathBuf> {
     // Prefer XDG base dir spec, fall back to ~/.config.
     if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
-        return Ok(Path::new(&dir).join("containr").join("servers.json"));
+        return Ok(Path::new(&dir).join("containr").join("config.json"));
     }
     let home = std::env::var("HOME").context("HOME is not set (and XDG_CONFIG_HOME not set)")?;
     Ok(Path::new(&home)
         .join(".config")
         .join("containr")
-        .join("servers.json"))
+        .join("config.json"))
 }
 
 fn legacy_config_paths() -> anyhow::Result<Vec<PathBuf>> {
     let mut out: Vec<PathBuf> = Vec::new();
     if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
-        out.push(Path::new(&dir).join("containr").join("serverlist.json"));
         out.push(Path::new(&dir).join("containr").join("servers.json"));
+        out.push(Path::new(&dir).join("containr").join("serverlist.json"));
         out.push(Path::new(&dir).join("mcdoc").join("servers.json"));
         out.push(Path::new(&dir).join("mcdoc").join("serverlist.json"));
         out.push(Path::new(&dir).join("dockdash").join("serverlist.json"));
@@ -154,13 +154,13 @@ fn legacy_config_paths() -> anyhow::Result<Vec<PathBuf>> {
         Path::new(&home)
             .join(".config")
             .join("containr")
-            .join("serverlist.json"),
+            .join("servers.json"),
     );
     out.push(
         Path::new(&home)
             .join(".config")
             .join("containr")
-            .join("servers.json"),
+            .join("serverlist.json"),
     );
     out.push(
         Path::new(&home)

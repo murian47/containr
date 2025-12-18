@@ -11,6 +11,7 @@
 //! - UI code should use semantic theme roles (`theme::ThemeSpec`) instead of hard-coded colors.
 
 pub mod theme;
+mod commands;
 
 use crate::config::{self, ContainrConfig, KeyBinding, ServerEntry};
 use crate::docker::{
@@ -1211,7 +1212,7 @@ impl App {
         self.shell_cmd_history.reset_nav();
         self.logs_cmd_history.reset_nav();
         self.inspect_cmd_history.reset_nav();
-        persist_config(self);
+        self.persist_config();
     }
 
     fn clear_last_error(&mut self) {
@@ -3707,19 +3708,7 @@ pub async fn run_tui(
                             }
                         }
                         if let Some(name) = app.theme_refresh_after_edit.take() {
-                            match theme::load_theme(&app.config_path, &name) {
-                                Ok(spec) => {
-                                    if app.theme_name == name {
-                                        app.theme = spec;
-                                    }
-                                }
-                                Err(e) => {
-                                    app.log_msg(
-                                        MsgLevel::Warn,
-                                        format!("failed to reload theme '{name}': {:#}", e),
-                                    );
-                                }
-                            }
+                            commands::theme_cmd::reload_active_theme_after_edit(&mut app, &name);
                         }
                         if let Err(e) = res {
                             app.set_error(format!("{:#}", e));
@@ -4088,6 +4077,9 @@ fn shell_back_from_full(app: &mut App) {
         app.shell_view,
         ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages
     ) {
+        // Full-screen views should never keep command-line mode active in the background.
+        app.shell_cmd_mode = false;
+        app.shell_confirm = None;
         app.shell_view = if app.shell_view == ShellView::Help {
             app.shell_help_return
         } else if app.shell_view == ShellView::Messages {
@@ -4137,7 +4129,7 @@ fn shell_switch_server(
     });
 
     // Persist last_server only; no secrets stored.
-    persist_config(app);
+    app.persist_config();
     let _ = refresh_tx.send(());
 
     shell_set_main_view(app, ShellView::Containers);
@@ -4149,116 +4141,37 @@ fn shell_refresh(app: &mut App, refresh_tx: &mpsc::UnboundedSender<()>) {
     let _ = refresh_tx.send(());
 }
 
-fn persist_config(app: &mut App) {
-    let cfg = ContainrConfig {
-        version: 9,
-        last_server: app.active_server.clone(),
-        refresh_secs: app.refresh_secs.max(1),
-        logs_tail: app.logs_tail.max(1),
-        cmd_history_max: app.cmd_history_max_effective(),
-        cmd_history: app.shell_cmd_history.entries.clone(),
-        active_theme: app.theme_name.clone(),
-        templates_dir: app.templates_dir.to_string_lossy().to_string(),
-        view_layout: app
-            .shell_split_by_view
-            .iter()
-            .map(|(k, v)| {
-                (
-                    k.clone(),
-                    match v {
-                        ShellSplitMode::Horizontal => "horizontal".to_string(),
-                        ShellSplitMode::Vertical => "vertical".to_string(),
-                    },
-                )
-            })
-            .collect(),
-        keymap: app.keymap.clone(),
-        servers: app.servers.clone(),
-    };
-    if let Err(e) = config::save(&app.config_path, &cfg) {
-        app.set_error(format!("failed to save config: {:#}", e));
+impl App {
+    fn persist_config(&mut self) {
+        let cfg = ContainrConfig {
+            version: 9,
+            last_server: self.active_server.clone(),
+            refresh_secs: self.refresh_secs.max(1),
+            logs_tail: self.logs_tail.max(1),
+            cmd_history_max: self.cmd_history_max_effective(),
+            cmd_history: self.shell_cmd_history.entries.clone(),
+            active_theme: self.theme_name.clone(),
+            templates_dir: self.templates_dir.to_string_lossy().to_string(),
+            view_layout: self
+                .shell_split_by_view
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        match v {
+                            ShellSplitMode::Horizontal => "horizontal".to_string(),
+                            ShellSplitMode::Vertical => "vertical".to_string(),
+                        },
+                    )
+                })
+                .collect(),
+            keymap: self.keymap.clone(),
+            servers: self.servers.clone(),
+        };
+        if let Err(e) = config::save(&self.config_path, &cfg) {
+            self.set_error(format!("failed to save config: {:#}", e));
+        }
     }
-}
-
-fn validate_theme_name(raw: &str) -> anyhow::Result<String> {
-    let name = raw.trim();
-    anyhow::ensure!(!name.is_empty(), "theme name is empty");
-    anyhow::ensure!(
-        name.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'),
-        "theme name must be [A-Za-z0-9._-]"
-    );
-    anyhow::ensure!(
-        !name.starts_with('.'),
-        "theme name must not start with '.'"
-    );
-    anyhow::ensure!(name != "." && name != "..", "invalid theme name");
-    Ok(name.to_string())
-}
-
-fn shell_set_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
-    let name = validate_theme_name(name)?;
-    let spec = theme::load_theme(&app.config_path, &name)?;
-    app.theme_name = name.clone();
-    app.theme = spec;
-    persist_config(app);
-    app.set_info(format!("theme: {name}"));
-    Ok(())
-}
-
-fn shell_new_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
-    let name = validate_theme_name(name)?;
-    if name == "default" {
-        anyhow::bail!("theme name is reserved: default");
-    }
-    theme::ensure_default_theme_exists(&app.config_path)?;
-    let path = theme::theme_path(&app.config_path, &name);
-    anyhow::ensure!(!path.exists(), "theme already exists: {}", path.display());
-    let mut spec = theme::default_theme_spec();
-    spec.name = name.clone();
-    theme::save_theme(&app.config_path, &name, &spec)?;
-    // Open editor immediately.
-    shell_edit_theme(app, &name)?;
-    Ok(())
-}
-
-fn shell_edit_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
-    let name = validate_theme_name(name)?;
-    theme::ensure_default_theme_exists(&app.config_path)?;
-    let path = theme::theme_path(&app.config_path, &name);
-    if !path.exists() {
-        // Create as copy of default.
-        let mut spec = theme::default_theme_spec();
-        spec.name = name.clone();
-        theme::save_theme(&app.config_path, &name, &spec)?;
-    }
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-    let cmd = format!("{} {}", editor, shell_escape_sh_arg(&path.to_string_lossy()));
-    if name == app.theme_name {
-        app.theme_refresh_after_edit = Some(name);
-    }
-    app.shell_pending_interactive = Some(ShellInteractive::RunLocalCommand { cmd });
-    Ok(())
-}
-
-fn shell_delete_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
-    let name = validate_theme_name(name)?;
-    anyhow::ensure!(name != "default", "cannot delete default theme");
-    let path = theme::theme_path(&app.config_path, &name);
-    anyhow::ensure!(path.exists(), "theme does not exist: {}", path.display());
-    let dir = theme::themes_dir_from_config_path(&app.config_path);
-    let root = fs::canonicalize(&dir)?;
-    let target = fs::canonicalize(&path)?;
-    anyhow::ensure!(
-        target.starts_with(&root),
-        "refusing to delete outside themes dir"
-    );
-    fs::remove_file(&target)?;
-    if app.theme_name == name {
-        // Switch away.
-        let _ = shell_set_theme(app, "default");
-    }
-    Ok(())
 }
 
 fn find_server_by_name(servers: &[ServerEntry], name: &str) -> Option<usize> {
@@ -4706,6 +4619,12 @@ fn shell_execute_cmdline(
             return;
         }
         "?" | "help" => {
+            // Ensure we don't get "stuck" in command-line mode while the Help view is active.
+            // Otherwise 'q' is treated as input and won't close Help.
+            app.shell_cmd_mode = false;
+            app.shell_confirm = None;
+            app.shell_cmd_input.clear();
+            app.shell_cmd_cursor = 0;
             app.shell_help_return = app.shell_view;
             app.shell_view = ShellView::Help;
             app.shell_focus = ShellFocus::List;
@@ -4718,6 +4637,11 @@ fn shell_execute_cmdline(
                 app.messages_copy_selected();
                 return;
             }
+            // Messages is a full-screen view; leaving cmdline mode avoids confusing key handling.
+            app.shell_cmd_mode = false;
+            app.shell_confirm = None;
+            app.shell_cmd_input.clear();
+            app.shell_cmd_cursor = 0;
             if app.shell_view == ShellView::Messages {
                 shell_back_from_full(app);
             } else {
@@ -4782,7 +4706,7 @@ fn shell_execute_cmdline(
                         app.set_warn("usage: :theme use <name>");
                         return;
                     };
-                    if let Err(e) = shell_set_theme(app, name) {
+                    if let Err(e) = commands::theme_cmd::set_theme(app, name) {
                         app.set_error(format!("{:#}", e));
                     }
                 }
@@ -4791,7 +4715,7 @@ fn shell_execute_cmdline(
                         app.set_warn("usage: :theme new <name>");
                         return;
                     };
-                    if let Err(e) = shell_new_theme(app, name) {
+                    if let Err(e) = commands::theme_cmd::new_theme(app, name) {
                         app.set_error(format!("{:#}", e));
                     }
                 }
@@ -4800,7 +4724,7 @@ fn shell_execute_cmdline(
                         .next()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| app.theme_name.clone());
-                    if let Err(e) = shell_edit_theme(app, &name) {
+                    if let Err(e) = commands::theme_cmd::edit_theme(app, &name) {
                         app.set_error(format!("{:#}", e));
                     }
                 }
@@ -4817,7 +4741,7 @@ fn shell_execute_cmdline(
                         shell_begin_confirm(app, format!("theme rm {name}"), cmdline_full.clone());
                         return;
                     }
-                    if let Err(e) = shell_delete_theme(app, name) {
+                    if let Err(e) = commands::theme_cmd::delete_theme(app, name) {
                         app.set_error(format!("{:#}", e));
                     }
                 }
@@ -4947,7 +4871,7 @@ fn shell_execute_cmdline(
                 cmd: cmd_store.clone(),
             });
             app.rebuild_keymap();
-            persist_config(app);
+            app.persist_config();
             app.set_info(format!("mapped {scope_str} {key_canon} -> {cmd_store}"));
             app.shell_msgs_return = app.shell_view;
             app.shell_view = ShellView::Messages;
@@ -5000,7 +4924,7 @@ fn shell_execute_cmdline(
                 });
             }
             app.rebuild_keymap();
-            persist_config(app);
+            app.persist_config();
             if removed && app.keymap.len() < before {
                 app.set_info(format!(
                     "unmapped {scope_str} {key_canon} (restored defaults)"
@@ -5192,7 +5116,7 @@ fn shell_execute_cmdline(
                 Ok(secs) if secs >= 1 && secs <= 3600 => {
                     app.refresh_secs = secs;
                     let _ = refresh_interval_tx.send(Duration::from_secs(secs));
-                    persist_config(app);
+                    app.persist_config();
                 }
                 _ => {
                     app.set_warn("refresh must be 1..3600");
@@ -5208,7 +5132,7 @@ fn shell_execute_cmdline(
             match v.parse::<usize>() {
                 Ok(n) if (1..=200_000).contains(&n) => {
                     app.logs_tail = n;
-                    persist_config(app);
+                    app.persist_config();
                     if app.shell_view == ShellView::Logs {
                         if let Some(id) = app.logs_for_id.clone() {
                             app.logs_loading = true;
@@ -5233,7 +5157,7 @@ fn shell_execute_cmdline(
                     // Trim existing history to the new limit.
                     let entries = app.shell_cmd_history.entries.clone();
                     app.set_cmd_history_entries(entries);
-                    persist_config(app);
+                    app.persist_config();
                 }
                 _ => app.set_warn("history must be 1..5000"),
             }
@@ -5270,7 +5194,7 @@ fn shell_execute_cmdline(
             }
         }
         app.set_view_split_mode(target_view, app.shell_split_mode);
-        persist_config(app);
+        app.persist_config();
         app.set_info(format!(
             "layout: {}",
             match app.shell_split_mode {
@@ -5644,12 +5568,12 @@ fn shell_execute_cmdline(
                     if !app.servers.is_empty() {
                         shell_switch_server(app, 0, conn_tx, refresh_tx);
                     } else {
-                        persist_config(app);
+                        app.persist_config();
                     }
                 } else {
                     app.server_selected =
                         app.server_selected.min(app.servers.len().saturating_sub(1));
-                    persist_config(app);
+                    app.persist_config();
                 }
             }
             "add" => {
@@ -5701,7 +5625,7 @@ fn shell_execute_cmdline(
                     }
                 }
                 app.shell_server_shortcuts = build_server_shortcuts(&app.servers);
-                persist_config(app);
+                app.persist_config();
             }
             _ => {
                 app.set_error("usage: :server (list|use|add|rm) ...".to_string());
@@ -6335,7 +6259,7 @@ fn handle_shell_key(
                                 match v.parse::<usize>() {
                                     Ok(n) if (1..=200_000).contains(&n) => {
                                         app.logs_tail = n;
-                                        persist_config(app);
+                                        app.persist_config();
                                         if let Some(id) = app.logs_for_id.clone() {
                                             app.logs_loading = true;
                                             let _ = logs_req_tx.send((id, app.logs_tail.max(1)));
