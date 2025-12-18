@@ -124,6 +124,9 @@ fn shell_set_main_view(app: &mut App, view: ShellView) {
     ) {
         app.shell_last_main_view = view;
     }
+    if view == ShellView::Messages {
+        app.mark_messages_seen();
+    }
     app.shell_focus = ShellFocus::List;
     app.active_view = match view {
         ShellView::Containers => ActiveView::Containers,
@@ -743,12 +746,93 @@ fn shell_execute_cmdline(
             if app.shell_view == ShellView::Messages {
                 shell_back_from_full(app);
             } else {
+                app.mark_messages_seen();
                 app.shell_msgs.return_view = app.shell_view;
                 app.shell_view = ShellView::Messages;
                 app.shell_focus = ShellFocus::List;
                 app.shell_msgs.scroll = usize::MAX;
                 app.shell_msgs.hscroll = 0;
             }
+            return;
+        }
+        "ack" => {
+            let sub = it.next().unwrap_or("");
+            if sub == "all" {
+                app.container_action_error.clear();
+                app.image_action_error.clear();
+                app.volume_action_error.clear();
+                app.network_action_error.clear();
+                app.template_action_error.clear();
+                app.net_template_action_error.clear();
+                app.set_info("cleared all action error markers");
+                return;
+            }
+            match app.shell_view {
+                ShellView::Containers => {
+                    let ids: Vec<String> = if !app.marked.is_empty() {
+                        app.marked.iter().cloned().collect()
+                    } else {
+                        app.selected_container()
+                            .map(|c| vec![c.id.clone()])
+                            .unwrap_or_default()
+                    };
+                    for id in ids {
+                        app.container_action_error.remove(&id);
+                    }
+                }
+                ShellView::Images => {
+                    let keys: Vec<String> = if !app.marked_images.is_empty() {
+                        app.marked_images.iter().cloned().collect()
+                    } else {
+                        app.selected_image()
+                            .map(|img| vec![App::image_row_key(img)])
+                            .unwrap_or_default()
+                    };
+                    for k in keys {
+                        app.image_action_error.remove(&k);
+                    }
+                }
+                ShellView::Volumes => {
+                    let names: Vec<String> = if !app.marked_volumes.is_empty() {
+                        app.marked_volumes.iter().cloned().collect()
+                    } else {
+                        app.selected_volume()
+                            .map(|v| vec![v.name.clone()])
+                            .unwrap_or_default()
+                    };
+                    for n in names {
+                        app.volume_action_error.remove(&n);
+                    }
+                }
+                ShellView::Networks => {
+                    let ids: Vec<String> = if !app.marked_networks.is_empty() {
+                        app.marked_networks.iter().cloned().collect()
+                    } else {
+                        app.selected_network()
+                            .map(|n| vec![n.id.clone()])
+                            .unwrap_or_default()
+                    };
+                    for id in ids {
+                        app.network_action_error.remove(&id);
+                    }
+                }
+                ShellView::Templates => match app.templates_state.kind {
+                    TemplatesKind::Stacks => {
+                        let name = app.selected_template().map(|t| t.name.clone());
+                        if let Some(name) = name {
+                            app.template_action_error.remove(&name);
+                        }
+                    }
+                    TemplatesKind::Networks => {
+                        let name = app.selected_net_template().map(|t| t.name.clone());
+                        if let Some(name) = name {
+                            app.net_template_action_error.remove(&name);
+                        }
+                    }
+                },
+                ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages => {}
+            }
+            app.set_info("cleared action error marker(s) for selection");
             return;
         }
         "refresh" => {
@@ -2297,6 +2381,12 @@ fn draw_shell_header(
     };
 
     let left = " CONTAINR  ";
+    let unseen_errors = app.unseen_error_count();
+    let err_badge = if unseen_errors > 0 {
+        format!("  !{unseen_errors}")
+    } else {
+        String::new()
+    };
     let deploy = if let Some((name, marker)) = app.templates_state.template_deploy_inflight.iter().next() {
         let secs = marker.started.elapsed().as_secs();
         let spin = spinner_char(marker.started, app.ascii_only);
@@ -2305,7 +2395,7 @@ fn draw_shell_header(
         String::new()
     };
     let mid = format!(
-        "Server: {server}  {conn} connected  ⟳ {}s  View: {}{crumb}{deploy}",
+        "Server: {server}  {conn} connected{err_badge}  ⟳ {}s  View: {}{crumb}{deploy}",
         app.refresh_secs.max(1),
         app.shell_view.title(),
     );
@@ -2366,6 +2456,32 @@ fn draw_shell_header(
         }
         spans = updated;
     }
+    // Color the error badge.
+    if unseen_errors > 0 {
+        let badge = format!("!{unseen_errors}");
+        let mut updated: Vec<Span> = Vec::new();
+        for s in spans.into_iter() {
+            if s.content.contains(&badge) {
+                let parts: Vec<&str> = s.content.split(&badge).collect();
+                if parts.len() == 2 {
+                    updated.push(Span::styled(parts[0].to_string(), s.style));
+                    let badge_style = app
+                        .theme
+                        .text_error
+                        .to_style()
+                        .bg(theme::parse_color(&app.theme.header.bg))
+                        .add_modifier(Modifier::BOLD);
+                    updated.push(Span::styled(badge.clone(), badge_style));
+                    updated.push(Span::styled(parts[1].to_string(), s.style));
+                } else {
+                    updated.push(s);
+                }
+            } else {
+                updated.push(s);
+            }
+        }
+        spans = updated;
+    }
     if !right_shown.is_empty() {
         spans.push(Span::styled(right_shown, bg.fg(Color::Gray)));
     }
@@ -2376,6 +2492,22 @@ fn draw_shell_header(
             .wrap(Wrap { trim: false }),
         area,
     );
+}
+
+fn action_error_label(err: &LastActionError) -> &'static str {
+    match err.kind {
+        ActionErrorKind::InUse => "in use",
+        ActionErrorKind::Other => "error",
+    }
+}
+
+fn action_error_details(err: &LastActionError) -> String {
+    let secs = err.at.elapsed().as_secs();
+    if err.action.trim().is_empty() {
+        format!("{}s ago", secs)
+    } else {
+        format!("{} ({secs}s ago)", err.action)
+    }
 }
 
 fn split_at_chars(s: &str, n: usize) -> (&str, &str) {
@@ -3127,8 +3259,18 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
             .unwrap_or("-");
         let status = if let Some(marker) = app.action_inflight.get(&c.id) {
             action_status_prefix(marker.action).to_string()
+        } else if let Some(err) = app.container_action_error.get(&c.id) {
+            action_error_label(err).to_string()
         } else {
             c.status.clone()
+        };
+        let status_style = if let Some(err) = app.container_action_error.get(&c.id) {
+            match err.kind {
+                ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+            }
+        } else {
+            row_style
         };
 
         let name = format!("{name_prefix}{}", c.name);
@@ -3137,7 +3279,7 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
             Cell::from(truncate_end(&c.image, 40)).style(row_style),
             Cell::from(cpu).style(row_style),
             Cell::from(mem).style(row_style),
-            Cell::from(status).style(row_style),
+            Cell::from(status).style(status_style),
             Cell::from(truncate_end(ip, 15)).style(row_style),
         ])
         .style(row_style)
@@ -3266,11 +3408,25 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
         let reference_full = img.name();
         let reference = truncate_end(&reference_full, REF_TEXT_MAX);
         let id = truncate_end(&img.id, ID_TEXT_MAX);
-        let marked = app.is_image_marked(&App::image_row_key(img));
+        let key = App::image_row_key(img);
+        let marked = app.is_image_marked(&key);
         let row_style = if marked {
             app.theme.marked.to_style()
         } else {
             Style::default()
+        };
+        let is_removing = app.image_action_inflight.contains_key(&key);
+        let err = app.image_action_error.get(&key);
+        let size = if is_removing {
+            Cell::from(size_cell("removing")).style(bg.patch(app.theme.text_warn.to_style()))
+        } else if let Some(err) = err {
+            let style = match err.kind {
+                ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+            };
+            Cell::from(size_cell(action_error_label(err))).style(style)
+        } else {
+            Cell::from(size_cell(&img.size))
         };
         max_ref = max_ref.max(reference.chars().count());
         max_id = max_id.max(id.chars().count());
@@ -3278,7 +3434,7 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
             Row::new(vec![
                 Cell::from(reference),
                 Cell::from(id),
-                Cell::from(size_cell(&img.size)),
+                size,
             ])
             .style(row_style),
         );
@@ -3336,8 +3492,15 @@ fn draw_shell_volumes_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui
                 Style::default()
             };
             let is_removing = app.volume_action_inflight.contains_key(&v.name);
+            let err = app.volume_action_error.get(&v.name);
             let used_cell = if is_removing {
                 Cell::from("removing").style(bg.patch(app.theme.text_warn.to_style()))
+            } else if let Some(err) = err {
+                let style = match err.kind {
+                    ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                    ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                };
+                Cell::from(action_error_label(err)).style(style)
             } else if used == 0 {
                 Cell::from("unused".to_string())
             } else {
@@ -3400,8 +3563,15 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
                 Style::default()
             };
             let is_removing = app.network_action_inflight.contains_key(&n.id);
+            let err = app.network_action_error.get(&n.id);
             let scope_cell = if is_removing {
                 Cell::from("removing").style(bg.patch(app.theme.text_warn.to_style()))
+            } else if let Some(err) = err {
+                let style = match err.kind {
+                    ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                    ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                };
+                Cell::from(action_error_label(err)).style(style)
             } else {
                 Cell::from(n.scope.clone())
             };
@@ -3484,16 +3654,27 @@ fn draw_shell_stack_templates_table(
         .templates
         .iter()
         .map(|t| {
-            let state = if let Some(m) = app.templates_state.template_deploy_inflight.get(&t.name) {
+            let (state, state_style) = if let Some(m) =
+                app.templates_state.template_deploy_inflight.get(&t.name)
+            {
                 let secs = now.duration_since(m.started).as_secs();
-                format!("deploy {secs}s")
+                (
+                    format!("deploy {secs}s"),
+                    Style::default().patch(app.theme.text_warn.to_style()),
+                )
+            } else if let Some(err) = app.template_action_error.get(&t.name) {
+                let st = match err.kind {
+                    ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                    ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                };
+                (action_error_label(err).to_string(), st)
             } else {
-                String::new()
+                (String::new(), Style::default())
             };
             Row::new(vec![
                 Cell::from(t.name.clone()),
                 Cell::from(if t.has_compose { "yes" } else { "no" }),
-                Cell::from(state),
+                Cell::from(state).style(state_style),
                 Cell::from(t.desc.clone()),
             ])
         })
@@ -3574,16 +3755,27 @@ fn draw_shell_net_templates_table(
         .net_templates
         .iter()
         .map(|t| {
-            let state = if let Some(m) = app.templates_state.net_template_deploy_inflight.get(&t.name) {
+            let (state, state_style) = if let Some(m) =
+                app.templates_state.net_template_deploy_inflight.get(&t.name)
+            {
                 let secs = now.duration_since(m.started).as_secs();
-                format!("deploy {secs}s")
+                (
+                    format!("deploy {secs}s"),
+                    Style::default().patch(app.theme.text_warn.to_style()),
+                )
+            } else if let Some(err) = app.net_template_action_error.get(&t.name) {
+                let st = match err.kind {
+                    ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                    ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                };
+                (action_error_label(err).to_string(), st)
             } else {
-                String::new()
+                (String::new(), Style::default())
             };
             Row::new(vec![
                 Cell::from(t.name.clone()),
                 Cell::from(if t.has_cfg { "yes" } else { "no" }),
-                Cell::from(state),
+                Cell::from(state).style(state_style),
                 Cell::from(t.desc.clone()),
             ])
         })
@@ -3654,7 +3846,7 @@ fn draw_shell_container_details(f: &mut ratatui::Frame, app: &App, area: ratatui
         .get(&c.id)
         .map(|(ip, _)| ip.clone())
         .unwrap_or_else(|| "-".to_string());
-    let lines = vec![
+    let mut lines = vec![
         kv("Name", c.name.clone()),
         kv("ID", c.id.clone()),
         kv("Image", c.image.clone()),
@@ -3663,6 +3855,17 @@ fn draw_shell_container_details(f: &mut ratatui::Frame, app: &App, area: ratatui
         kv("IP", ip),
         kv("Ports", c.ports.clone()),
     ];
+    if let Some(err) = app.container_action_error.get(&c.id) {
+        let k = bg.patch(app.theme.text_dim.to_style());
+        let v = match err.kind {
+            ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+            ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!("Last error [{}]: ", action_error_details(err)), k),
+            Span::styled(err.message.clone(), v),
+        ]));
+    }
     f.render_widget(
         Paragraph::new(lines).style(bg).wrap(Wrap { trim: true }),
         inner,
@@ -3683,7 +3886,7 @@ fn draw_shell_image_details(f: &mut ratatui::Frame, app: &App, area: ratatui::la
     let Some(img) = app.selected_image() else {
         return;
     };
-    let lines = vec![
+    let mut lines = vec![
         Line::from(vec![
             Span::styled("Ref: ", Style::default().fg(Color::Gray)),
             Span::raw(img.name()),
@@ -3697,6 +3900,18 @@ fn draw_shell_image_details(f: &mut ratatui::Frame, app: &App, area: ratatui::la
             Span::raw(img.size.clone()),
         ]),
     ];
+    let key = App::image_row_key(img);
+    if let Some(err) = app.image_action_error.get(&key) {
+        let k = bg.patch(app.theme.text_dim.to_style());
+        let v = match err.kind {
+            ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+            ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!("Last error [{}]: ", action_error_details(err)), k),
+            Span::styled(err.message.clone(), v),
+        ]));
+    }
     f.render_widget(
         Paragraph::new(lines).style(bg).wrap(Wrap { trim: true }),
         inner,
@@ -3722,7 +3937,7 @@ fn draw_shell_volume_details(f: &mut ratatui::Frame, app: &App, area: ratatui::l
         .get(&v.name)
         .map(|xs| xs.join(", "))
         .unwrap_or_else(|| "-".to_string());
-    let lines = vec![
+    let mut lines = vec![
         Line::from(vec![
             Span::styled("Name: ", Style::default().fg(Color::Gray)),
             Span::raw(v.name.clone()),
@@ -3736,6 +3951,17 @@ fn draw_shell_volume_details(f: &mut ratatui::Frame, app: &App, area: ratatui::l
             Span::raw(used_by),
         ]),
     ];
+    if let Some(err) = app.volume_action_error.get(&v.name) {
+        let k = bg.patch(app.theme.text_dim.to_style());
+        let v_style = match err.kind {
+            ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+            ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!("Last error [{}]: ", action_error_details(err)), k),
+            Span::styled(err.message.clone(), v_style),
+        ]));
+    }
     f.render_widget(
         Paragraph::new(lines).style(bg).wrap(Wrap { trim: true }),
         inner,
@@ -3757,7 +3983,7 @@ fn draw_shell_network_details(f: &mut ratatui::Frame, app: &App, area: ratatui::
         return;
     };
     let is_system = App::is_system_network(n);
-    let lines = vec![
+    let mut lines = vec![
         Line::from(vec![
             Span::styled("Name: ", Style::default().fg(Color::Gray)),
             Span::raw(n.name.clone()),
@@ -3791,6 +4017,17 @@ fn draw_shell_network_details(f: &mut ratatui::Frame, app: &App, area: ratatui::
             Span::raw(n.scope.clone()),
         ]),
     ];
+    if let Some(err) = app.network_action_error.get(&n.id) {
+        let k = bg.patch(app.theme.text_dim.to_style());
+        let v_style = match err.kind {
+            ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+            ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!("Last error [{}]: ", action_error_details(err)), k),
+            Span::styled(err.message.clone(), v_style),
+        ]));
+    }
     f.render_widget(
         Paragraph::new(lines).style(bg).wrap(Wrap { trim: true }),
         inner,
@@ -4703,6 +4940,7 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Global", ":?", "Open help"));
     out.push(item("Global", ":help", "Open help"));
     out.push(item("Global", ":messages", "Toggle messages view (session log)"));
+    out.push(item("Global", ":ack [all]", "Clear per-item action error markers"));
     out.push(item("Global", ":refresh", "Trigger immediate refresh"));
     out.push(item(
         "Global",

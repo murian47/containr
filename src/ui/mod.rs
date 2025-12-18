@@ -739,6 +739,49 @@ struct SimpleMarker {
     until: Instant,
 }
 
+#[derive(Clone, Debug)]
+enum ActionErrorKind {
+    InUse,
+    Other,
+}
+
+#[derive(Clone, Debug)]
+struct LastActionError {
+    at: Instant,
+    action: String,
+    kind: ActionErrorKind,
+    message: String,
+}
+
+fn classify_action_error(msg: &str) -> ActionErrorKind {
+    let s = msg.to_ascii_lowercase();
+    if s.contains("in use")
+        || s.contains("being used")
+        || s.contains("has active endpoints")
+        || s.contains("active endpoints")
+        || s.contains("is being used")
+    {
+        ActionErrorKind::InUse
+    } else {
+        ActionErrorKind::Other
+    }
+}
+
+fn truncate_msg(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        if i >= max.saturating_sub(3) {
+            break;
+        }
+        out.push(ch);
+    }
+    out.push_str("...");
+    out
+}
+
 #[derive(Debug, Clone)]
 enum ActionRequest {
     Container {
@@ -813,6 +856,12 @@ struct App {
     image_action_inflight: HashMap<String, SimpleMarker>,
     volume_action_inflight: HashMap<String, SimpleMarker>,
     network_action_inflight: HashMap<String, SimpleMarker>,
+    container_action_error: HashMap<String, LastActionError>,
+    image_action_error: HashMap<String, LastActionError>,
+    volume_action_error: HashMap<String, LastActionError>,
+    network_action_error: HashMap<String, LastActionError>,
+    template_action_error: HashMap<String, LastActionError>,
+    net_template_action_error: HashMap<String, LastActionError>,
     inspect: InspectState,
 
     servers: Vec<ServerEntry>,
@@ -851,6 +900,7 @@ struct App {
 
     session_start: Instant,
     session_msgs: Vec<SessionMsg>,
+    messages_seen_len: usize,
     shell_msgs: ShellMessagesState,
 
     keymap: Vec<KeyBinding>,
@@ -873,6 +923,18 @@ impl App {
         let text = text.into();
         let at = self.session_start.elapsed();
         self.session_msgs.push(SessionMsg { at, level, text });
+    }
+
+    fn mark_messages_seen(&mut self) {
+        self.messages_seen_len = self.session_msgs.len();
+    }
+
+    fn unseen_error_count(&self) -> usize {
+        self.session_msgs
+            .iter()
+            .skip(self.messages_seen_len.min(self.session_msgs.len()))
+            .filter(|m| matches!(m.level, MsgLevel::Error))
+            .count()
     }
 
     fn get_view_split_mode(&self, view: ShellView) -> Option<ShellSplitMode> {
@@ -1048,6 +1110,12 @@ impl App {
             image_action_inflight: HashMap::new(),
             volume_action_inflight: HashMap::new(),
             network_action_inflight: HashMap::new(),
+            container_action_error: HashMap::new(),
+            image_action_error: HashMap::new(),
+            volume_action_error: HashMap::new(),
+            network_action_error: HashMap::new(),
+            template_action_error: HashMap::new(),
+            net_template_action_error: HashMap::new(),
             inspect: InspectState {
                 loading: false,
                 error: None,
@@ -1144,6 +1212,7 @@ impl App {
 
             session_start: Instant::now(),
             session_msgs: Vec::new(),
+            messages_seen_len: 0,
             shell_msgs: ShellMessagesState {
                 scroll: 0,
                 hscroll: 0,
@@ -1883,12 +1952,23 @@ impl App {
             // Fallback: allow raw image IDs to keep markers across tag changes.
             present_image_ids.contains(k.as_str()) || present_image_refs.contains(k)
         });
+        self.image_action_error.retain(|k, _| {
+            if k.starts_with("ref:") {
+                present_image_refs.contains(k)
+            } else {
+                present_image_ids.contains(k.as_str()) || present_image_refs.contains(k)
+            }
+        });
         let present_vols: HashSet<&str> = self.volumes.iter().map(|v| v.name.as_str()).collect();
         self.volume_action_inflight
             .retain(|name, m| now < m.until && present_vols.contains(name.as_str()));
+        self.volume_action_error
+            .retain(|name, _| present_vols.contains(name.as_str()));
         let present_nets: HashSet<&str> = self.networks.iter().map(|n| n.id.as_str()).collect();
         self.network_action_inflight
             .retain(|id, m| now < m.until && present_nets.contains(id.as_str()));
+        self.network_action_error
+            .retain(|id, _| present_nets.contains(id.as_str()));
     }
 
     fn image_referenced(&self, img: &ImageRow) -> bool {
@@ -1909,6 +1989,9 @@ impl App {
         // The docker start/stop/restart command may return before docker ps reflects the new state.
         // Keep showing the marker until we observe a matching state, or until the marker expires.
         let now = Instant::now();
+        let present: HashSet<&str> = self.containers.iter().map(|c| c.id.as_str()).collect();
+        self.container_action_error
+            .retain(|id, _| present.contains(id.as_str()));
         self.action_inflight.retain(|id, marker| {
             if now >= marker.until {
                 return false;
@@ -3331,20 +3414,39 @@ pub async fn run_tui(
             match res {
                 Ok(out) => {
                     app.clear_last_error();
-                    if let ActionRequest::TemplateDeploy { name, .. } = &req {
-                        app.templates_state.template_deploy_inflight.remove(name);
-                        app.set_info(format!("deployed template {name}"));
-                    }
-                    if let ActionRequest::NetTemplateDeploy { name, .. } = &req {
-                        app.templates_state
-                            .net_template_deploy_inflight
-                            .remove(name);
-                        if out.trim() == "exists" {
-                            app.set_warn(format!(
-                                "network '{name}' already exists (use :nettemplate deploy! to recreate)"
-                            ));
-                        } else {
-                            app.set_info(format!("deployed network template {name}"));
+                    match &req {
+                        ActionRequest::Container { id, .. } => {
+                            app.container_action_error.remove(id);
+                        }
+                        ActionRequest::TemplateDeploy { name, .. } => {
+                            app.templates_state.template_deploy_inflight.remove(name);
+                            app.template_action_error.remove(name);
+                            app.set_info(format!("deployed template {name}"));
+                        }
+                        ActionRequest::NetTemplateDeploy { name, .. } => {
+                            app.templates_state
+                                .net_template_deploy_inflight
+                                .remove(name);
+                            app.net_template_action_error.remove(name);
+                            if out.trim() == "exists" {
+                                app.set_warn(format!(
+                                    "network '{name}' already exists (use :nettemplate deploy! to recreate)"
+                                ));
+                            } else {
+                                app.set_info(format!("deployed network template {name}"));
+                            }
+                        }
+                        ActionRequest::ImageUntag { marker_key, .. } => {
+                            app.image_action_error.remove(marker_key);
+                        }
+                        ActionRequest::ImageForceRemove { marker_key, .. } => {
+                            app.image_action_error.remove(marker_key);
+                        }
+                        ActionRequest::VolumeRemove { name } => {
+                            app.volume_action_error.remove(name);
+                        }
+                        ActionRequest::NetworkRemove { id } => {
+                            app.network_action_error.remove(id);
                         }
                     }
                     // Keep container "in-flight" markers for a short time; the next refresh will
@@ -3353,11 +3455,29 @@ pub async fn run_tui(
                 }
                 Err(e) => {
                     match &req {
-                        ActionRequest::Container { id, .. } => {
+                        ActionRequest::Container { id, action } => {
                             app.action_inflight.remove(id);
+                            app.container_action_error.insert(
+                                id.clone(),
+                                LastActionError {
+                                    at: Instant::now(),
+                                    action: format!("{action:?}"),
+                                    kind: classify_action_error(&format!("{:#}", e)),
+                                    message: truncate_msg(&format!("{:#}", e), 240),
+                                },
+                            );
                         }
                         ActionRequest::TemplateDeploy { name, .. } => {
                             app.templates_state.template_deploy_inflight.remove(name);
+                            app.template_action_error.insert(
+                                name.clone(),
+                                LastActionError {
+                                    at: Instant::now(),
+                                    action: "deploy".to_string(),
+                                    kind: classify_action_error(&format!("{:#}", e)),
+                                    message: truncate_msg(&format!("{:#}", e), 240),
+                                },
+                            );
                             app.set_error(format!("deploy failed for {name}: {:#}", e));
                             continue;
                         }
@@ -3365,20 +3485,65 @@ pub async fn run_tui(
                             app.templates_state
                                 .net_template_deploy_inflight
                                 .remove(name);
+                            app.net_template_action_error.insert(
+                                name.clone(),
+                                LastActionError {
+                                    at: Instant::now(),
+                                    action: "deploy".to_string(),
+                                    kind: classify_action_error(&format!("{:#}", e)),
+                                    message: truncate_msg(&format!("{:#}", e), 240),
+                                },
+                            );
                             app.set_error(format!("deploy failed for {name}: {:#}", e));
                             continue;
                         }
                         ActionRequest::ImageUntag { marker_key, .. } => {
                             app.image_action_inflight.remove(marker_key);
+                            app.image_action_error.insert(
+                                marker_key.clone(),
+                                LastActionError {
+                                    at: Instant::now(),
+                                    action: "untag".to_string(),
+                                    kind: classify_action_error(&format!("{:#}", e)),
+                                    message: truncate_msg(&format!("{:#}", e), 240),
+                                },
+                            );
                         }
                         ActionRequest::ImageForceRemove { marker_key, .. } => {
                             app.image_action_inflight.remove(marker_key);
+                            app.image_action_error.insert(
+                                marker_key.clone(),
+                                LastActionError {
+                                    at: Instant::now(),
+                                    action: "rm".to_string(),
+                                    kind: classify_action_error(&format!("{:#}", e)),
+                                    message: truncate_msg(&format!("{:#}", e), 240),
+                                },
+                            );
                         }
                         ActionRequest::VolumeRemove { name } => {
                             app.volume_action_inflight.remove(name);
+                            app.volume_action_error.insert(
+                                name.clone(),
+                                LastActionError {
+                                    at: Instant::now(),
+                                    action: "rm".to_string(),
+                                    kind: classify_action_error(&format!("{:#}", e)),
+                                    message: truncate_msg(&format!("{:#}", e), 240),
+                                },
+                            );
                         }
                         ActionRequest::NetworkRemove { id } => {
                             app.network_action_inflight.remove(id);
+                            app.network_action_error.insert(
+                                id.clone(),
+                                LastActionError {
+                                    at: Instant::now(),
+                                    action: "rm".to_string(),
+                                    kind: classify_action_error(&format!("{:#}", e)),
+                                    message: truncate_msg(&format!("{:#}", e), 240),
+                                },
+                            );
                         }
                     }
                     app.set_error(format!("{:#}", e));
