@@ -44,7 +44,7 @@ use std::fs;
 use std::io::{self, Stdout};
 use std::path::PathBuf;
 use std::process::{Command as StdCommand, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, collections::HashSet, fmt::Write as _};
 use tokio::sync::mpsc;
 use tokio::sync::watch;
@@ -832,6 +832,7 @@ struct App {
 
     theme_name: String,
     theme: theme::ThemeSpec,
+    header_logo_seed: u64,
 
     shell_view: ShellView,
     shell_last_main_view: ShellView,
@@ -1003,6 +1004,11 @@ impl App {
                 server_selected = idx;
             }
         }
+        let header_logo_seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::from_secs(0))
+            .as_nanos() as u64
+            ^ (std::process::id() as u64);
         let mut app = Self {
             containers: Vec::new(),
             images: Vec::new(),
@@ -1101,6 +1107,7 @@ impl App {
             ascii_only: false,
             theme_name,
             theme,
+            header_logo_seed,
             shell_view: ShellView::Containers,
             shell_last_main_view: ShellView::Containers,
             shell_focus: ShellFocus::Sidebar,
