@@ -111,3 +111,40 @@ fn render_logs_shows_query_and_matches() {
     assert!(screen.contains("Query:"));
     assert!(screen.contains("error"));
 }
+
+#[test]
+fn network_remove_uses_marked_ids() {
+    let mut app = mk_test_app();
+    app.shell_view = ShellView::Networks;
+    app.active_view = ActiveView::Networks;
+    app.networks = vec![
+        NetworkRow {
+            id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            name: "net_a".to_string(),
+            driver: "bridge".to_string(),
+            scope: "local".to_string(),
+        },
+        NetworkRow {
+            id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+            name: "net_b".to_string(),
+            driver: "bridge".to_string(),
+            scope: "local".to_string(),
+        },
+    ];
+    app.marked_networks.insert(app.networks[0].id.clone());
+    app.marked_networks.insert(app.networks[1].id.clone());
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ActionRequest>();
+    shell_exec_network_remove(&mut app, &tx);
+
+    let mut ids = Vec::new();
+    while let Ok(req) = rx.try_recv() {
+        if let ActionRequest::NetworkRemove { id } = req {
+            ids.push(id);
+        }
+    }
+    ids.sort();
+    assert_eq!(ids.len(), 2);
+    assert!(ids.iter().any(|i| i.starts_with('a')));
+    assert!(ids.iter().any(|i| i.starts_with('b')));
+}

@@ -3399,11 +3399,17 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
             } else {
                 Style::default()
             };
+            let is_removing = app.network_action_inflight.contains_key(&n.id);
+            let scope_cell = if is_removing {
+                Cell::from("removing").style(bg.patch(app.theme.text_warn.to_style()))
+            } else {
+                Cell::from(n.scope.clone())
+            };
             Row::new(vec![
                 Cell::from(n.name.clone()),
                 Cell::from(n.id.clone()),
                 Cell::from(n.driver.clone()),
-                Cell::from(n.scope.clone()),
+                scope_cell,
             ])
             .style(st)
         })
