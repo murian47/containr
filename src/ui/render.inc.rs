@@ -2502,11 +2502,11 @@ fn action_error_label(err: &LastActionError) -> &'static str {
 }
 
 fn action_error_details(err: &LastActionError) -> String {
-    let secs = err.at.elapsed().as_secs();
+    let ts = format_action_ts(err.at);
     if err.action.trim().is_empty() {
-        format!("{}s ago", secs)
+        ts
     } else {
-        format!("{} ({secs}s ago)", err.action)
+        format!("{} {}", err.action, ts)
     }
 }
 
@@ -4728,16 +4728,26 @@ fn draw_shell_help_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::layout
     );
 }
 
-fn format_session_ts(d: Duration) -> String {
-    let total = d.as_secs();
-    let h = total / 3600;
-    let m = (total % 3600) / 60;
-    let s = total % 60;
-    if h > 0 {
-        format!("{h:02}:{m:02}:{s:02}")
-    } else {
-        format!("{m:02}:{s:02}")
-    }
+fn format_session_ts(at: OffsetDateTime) -> String {
+    use std::sync::OnceLock;
+    static FMT: OnceLock<Vec<time::format_description::FormatItem<'static>>> = OnceLock::new();
+    let fmt = FMT.get_or_init(|| {
+        time::format_description::parse("[hour]:[minute]:[second]")
+            .unwrap_or_else(|_| Vec::new())
+    });
+    at.format(fmt)
+        .unwrap_or_else(|_| at.unix_timestamp().to_string())
+}
+
+fn format_action_ts(at: OffsetDateTime) -> String {
+    use std::sync::OnceLock;
+    static FMT: OnceLock<Vec<time::format_description::FormatItem<'static>>> = OnceLock::new();
+    let fmt = FMT.get_or_init(|| {
+        time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
+            .unwrap_or_else(|_| Vec::new())
+    });
+    at.format(fmt)
+        .unwrap_or_else(|_| at.unix_timestamp().to_string())
 }
 
 fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {

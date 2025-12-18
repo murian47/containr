@@ -46,6 +46,7 @@ use std::path::PathBuf;
 use std::process::{Command as StdCommand, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, collections::HashSet, fmt::Write as _};
+use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 
@@ -485,7 +486,7 @@ enum MsgLevel {
 
 #[derive(Clone, Debug)]
 struct SessionMsg {
-    at: Duration,
+    at: OffsetDateTime,
     level: MsgLevel,
     text: String,
 }
@@ -747,7 +748,7 @@ enum ActionErrorKind {
 
 #[derive(Clone, Debug)]
 struct LastActionError {
-    at: Instant,
+    at: OffsetDateTime,
     action: String,
     kind: ActionErrorKind,
     message: String,
@@ -765,6 +766,10 @@ fn classify_action_error(msg: &str) -> ActionErrorKind {
     } else {
         ActionErrorKind::Other
     }
+}
+
+fn now_local() -> OffsetDateTime {
+    OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc())
 }
 
 fn truncate_msg(s: &str, max: usize) -> String {
@@ -898,7 +903,6 @@ struct App {
     refresh_secs: u64,
     cmd_history_max: usize,
 
-    session_start: Instant,
     session_msgs: Vec<SessionMsg>,
     messages_seen_len: usize,
     shell_msgs: ShellMessagesState,
@@ -921,7 +925,7 @@ struct ShellConfirm {
 impl App {
     fn log_msg(&mut self, level: MsgLevel, text: impl Into<String>) {
         let text = text.into();
-        let at = self.session_start.elapsed();
+        let at = now_local();
         self.session_msgs.push(SessionMsg { at, level, text });
     }
 
@@ -1210,7 +1214,6 @@ impl App {
             refresh_secs: 5,
             cmd_history_max: 200,
 
-            session_start: Instant::now(),
             session_msgs: Vec::new(),
             messages_seen_len: 0,
             shell_msgs: ShellMessagesState {
@@ -3460,7 +3463,7 @@ pub async fn run_tui(
                             app.container_action_error.insert(
                                 id.clone(),
                                 LastActionError {
-                                    at: Instant::now(),
+                                    at: now_local(),
                                     action: format!("{action:?}"),
                                     kind: classify_action_error(&format!("{:#}", e)),
                                     message: truncate_msg(&format!("{:#}", e), 240),
@@ -3472,7 +3475,7 @@ pub async fn run_tui(
                             app.template_action_error.insert(
                                 name.clone(),
                                 LastActionError {
-                                    at: Instant::now(),
+                                    at: now_local(),
                                     action: "deploy".to_string(),
                                     kind: classify_action_error(&format!("{:#}", e)),
                                     message: truncate_msg(&format!("{:#}", e), 240),
@@ -3488,7 +3491,7 @@ pub async fn run_tui(
                             app.net_template_action_error.insert(
                                 name.clone(),
                                 LastActionError {
-                                    at: Instant::now(),
+                                    at: now_local(),
                                     action: "deploy".to_string(),
                                     kind: classify_action_error(&format!("{:#}", e)),
                                     message: truncate_msg(&format!("{:#}", e), 240),
@@ -3502,7 +3505,7 @@ pub async fn run_tui(
                             app.image_action_error.insert(
                                 marker_key.clone(),
                                 LastActionError {
-                                    at: Instant::now(),
+                                    at: now_local(),
                                     action: "untag".to_string(),
                                     kind: classify_action_error(&format!("{:#}", e)),
                                     message: truncate_msg(&format!("{:#}", e), 240),
@@ -3514,7 +3517,7 @@ pub async fn run_tui(
                             app.image_action_error.insert(
                                 marker_key.clone(),
                                 LastActionError {
-                                    at: Instant::now(),
+                                    at: now_local(),
                                     action: "rm".to_string(),
                                     kind: classify_action_error(&format!("{:#}", e)),
                                     message: truncate_msg(&format!("{:#}", e), 240),
@@ -3526,7 +3529,7 @@ pub async fn run_tui(
                             app.volume_action_error.insert(
                                 name.clone(),
                                 LastActionError {
-                                    at: Instant::now(),
+                                    at: now_local(),
                                     action: "rm".to_string(),
                                     kind: classify_action_error(&format!("{:#}", e)),
                                     message: truncate_msg(&format!("{:#}", e), 240),
@@ -3538,7 +3541,7 @@ pub async fn run_tui(
                             app.network_action_error.insert(
                                 id.clone(),
                                 LastActionError {
-                                    at: Instant::now(),
+                                    at: now_local(),
                                     action: "rm".to_string(),
                                     kind: classify_action_error(&format!("{:#}", e)),
                                     message: truncate_msg(&format!("{:#}", e), 240),
