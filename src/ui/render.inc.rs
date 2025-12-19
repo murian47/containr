@@ -5452,6 +5452,11 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(h("Servers"));
     out.push(item("Global", ":server list", "List configured servers"));
     out.push(item("Global", ":server use <name>", "Switch active server"));
+    out.push(item(
+        "Global",
+        ":server shell [name]",
+        "Open SSH shell (local uses $SHELL)",
+    ));
     out.push(item("Global", ":server rm <name>", "Remove server"));
     out.push(item(
         "Global",

@@ -1,10 +1,12 @@
 //! Server commands (`:server ...`).
 
 use super::super::{
-    App, Connection, ShellFocus, ShellView, build_server_shortcuts, ensure_unique_server_name,
-    find_server_by_name, parse_kv_args, shell_begin_confirm, shell_switch_server,
+    App, Connection, ShellFocus, ShellInteractive, ShellView, build_server_shortcuts,
+    ensure_unique_server_name, find_server_by_name, parse_kv_args, shell_begin_confirm,
+    shell_escape_sh_arg, shell_switch_server,
 };
 use crate::config::ServerEntry;
+use std::fmt::Write as _;
 use tokio::sync::{mpsc, watch};
 
 pub fn handle_server(
@@ -35,6 +37,62 @@ pub fn handle_server(
             app.shell_view = ShellView::Messages;
             app.shell_focus = ShellFocus::List;
             app.shell_msgs.scroll = usize::MAX;
+            true
+        }
+        "shell" => {
+            let name = args.get(1).copied();
+            let mut target: Option<String> = None;
+            let mut port: Option<u16> = None;
+            let mut identity: Option<String> = None;
+
+            if let Some(name) = name {
+                let Some(idx) = find_server_by_name(&app.servers, name) else {
+                    app.set_warn(format!("unknown server: {name}"));
+                    return true;
+                };
+                if let Some(s) = app.servers.get(idx) {
+                    target = Some(s.target.clone());
+                    port = s.port;
+                    identity = s.identity.clone();
+                }
+            } else if let Some(active) = &app.active_server {
+                if let Some(idx) = find_server_by_name(&app.servers, active) {
+                    if let Some(s) = app.servers.get(idx) {
+                        target = Some(s.target.clone());
+                        port = s.port;
+                        identity = s.identity.clone();
+                    }
+                }
+            }
+
+            let target = target.unwrap_or_else(|| app.current_target.clone());
+            if target.is_empty() {
+                app.set_warn("no active server");
+                return true;
+            }
+
+            if target == "local" {
+                let shell = std::env::var("SHELL")
+                    .ok()
+                    .and_then(|s| if s.trim().is_empty() { None } else { Some(s) })
+                    .unwrap_or_else(|| "sh".to_string());
+                app.shell_pending_interactive = Some(ShellInteractive::RunLocalCommand {
+                    cmd: shell_escape_sh_arg(&shell),
+                });
+                return true;
+            }
+
+            let mut cmd = String::from("ssh -t");
+            if let Some(p) = port {
+                let _ = write!(cmd, " -p {p}");
+            }
+            if let Some(identity) = identity {
+                if !identity.trim().is_empty() {
+                    let _ = write!(cmd, " -i {}", shell_escape_sh_arg(identity.trim()));
+                }
+            }
+            let _ = write!(cmd, " {}", shell_escape_sh_arg(target.trim()));
+            app.shell_pending_interactive = Some(ShellInteractive::RunLocalCommand { cmd });
             true
         }
         "use" => {
@@ -133,7 +191,7 @@ pub fn handle_server(
             true
         }
         _ => {
-            app.set_error("usage: :server (list|use|add|rm) ...".to_string());
+            app.set_error("usage: :server (list|use|add|rm|shell) ...".to_string());
             true
         }
     }
