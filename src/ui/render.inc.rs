@@ -1968,23 +1968,25 @@ fn handle_shell_key(
         }
     }
 
-    // Custom key bindings (outside of input modes).
-    if let Some(spec) = key_spec_from_event(key) {
-        if let Some(hit) = lookup_scoped_binding(app, spec) {
-            match hit {
-                BindingHit::Disabled => return,
-                BindingHit::Cmd(cmd) => {
-                    shell_execute_cmdline(
-                        app,
-                        &cmd,
-                        conn_tx,
-                        refresh_tx,
-                        dash_refresh_tx,
-                        refresh_interval_tx,
-                        logs_req_tx,
-                        action_req_tx,
-                    );
-                    return;
+    // Custom key bindings (outside of input modes). Skip when sidebar has focus.
+    if app.shell_focus != ShellFocus::Sidebar {
+        if let Some(spec) = key_spec_from_event(key) {
+            if let Some(hit) = lookup_scoped_binding(app, spec) {
+                match hit {
+                    BindingHit::Disabled => return,
+                    BindingHit::Cmd(cmd) => {
+                        shell_execute_cmdline(
+                            app,
+                            &cmd,
+                            conn_tx,
+                            refresh_tx,
+                            dash_refresh_tx,
+                            refresh_interval_tx,
+                            logs_req_tx,
+                            action_req_tx,
+                        );
+                        return;
+                    }
                 }
             }
         }
