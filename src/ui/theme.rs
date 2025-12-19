@@ -213,7 +213,7 @@ fn default_overlay() -> StyleSpec {
 fn default_divider() -> StyleSpec {
     StyleSpec {
         fg: "#2d2d2d".to_string(),
-        bg: "#101010".to_string(),
+        bg: "default".to_string(),
         ..StyleSpec::default()
     }
 }
