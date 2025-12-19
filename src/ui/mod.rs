@@ -2700,6 +2700,8 @@ struct DashboardSnapshot {
     mem_total_bytes: u64,
     disk_used_bytes: u64,
     disk_total_bytes: u64,
+    disks: Vec<DiskEntry>,
+    nics: Vec<NicEntry>,
     collected_at: OffsetDateTime,
 }
 
@@ -2708,6 +2710,21 @@ struct DashboardState {
     loading: bool,
     error: Option<String>,
     snap: Option<DashboardSnapshot>,
+}
+
+#[derive(Clone, Debug)]
+struct DiskEntry {
+    source: String,
+    fs_type: String,
+    mount: String,
+    used_bytes: u64,
+    total_bytes: u64,
+}
+
+#[derive(Clone, Debug)]
+struct NicEntry {
+    name: String,
+    addr: String,
 }
 
 fn dashboard_command(docker_cmd: &str) -> String {
@@ -2721,6 +2738,7 @@ fn dashboard_command(docker_cmd: &str) -> String {
     const LOAD: &str = "__CONTAINR_DASH_LOAD__";
     const MEM: &str = "__CONTAINR_DASH_MEM__";
     const DISK: &str = "__CONTAINR_DASH_DISK__";
+    const NICS: &str = "__CONTAINR_DASH_NICS__";
     const ENGINE: &str = "__CONTAINR_DASH_ENGINE__";
 
     let docker_fmt = "{{{{.Server.Version}}}}|{{{{.Server.Os}}}}|{{{{.Server.Arch}}}}|{{{{.Server.ApiVersion}}}}";
@@ -2733,7 +2751,17 @@ fn dashboard_command(docker_cmd: &str) -> String {
          echo {CORES}; ( nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1 ); \
          echo {LOAD}; ( cat /proc/loadavg 2>/dev/null || uptime 2>/dev/null || true ); \
          echo {MEM}; ( cat /proc/meminfo 2>/dev/null || true ); \
-         echo {DISK}; ( df -B1 / 2>/dev/null | tail -n 1 || true ); \
+         echo {DISK}; ( df -B1 -P -T 2>/dev/null || true ); \
+         echo {NICS}; ( \
+           for i in /sys/class/net/*; do \
+             iface=$(basename \"$i\"); \
+             [ -e \"$i/device\" ] || continue; \
+             case \"$iface\" in \
+               lo|br*|bond*|team*|vlan*|veth*|docker*|virbr*|cni*|flannel*|kube*|tap*|tun*) continue ;; \
+             esac; \
+             ip -o -4 addr show dev \"$iface\" 2>/dev/null | awk '{{print $2, $4}}'; \
+           done \
+         ); \
          echo {ENGINE}; ( {dc} version --format '{docker_fmt}' 2>/dev/null || {dc} --version 2>/dev/null || true )",
         OS = OS,
         KERNEL = KERNEL,
@@ -2743,6 +2771,7 @@ fn dashboard_command(docker_cmd: &str) -> String {
         LOAD = LOAD,
         MEM = MEM,
         DISK = DISK,
+        NICS = NICS,
         ENGINE = ENGINE,
         dc = docker_cmd,
         docker_fmt = docker_fmt,
@@ -2778,6 +2807,7 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
     const LOAD: &str = "__CONTAINR_DASH_LOAD__";
     const MEM: &str = "__CONTAINR_DASH_MEM__";
     const DISK: &str = "__CONTAINR_DASH_DISK__";
+    const NICS: &str = "__CONTAINR_DASH_NICS__";
     const ENGINE: &str = "__CONTAINR_DASH_ENGINE__";
 
     let mut cur: Option<&'static str> = None;
@@ -2793,12 +2823,13 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
             LOAD => Some(LOAD),
             MEM => Some(MEM),
             DISK => Some(DISK),
+            NICS => Some(NICS),
             ENGINE => Some(ENGINE),
             _ => cur,
         };
         if matches!(
             t.trim(),
-            OS | KERNEL | ARCH | UPTIME | CORES | LOAD | MEM | DISK | ENGINE
+            OS | KERNEL | ARCH | UPTIME | CORES | LOAD | MEM | DISK | NICS | ENGINE
         ) {
             sec.entry(cur.expect("cur set")).or_default();
             continue;
@@ -2872,22 +2903,68 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
     let mem_avail_bytes = mem_avail_kb.unwrap_or(0).saturating_mul(1024);
     let mem_used_bytes = mem_total_bytes.saturating_sub(mem_avail_bytes);
 
-    let disk_line = sec
-        .get(DISK)
-        .and_then(|xs| xs.iter().find(|s| !s.trim().is_empty()))
-        .cloned()
-        .unwrap_or_else(|| "-".to_string());
-    let mut disk_total_bytes = 0u64;
+    let mut disk_entries: Vec<DiskEntry> = Vec::new();
+    if let Some(lines) = sec.get(DISK) {
+        for line in lines {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with("Filesystem") {
+                continue;
+            }
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 7 {
+                continue;
+            }
+            let source = parts[0].to_string();
+            let fs_type = parts[1].to_string();
+            let total_bytes = parts[2].parse::<u64>().unwrap_or(0);
+            let used_bytes = parts[3].parse::<u64>().unwrap_or(0);
+            let mount = parts[6].to_string();
+            disk_entries.push(DiskEntry {
+                source,
+                fs_type,
+                mount,
+                used_bytes,
+                total_bytes,
+            });
+        }
+    }
+
+    let disk_entries = collapse_disks(filter_disk_entries(disk_entries));
     let mut disk_used_bytes = 0u64;
-    let parts: Vec<&str> = disk_line.split_whitespace().collect();
-    if parts.len() >= 3 {
-        // df: Filesystem 1B-blocks Used Available Use% Mounted
-        disk_total_bytes = parts[1].parse::<u64>().unwrap_or(0);
-        disk_used_bytes = parts[2].parse::<u64>().unwrap_or(0);
+    let mut disk_total_bytes = 0u64;
+    if let Some(root) = disk_entries.iter().find(|d| d.mount == "/") {
+        disk_used_bytes = root.used_bytes;
+        disk_total_bytes = root.total_bytes;
+    } else if let Some(first) = disk_entries.first() {
+        disk_used_bytes = first.used_bytes;
+        disk_total_bytes = first.total_bytes;
     }
 
     let engine_raw = first(ENGINE);
     let engine = engine_raw.trim().to_string();
+
+    let mut nics: Vec<NicEntry> = Vec::new();
+    if let Some(lines) = sec.get(NICS) {
+        for line in lines {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let mut parts = line.split_whitespace();
+            let Some(name) = parts.next() else {
+                continue;
+            };
+            let Some(addr) = parts.next() else {
+                continue;
+            };
+            let addr = addr.split('/').next().unwrap_or(addr).to_string();
+            nics.push(NicEntry {
+                name: name.to_string(),
+                addr,
+            });
+        }
+    }
+    nics.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(DashboardSnapshot {
         os,
@@ -2903,8 +2980,170 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
         mem_total_bytes,
         disk_used_bytes,
         disk_total_bytes,
+        disks: disk_entries,
+        nics,
         collected_at: now_local(),
     })
+}
+
+fn filter_disk_entries(mut entries: Vec<DiskEntry>) -> Vec<DiskEntry> {
+    if entries.is_empty() {
+        return entries;
+    }
+
+    let excluded_types = [
+        "tmpfs", "devtmpfs", "udev", "overlay", "proc", "sysfs", "cgroup", "cgroup2", "squashfs",
+        "autofs", "fusectl",
+    ];
+
+    entries.retain(|e| {
+        let ty = e.fs_type.to_ascii_lowercase();
+        let mount = e.mount.as_str();
+        if excluded_types.iter().any(|t| ty == *t) {
+            return false;
+        }
+        if mount.starts_with("/run") || mount.starts_with("/dev") || mount.starts_with("/sys") {
+            return false;
+        }
+        if mount.starts_with("/proc") || mount.starts_with("/snap") {
+            return false;
+        }
+        if mount.starts_with("/var/lib/docker/overlay2") {
+            return false;
+        }
+        // Ignore /boot mounts per user request.
+        if mount.starts_with("/boot") {
+            return false;
+        }
+        true
+    });
+
+    entries.sort_by(|a, b| {
+        let rank = |m: &str| -> u8 {
+            if m == "/" {
+                0
+            } else if m.starts_with("/var/lib/docker") {
+                1
+            } else if m.starts_with("/data") {
+                2
+            } else if m.starts_with("/mnt") {
+                3
+            } else if m.starts_with("/srv") {
+                4
+            } else {
+                5
+            }
+        };
+        let ra = rank(&a.mount);
+        let rb = rank(&b.mount);
+        ra.cmp(&rb).then_with(|| a.mount.cmp(&b.mount))
+    });
+
+    entries
+}
+
+fn collapse_disks(mut entries: Vec<DiskEntry>) -> Vec<DiskEntry> {
+    let has_zfs = entries.iter().any(|e| e.fs_type == "zfs");
+    let has_btrfs = entries.iter().any(|e| e.fs_type == "btrfs");
+    if !has_zfs && !has_btrfs {
+        let mut selected: Vec<DiskEntry> = Vec::new();
+        for e in &entries {
+            let m = e.mount.as_str();
+            if m == "/"
+                || m == "/var/lib/docker"
+                || m.starts_with("/mnt/")
+                || m.starts_with("/data/")
+                || m.starts_with("/srv/")
+            {
+                selected.push(e.clone());
+            }
+        }
+        if selected.is_empty() {
+            selected = entries;
+        }
+        selected.truncate(5);
+        return selected;
+    }
+    if entries.is_empty() {
+        return entries;
+    }
+
+    let mut out: Vec<DiskEntry> = Vec::new();
+    let mut other: Vec<DiskEntry> = Vec::new();
+    let mut zfs: Vec<DiskEntry> = Vec::new();
+    let mut btrfs: Vec<DiskEntry> = Vec::new();
+
+    for e in entries.drain(..) {
+        if e.fs_type == "zfs" {
+            zfs.push(e);
+        } else if e.fs_type == "btrfs" {
+            btrfs.push(e);
+        } else {
+            other.push(e);
+        }
+    }
+
+    if let Some(root) = other.iter().find(|e| e.mount == "/") {
+        out.push(root.clone());
+    }
+
+    if !zfs.is_empty() {
+        let mut pools: HashMap<String, (u64, u64)> = HashMap::new();
+        for e in &zfs {
+            let pool = e.source.split('/').next().unwrap_or(&e.source).to_string();
+            let entry = pools.entry(pool).or_insert((0, 0));
+            entry.0 = entry.0.max(e.total_bytes);
+            entry.1 = entry.1.saturating_add(e.used_bytes);
+        }
+        let mut pool_rows: Vec<DiskEntry> = pools
+            .into_iter()
+            .map(|(pool, (total, used))| DiskEntry {
+                source: pool,
+                fs_type: "zfs".to_string(),
+                mount: String::new(),
+                used_bytes: used,
+                total_bytes: total,
+            })
+            .collect();
+        pool_rows.sort_by_key(|e| std::cmp::Reverse(e.total_bytes));
+        out.extend(pool_rows);
+    }
+
+    if !btrfs.is_empty() {
+        let mut max_total = 0u64;
+        let mut max_used = 0u64;
+        for e in &btrfs {
+            max_total = max_total.max(e.total_bytes);
+            max_used = max_used.max(e.used_bytes);
+        }
+        out.push(DiskEntry {
+            source: "btrfs".to_string(),
+            fs_type: "btrfs".to_string(),
+            mount: String::new(),
+            used_bytes: max_used,
+            total_bytes: max_total,
+        });
+    }
+
+    for e in other {
+        let m = e.mount.as_str();
+        if m == "/"
+            || m == "/var/lib/docker"
+            || m.starts_with("/mnt/")
+            || m.starts_with("/data/")
+            || m.starts_with("/srv/")
+        {
+            if !out
+                .iter()
+                .any(|x| x.mount == e.mount && !x.mount.is_empty())
+            {
+                out.push(e);
+            }
+        }
+    }
+
+    out.truncate(5);
+    out
 }
 
 fn normalize_image_id(id: &str) -> String {
@@ -3155,10 +3394,8 @@ pub async fn run_tui(
             let res = match output {
                 Ok(out) => {
                     if out.status.success() {
-                        match String::from_utf8(out.stdout) {
-                            Ok(s) => parse_dashboard_output(&s),
-                            Err(e) => Err(anyhow::anyhow!("ssh stdout was not valid UTF-8: {}", e)),
-                        }
+                        let s = String::from_utf8_lossy(&out.stdout).to_string();
+                        parse_dashboard_output(&s)
                     } else {
                         let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
                         Err(anyhow::anyhow!(

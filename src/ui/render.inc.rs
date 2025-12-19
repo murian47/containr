@@ -3754,15 +3754,78 @@ fn format_bytes_short(bytes: u64) -> String {
     }
 }
 
-fn bar_line(width: usize, ratio: f32, ascii_only: bool) -> String {
+fn bar_spans_threshold(
+    width: usize,
+    ratio: f32,
+    ascii_only: bool,
+    filled_style: Style,
+    empty_style: Style,
+) -> Vec<Span<'static>> {
     let width = width.max(1);
     let ratio = ratio.clamp(0.0, 1.0);
     let filled = ((width as f32) * ratio).round() as usize;
     let filled = filled.min(width);
     let (on, off) = if ascii_only { ('#', '.') } else { ('█', '░') };
-    let mut out = String::with_capacity(width);
-    out.extend(std::iter::repeat(on).take(filled));
-    out.extend(std::iter::repeat(off).take(width - filled));
+    let mut out: Vec<Span<'static>> = Vec::new();
+    if filled > 0 {
+        let mut s = String::with_capacity(filled);
+        s.extend(std::iter::repeat(on).take(filled));
+        out.push(Span::styled(s, filled_style));
+    }
+    if width > filled {
+        let mut s = String::with_capacity(width - filled);
+        s.extend(std::iter::repeat(off).take(width - filled));
+        out.push(Span::styled(s, empty_style));
+    }
+    out
+}
+
+fn bar_spans_gradient(
+    width: usize,
+    ratio: f32,
+    ascii_only: bool,
+    ok: Style,
+    warn: Style,
+    err: Style,
+    empty_style: Style,
+) -> Vec<Span<'static>> {
+    let width = width.max(1);
+    let ratio = ratio.clamp(0.0, 1.0);
+    let filled = ((width as f32) * ratio).round() as usize;
+    let filled = filled.min(width);
+    let (on, off) = if ascii_only { ('#', '.') } else { ('█', '░') };
+    let mut out: Vec<Span<'static>> = Vec::new();
+
+    let mut cur_style: Option<Style> = None;
+    let mut cur_buf = String::new();
+    for i in 0..filled {
+        let pos_ratio = (i + 1) as f32 / (width as f32);
+        let st = if pos_ratio >= 0.85 {
+            err
+        } else if pos_ratio >= 0.70 {
+            warn
+        } else {
+            ok
+        };
+        if cur_style.map(|c| c == st).unwrap_or(false) {
+            cur_buf.push(on);
+        } else {
+            if !cur_buf.is_empty() {
+                out.push(Span::styled(cur_buf, cur_style.unwrap_or(ok)));
+                cur_buf = String::new();
+            }
+            cur_style = Some(st);
+            cur_buf.push(on);
+        }
+    }
+    if !cur_buf.is_empty() {
+        out.push(Span::styled(cur_buf, cur_style.unwrap_or(ok)));
+    }
+    if width > filled {
+        let mut s = String::with_capacity(width - filled);
+        s.extend(std::iter::repeat(off).take(width - filled));
+        out.push(Span::styled(s, empty_style));
+    }
     out
 }
 
@@ -3781,7 +3844,7 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             Constraint::Length(1), // spacer
             Constraint::Length(7), // summary table
             Constraint::Length(1), // spacer
-            Constraint::Length(4), // metrics table
+            Constraint::Length(7), // metrics table
             Constraint::Min(1),    // notes
         ])
         .split(inner);
@@ -4004,29 +4067,32 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     };
 
     let metrics_w = inner.width.max(1) as usize;
-    let m_key_w = 4usize.min(metrics_w.saturating_sub(1).max(1));
-    let m_val_w = 22usize.min(metrics_w.saturating_sub(m_key_w + 2).max(8));
+    let m_key_w = key_w;
+    let m_val_w = 20usize.min(metrics_w.saturating_sub(m_key_w + 2).max(10));
     let m_bar_w = metrics_w.saturating_sub(m_key_w + m_val_w + 2).max(10);
     let mk = dim;
     let mv = v;
-    let mb = faint;
+    let bar_empty = bg.patch(app.theme.text_faint.to_style());
+    let bar_ok = bg.patch(app.theme.text_ok.to_style());
+    let bar_warn = bg.patch(app.theme.text_warn.to_style());
+    let bar_err = bg.patch(app.theme.text_error.to_style());
 
     let metric_row =
-        |name: &str, val: String, ratio: f32, extra: Option<String>| -> Row<'static> {
-            let bar = bar_line(m_bar_w, ratio, app.ascii_only);
-            let mut val = truncate_end(&val, m_val_w);
-            if let Some(extra) = extra {
-                if !extra.trim().is_empty() {
-                    let extra = format!(" {extra}");
-                    val = truncate_end(&(val + &extra), m_val_w);
-                }
+        |name: &str, val: String, bar: Vec<Span<'static>>, extra: Option<String>| -> Row<'static> {
+        let mut val = truncate_end(&val, m_val_w);
+        if let Some(extra) = extra {
+            if !extra.trim().is_empty() {
+                let extra = format!(" {extra}");
+                val = truncate_end(&(val + &extra), m_val_w);
             }
-            Row::new(vec![
-                Cell::from(Span::styled(name.to_string(), mk)),
-                Cell::from(Span::styled(val, mv)),
-                Cell::from(Span::styled(bar, mb)),
-            ])
-        };
+        }
+        let name = truncate_end(name, m_key_w);
+        Row::new(vec![
+            Cell::from(Span::styled(name, mk)),
+            Cell::from(Span::styled(val, mv)),
+            Cell::from(Line::from(bar)),
+        ])
+    };
 
     let cpu_val = format!("{load1:.2}/{load5:.2}/{load15:.2}");
     let mem_val = format!(
@@ -4042,11 +4108,70 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
         disk_ratio2 * 100.0
     );
 
-    let metric_rows: Vec<Row> = vec![
-        metric_row("CPU", cpu_val, load_ratio, Some(format!("{cores}c"))),
-        metric_row("MEM", mem_val, mem_ratio2, None),
-        metric_row("DSK", dsk_val, disk_ratio2, None),
+    let cpu_fill = if load_ratio >= 0.85 {
+        bar_err
+    } else if load_ratio >= 0.70 {
+        bar_warn
+    } else {
+        bar_ok
+    };
+    let cpu_bar = bar_spans_threshold(m_bar_w, load_ratio, app.ascii_only, cpu_fill, bar_empty);
+    let mem_fill = if mem_ratio2 >= 0.85 {
+        bar_err
+    } else if mem_ratio2 >= 0.70 {
+        bar_warn
+    } else {
+        bar_ok
+    };
+    let mem_bar = bar_spans_threshold(m_bar_w, mem_ratio2, app.ascii_only, mem_fill, bar_empty);
+
+    let mut metric_rows: Vec<Row> = vec![
+        metric_row("CPU", cpu_val, cpu_bar, Some(format!("{cores}c"))),
+        metric_row("MEM", mem_val, mem_bar, None),
     ];
+    if let Some(s) = snap {
+        for (idx, disk) in s.disks.iter().enumerate() {
+            let total = disk.total_bytes.max(1);
+            let ratio = (disk.used_bytes as f32) / (total as f32);
+            let val = format!(
+                "{}/{} {:>3.0}%",
+                format_bytes_short(disk.used_bytes),
+                format_bytes_short(disk.total_bytes),
+                ratio * 100.0
+            );
+            let label = if idx == 0 { "DSK" } else { "" };
+            let dsk_bar = bar_spans_gradient(
+                m_bar_w,
+                ratio,
+                app.ascii_only,
+                bar_ok,
+                bar_warn,
+                bar_err,
+                bar_empty,
+            );
+            metric_rows.push(metric_row(&label, val, dsk_bar, None));
+        }
+        for (idx, nic) in s.nics.iter().take(3).enumerate() {
+            let label = if idx == 0 {
+                format!("NIC ({})", nic.name)
+            } else {
+                format!("({})", nic.name)
+            };
+            let val = nic.addr.clone();
+            metric_rows.push(metric_row(&label, val, Vec::new(), None));
+        }
+    } else {
+        let dsk_bar = bar_spans_gradient(
+            m_bar_w,
+            disk_ratio2,
+            app.ascii_only,
+            bar_ok,
+            bar_warn,
+            bar_err,
+            bar_empty,
+        );
+        metric_rows.push(metric_row("DSK", dsk_val, dsk_bar, None));
+    }
     let metrics = Table::new(
         metric_rows,
         [
