@@ -2986,7 +2986,11 @@ fn draw_shell_title(
         app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
-    let left = format!(" {title} ({count})");
+    let left = if count == usize::MAX {
+        format!(" {title}")
+    } else {
+        format!(" {title} ({count})")
+    };
     let shown = truncate_end(&left, area.width.max(1) as usize);
     let fg = if app.shell_focus == ShellFocus::List {
         theme::parse_color(&app.theme.panel_focused.fg)
@@ -3011,7 +3015,7 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
 
     match app.shell_view {
         ShellView::Dashboard => {
-            draw_shell_title(f, app, "Dashboard", 0, title_area);
+            draw_shell_title(f, app, "Dashboard", usize::MAX, title_area);
             draw_shell_dashboard(f, app, content_area);
         }
         ShellView::Containers => {
@@ -3423,7 +3427,7 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
 
     const REF_TEXT_MAX: usize = 62;
     const ID_TEXT_MAX: usize = 50;
-    const USED_W: usize = 6;
+    const USED_W: usize = 3;
     const SIZE_W: usize = 10;
     const REF_MIN_W: usize = 24;
     const ID_MIN_W: usize = 10;
@@ -3438,7 +3442,7 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
     };
 
     // Keep columns compact: size REF/ID to the actual visible content (capped),
-    // instead of stretching REF to fill the entire view.
+    // but always reserve space for USED/SIZE.
     let mut max_ref = 0usize;
     let mut max_id = 0usize;
     let mut rows: Vec<Row> = Vec::new();
@@ -3465,7 +3469,15 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
             .copied()
             .unwrap_or(0)
             > 0;
-        let used_cell = if used { "used" } else { "unused" };
+        let used_cell = if used {
+            if app.ascii_only {
+                "Y"
+            } else {
+                "✓"
+            }
+        } else {
+            ""
+        };
         let size = if is_removing {
             Cell::from(size_cell("removing")).style(bg.patch(app.theme.text_warn.to_style()))
         } else if let Some(err) = err {
@@ -3483,14 +3495,34 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
             Row::new(vec![
                 Cell::from(reference),
                 Cell::from(id),
-                Cell::from(used_cell),
+                Cell::from(used_cell).style(bg.patch(app.theme.text_ok.to_style())),
                 size,
             ])
             .style(row_style),
         );
     }
-    let ref_w = max_ref.clamp(REF_MIN_W, REF_TEXT_MAX);
-    let id_w = max_id.clamp(ID_MIN_W, ID_TEXT_MAX);
+    let inner_w = inner.width.max(1) as usize;
+    let spacing = 3; // 4 columns => 3 spaces
+    let fixed = USED_W + SIZE_W + spacing;
+    let avail = inner_w.saturating_sub(fixed);
+
+    let mut ref_w = max_ref.clamp(REF_MIN_W, REF_TEXT_MAX).min(avail);
+    let mut id_w = max_id.clamp(ID_MIN_W, ID_TEXT_MAX).min(avail.saturating_sub(ref_w));
+    if ref_w + id_w < avail {
+        let extra = avail - (ref_w + id_w);
+        let add_ref = extra.min(REF_TEXT_MAX.saturating_sub(ref_w));
+        ref_w += add_ref;
+        let extra = extra - add_ref;
+        id_w = (id_w + extra).min(ID_TEXT_MAX);
+    }
+    if avail > 0 {
+        if ref_w == 0 {
+            ref_w = 1.min(avail);
+        }
+        if id_w == 0 && avail > ref_w {
+            id_w = 1;
+        }
+    }
 
     let mut state = TableState::default();
     state.select(Some(app.images_selected.min(rows.len().saturating_sub(1))));
@@ -3527,6 +3559,16 @@ fn draw_shell_volumes_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui
         horizontal: 1,
     });
 
+    let used_cell = |used: usize, bg: Style, app: &App| -> Cell<'static> {
+        if used == 0 {
+            Cell::from("")
+        } else if app.ascii_only {
+            Cell::from("Y").style(bg.patch(app.theme.text_ok.to_style()))
+        } else {
+            Cell::from("✓").style(bg.patch(app.theme.text_ok.to_style()))
+        }
+    };
+
     let rows: Vec<Row> = app
         .volumes
         .iter()
@@ -3553,10 +3595,8 @@ fn draw_shell_volumes_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui
                     ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
                 };
                 Cell::from(action_error_label(err)).style(style)
-            } else if used == 0 {
-                Cell::from("unused".to_string())
             } else {
-                Cell::from(format!("{used} ctr"))
+                used_cell(used, bg, app)
             };
             Row::new(vec![
                 Cell::from(v.name.clone()),
@@ -3574,7 +3614,7 @@ fn draw_shell_volumes_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui
         [
             Constraint::Min(22),
             Constraint::Length(10),
-            Constraint::Length(10),
+            Constraint::Length(3),
         ],
     )
     .header(
@@ -3600,6 +3640,16 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
         horizontal: 1,
     });
 
+    let used_cell = |used: bool, bg: Style, app: &App| -> Cell<'static> {
+        if !used {
+            Cell::from("")
+        } else if app.ascii_only {
+            Cell::from("Y").style(bg.patch(app.theme.text_ok.to_style()))
+        } else {
+            Cell::from("✓").style(bg.patch(app.theme.text_ok.to_style()))
+        }
+    };
+
     let rows: Vec<Row> = app
         .networks
         .iter()
@@ -3620,7 +3670,6 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
                 .copied()
                 .unwrap_or(0)
                 > 0;
-            let used_cell = if used { "used" } else { "unused" };
             let is_removing = app.network_action_inflight.contains_key(&n.id);
             let err = app.network_action_error.get(&n.id);
             let scope_cell = if is_removing {
@@ -3638,7 +3687,7 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
                 Cell::from(n.name.clone()),
                 Cell::from(n.id.clone()),
                 Cell::from(n.driver.clone()),
-                Cell::from(used_cell),
+                used_cell(used, bg, app),
                 scope_cell,
             ])
             .style(st)
@@ -3656,7 +3705,7 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
             Constraint::Length(16),
             Constraint::Min(16),
             Constraint::Length(10),
-            Constraint::Length(6),
+            Constraint::Length(3),
             Constraint::Length(10),
         ],
     )
