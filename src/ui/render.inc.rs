@@ -3089,6 +3089,7 @@ fn draw_shell_footer(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
     let bg = app.theme.footer.to_style();
     f.render_widget(Block::default().style(bg), area);
 
+    let version = format!("v{} ", env!("CARGO_PKG_VERSION"));
     let hint = match app.shell_view {
         ShellView::Dashboard => {
             " F1 help  b sidebar  ^p layout  :q quit"
@@ -3115,8 +3116,18 @@ fn draw_shell_footer(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
     };
 
     let w = area.width.max(1) as usize;
+    let right_len = version.chars().count();
+    let line = if w <= right_len {
+        truncate_end(&version, w)
+    } else {
+        let left_max = w.saturating_sub(right_len + 1);
+        let left = truncate_end(hint, left_max);
+        let left_len = left.chars().count();
+        let gap = w.saturating_sub(right_len + left_len);
+        format!("{left}{}{}", " ".repeat(gap), version)
+    };
     let line = Line::from(vec![Span::styled(
-        truncate_end(hint, w),
+        line,
         bg.fg(theme::parse_color(&app.theme.footer.fg)),
     )]);
     f.render_widget(
