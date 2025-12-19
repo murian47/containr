@@ -2106,6 +2106,33 @@ fn handle_shell_key(
     match app.shell_view {
         ShellView::Dashboard => {}
         ShellView::Containers | ShellView::Images | ShellView::Volumes | ShellView::Networks => {
+            if app.shell_focus == ShellFocus::Details {
+                let scroll = match app.shell_view {
+                    ShellView::Containers => &mut app.container_details_scroll,
+                    ShellView::Images => &mut app.image_details_scroll,
+                    ShellView::Volumes => &mut app.volume_details_scroll,
+                    ShellView::Networks => &mut app.network_details_scroll,
+                    _ => &mut app.container_details_scroll,
+                };
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        *scroll = scroll.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        *scroll = scroll.saturating_add(1);
+                    }
+                    KeyCode::PageUp => {
+                        *scroll = scroll.saturating_sub(10);
+                    }
+                    KeyCode::PageDown => {
+                        *scroll = scroll.saturating_add(10);
+                    }
+                    KeyCode::Home => *scroll = 0,
+                    KeyCode::End => *scroll = usize::MAX,
+                    _ => {}
+                }
+                return;
+            }
             // Ensure active_view matches (used by the existing selection/mark logic).
             app.active_view = match app.shell_view {
                 ShellView::Containers => ActiveView::Containers,
@@ -3739,6 +3766,100 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
     f.render_stateful_widget(table, inner, &mut state);
 }
 
+struct DetailRow {
+    key: &'static str,
+    value: String,
+    style: Style,
+}
+
+fn render_detail_table(
+    f: &mut ratatui::Frame,
+    app: &App,
+    area: ratatui::layout::Rect,
+    mut rows: Vec<DetailRow>,
+    scroll: usize,
+) -> usize {
+    let bg = if app.shell_focus == ShellFocus::Details {
+        app.theme.panel_focused.to_style()
+    } else {
+        app.theme.panel.to_style()
+    };
+    let inner = area.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    let table_w = inner.width.max(1) as usize;
+    let key_w = 12usize.min(table_w.saturating_sub(1).max(1));
+    let val_w = table_w.saturating_sub(key_w + 1).max(1);
+    let key_style = bg.patch(app.theme.text_dim.to_style());
+
+    let mut out_lines: Vec<Line<'static>> = Vec::new();
+    for row in rows.drain(..) {
+        let wrap = matches!(row.key, "Last error" | "Used by");
+        let wrapped = if wrap {
+            wrap_text(&row.value, val_w)
+        } else {
+            vec![truncate_end(&row.value, val_w)]
+        };
+        for (idx, line) in wrapped.into_iter().enumerate() {
+            let key = if idx == 0 { row.key } else { "" };
+            let key = pad_right(key, key_w);
+            out_lines.push(Line::from(vec![
+                Span::styled(key, key_style),
+                Span::styled(line, row.style),
+            ]));
+        }
+    }
+
+    let max_scroll = out_lines.len().saturating_sub(inner.height.max(1) as usize);
+    let scroll = scroll.min(max_scroll);
+    let scroll_u16 = scroll.min(u16::MAX as usize) as u16;
+    let para = Paragraph::new(out_lines)
+        .style(bg)
+        .wrap(Wrap { trim: false })
+        .scroll((scroll_u16, 0));
+    f.render_widget(para, inner);
+    scroll
+}
+
+fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut out: Vec<String> = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        let next = if line.is_empty() {
+            word.to_string()
+        } else {
+            format!("{} {}", line, word)
+        };
+        if next.chars().count() > width {
+            if !line.is_empty() {
+                out.push(truncate_end(&line, width));
+            }
+            line = word.to_string();
+        } else {
+            line = next;
+        }
+    }
+    if !line.is_empty() {
+        out.push(truncate_end(&line, width));
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}
+
+fn pad_right(text: &str, width: usize) -> String {
+    let len = text.chars().count();
+    if len >= width {
+        return truncate_end(text, width);
+    }
+    let mut out = text.to_string();
+    out.push_str(&" ".repeat(width - len + 1));
+    out
+}
+
 fn format_bytes_short(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut v = bytes as f64;
@@ -4393,18 +4514,22 @@ fn draw_shell_net_templates_table(
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-fn draw_shell_container_details(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
+fn draw_shell_container_details(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     let bg = if app.shell_focus == ShellFocus::Details {
         app.theme.panel_focused.to_style()
     } else {
         app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
-    let inner = area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    let Some(c) = app.selected_container() else {
+    let Some(c) = app.selected_container().cloned() else {
+        let inner = area.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
         f.render_widget(
             Paragraph::new("Select a container to see details.")
                 .style(bg.patch(app.theme.text_dim.to_style()))
@@ -4413,14 +4538,12 @@ fn draw_shell_container_details(f: &mut ratatui::Frame, app: &App, area: ratatui
         );
         return;
     };
-    let key = bg.patch(app.theme.text_dim.to_style());
+    let mut scroll = app.container_details_scroll;
+    if app.container_details_id.as_deref() != Some(&c.id) {
+        app.container_details_id = Some(c.id.clone());
+        scroll = 0;
+    }
     let val = bg;
-    let kv = |k: &str, v: String| -> Line<'static> {
-        Line::from(vec![
-            Span::styled(format!("{k}: "), key),
-            Span::styled(v, val),
-        ])
-    };
     let cpu = c.cpu_perc.clone().unwrap_or_else(|| "-".to_string());
     let mem = c.mem_perc.clone().unwrap_or_else(|| "-".to_string());
     let ip = app
@@ -4428,46 +4551,73 @@ fn draw_shell_container_details(f: &mut ratatui::Frame, app: &App, area: ratatui
         .get(&c.id)
         .map(|(ip, _)| ip.clone())
         .unwrap_or_else(|| "-".to_string());
-    let mut lines = vec![
-        kv("Name", c.name.clone()),
-        kv("ID", c.id.clone()),
-        kv("Image", c.image.clone()),
-        kv("Status", c.status.clone()),
-        kv("CPU / MEM", format!("{cpu} / {mem}")),
-        kv("IP", ip),
-        kv("Ports", c.ports.clone()),
+    let mut rows = vec![
+        DetailRow {
+            key: "Name",
+            value: c.name.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "ID",
+            value: c.id.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Image",
+            value: c.image.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Status",
+            value: c.status.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "CPU / MEM",
+            value: format!("{cpu} / {mem}"),
+            style: val,
+        },
+        DetailRow {
+            key: "IP",
+            value: ip,
+            style: val,
+        },
+        DetailRow {
+            key: "Ports",
+            value: c.ports.clone(),
+            style: val,
+        },
     ];
     if let Some(err) = app.container_action_error.get(&c.id) {
-        let k = bg.patch(app.theme.text_dim.to_style());
         let v = match err.kind {
             ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
             ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
         };
-        lines.push(Line::from(vec![
-            Span::styled(format!("Last error [{}]: ", action_error_details(err)), k),
-            Span::styled(err.message.clone(), v),
-        ]));
+        rows.push(DetailRow {
+            key: "Last error",
+            value: format!("[{}] {}", action_error_details(err), err.message),
+            style: v,
+        });
     }
-    f.render_widget(
-        Paragraph::new(lines).style(bg).wrap(Wrap { trim: true }),
-        inner,
-    );
+    scroll = render_detail_table(f, app, area, rows, scroll);
+    app.container_details_scroll = scroll;
 }
 
-fn draw_shell_image_details(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
+fn draw_shell_image_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
     let bg = if app.shell_focus == ShellFocus::Details {
         app.theme.panel_focused.to_style()
     } else {
         app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
-    let inner = area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    let Some(img) = app.selected_image() else {
+    let Some(img) = app.selected_image().cloned() else {
         return;
     };
+    let mut scroll = app.image_details_scroll;
+    if app.image_details_id.as_deref() != Some(&img.id) {
+        app.image_details_id = Some(img.id.clone());
+        scroll = 0;
+    }
     let used_by = app
         .image_containers_by_id
         .get(&img.id)
@@ -4478,107 +4628,122 @@ fn draw_shell_image_details(f: &mut ratatui::Frame, app: &App, area: ratatui::la
     } else {
         used_by.join(", ")
     };
-    let mut lines = vec![
-        Line::from(vec![
-            Span::styled("Ref: ", Style::default().fg(Color::Gray)),
-            Span::raw(img.name()),
-        ]),
-        Line::from(vec![
-            Span::styled("ID: ", Style::default().fg(Color::Gray)),
-            Span::raw(img.id.clone()),
-        ]),
-        Line::from(vec![
-            Span::styled("Size: ", Style::default().fg(Color::Gray)),
-            Span::raw(img.size.clone()),
-        ]),
-        Line::from(vec![
-            Span::styled("Used by: ", Style::default().fg(Color::Gray)),
-            Span::raw(used_by),
-        ]),
+    let val = bg;
+    let mut rows = vec![
+        DetailRow {
+            key: "Ref",
+            value: img.name(),
+            style: val,
+        },
+        DetailRow {
+            key: "ID",
+            value: img.id.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Size",
+            value: img.size.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Used by",
+            value: used_by,
+            style: val,
+        },
     ];
-    let key = App::image_row_key(img);
+    let key = App::image_row_key(&img);
     if let Some(err) = app.image_action_error.get(&key) {
-        let k = bg.patch(app.theme.text_dim.to_style());
         let v = match err.kind {
             ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
             ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
         };
-        lines.push(Line::from(vec![
-            Span::styled(format!("Last error [{}]: ", action_error_details(err)), k),
-            Span::styled(err.message.clone(), v),
-        ]));
+        rows.push(DetailRow {
+            key: "Last error",
+            value: format!("[{}] {}", action_error_details(err), err.message),
+            style: v,
+        });
     }
-    f.render_widget(
-        Paragraph::new(lines).style(bg).wrap(Wrap { trim: true }),
-        inner,
-    );
+    scroll = render_detail_table(f, app, area, rows, scroll);
+    app.image_details_scroll = scroll;
 }
 
-fn draw_shell_volume_details(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
+fn draw_shell_volume_details(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     let bg = if app.shell_focus == ShellFocus::Details {
         app.theme.panel_focused.to_style()
     } else {
         app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
-    let inner = area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    let Some(v) = app.selected_volume() else {
+    let Some(v) = app.selected_volume().cloned() else {
         return;
     };
+    let mut scroll = app.volume_details_scroll;
+    if app.volume_details_id.as_deref() != Some(&v.name) {
+        app.volume_details_id = Some(v.name.clone());
+        scroll = 0;
+    }
     let used_by = app
         .volume_containers_by_name
         .get(&v.name)
         .map(|xs| xs.join(", "))
         .unwrap_or_else(|| "-".to_string());
-    let mut lines = vec![
-        Line::from(vec![
-            Span::styled("Name: ", Style::default().fg(Color::Gray)),
-            Span::raw(v.name.clone()),
-        ]),
-        Line::from(vec![
-            Span::styled("Driver: ", Style::default().fg(Color::Gray)),
-            Span::raw(v.driver.clone()),
-        ]),
-        Line::from(vec![
-            Span::styled("Used by: ", Style::default().fg(Color::Gray)),
-            Span::raw(used_by),
-        ]),
+    let val = bg;
+    let mut rows = vec![
+        DetailRow {
+            key: "Name",
+            value: v.name.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Driver",
+            value: v.driver.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Used by",
+            value: used_by,
+            style: val,
+        },
     ];
     if let Some(err) = app.volume_action_error.get(&v.name) {
-        let k = bg.patch(app.theme.text_dim.to_style());
         let v_style = match err.kind {
             ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
             ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
         };
-        lines.push(Line::from(vec![
-            Span::styled(format!("Last error [{}]: ", action_error_details(err)), k),
-            Span::styled(err.message.clone(), v_style),
-        ]));
+        rows.push(DetailRow {
+            key: "Last error",
+            value: format!("[{}] {}", action_error_details(err), err.message),
+            style: v_style,
+        });
     }
-    f.render_widget(
-        Paragraph::new(lines).style(bg).wrap(Wrap { trim: true }),
-        inner,
-    );
+    scroll = render_detail_table(f, app, area, rows, scroll);
+    app.volume_details_scroll = scroll;
 }
 
-fn draw_shell_network_details(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
+fn draw_shell_network_details(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     let bg = if app.shell_focus == ShellFocus::Details {
         app.theme.panel_focused.to_style()
     } else {
         app.theme.panel.to_style()
     };
     f.render_widget(Block::default().style(bg), area);
-    let inner = area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    let Some(n) = app.selected_network() else {
+    let Some(n) = app.selected_network().cloned() else {
         return;
     };
-    let is_system = App::is_system_network(n);
+    let mut scroll = app.network_details_scroll;
+    if app.network_details_id.as_deref() != Some(&n.id) {
+        app.network_details_id = Some(n.id.clone());
+        scroll = 0;
+    }
+    let is_system = App::is_system_network(&n);
     let used_by = app
         .network_containers_by_id
         .get(&n.id)
@@ -4589,54 +4754,57 @@ fn draw_shell_network_details(f: &mut ratatui::Frame, app: &App, area: ratatui::
     } else {
         used_by.join(", ")
     };
-    let mut lines = vec![
-        Line::from(vec![
-            Span::styled("Name: ", Style::default().fg(Color::Gray)),
-            Span::raw(n.name.clone()),
-        ]),
-        Line::from(vec![
-            Span::styled("Type: ", Style::default().fg(Color::Gray)),
-            if is_system {
-                Span::styled(
-                    "System",
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-                )
-            } else {
-                Span::styled("User", Style::default().fg(Color::White))
-            },
-        ]),
-        Line::from(vec![
-            Span::styled("ID: ", Style::default().fg(Color::Gray)),
-            Span::raw(n.id.clone()),
-        ]),
-        Line::from(vec![
-            Span::styled("Driver: ", Style::default().fg(Color::Gray)),
-            Span::raw(n.driver.clone()),
-        ]),
-        Line::from(vec![
-            Span::styled("Scope: ", Style::default().fg(Color::Gray)),
-            Span::raw(n.scope.clone()),
-        ]),
-        Line::from(vec![
-            Span::styled("Used by: ", Style::default().fg(Color::Gray)),
-            Span::raw(used_by),
-        ]),
+    let val = bg;
+    let type_style = if is_system {
+        bg.patch(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+    } else {
+        bg.patch(Style::default().fg(Color::White))
+    };
+    let mut rows = vec![
+        DetailRow {
+            key: "Name",
+            value: n.name.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Type",
+            value: if is_system { "System" } else { "User" }.to_string(),
+            style: type_style,
+        },
+        DetailRow {
+            key: "ID",
+            value: n.id.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Driver",
+            value: n.driver.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Scope",
+            value: n.scope.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Used by",
+            value: used_by,
+            style: val,
+        },
     ];
     if let Some(err) = app.network_action_error.get(&n.id) {
-        let k = bg.patch(app.theme.text_dim.to_style());
         let v_style = match err.kind {
             ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
             ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
         };
-        lines.push(Line::from(vec![
-            Span::styled(format!("Last error [{}]: ", action_error_details(err)), k),
-            Span::styled(err.message.clone(), v_style),
-        ]));
+        rows.push(DetailRow {
+            key: "Last error",
+            value: format!("[{}] {}", action_error_details(err), err.message),
+            style: v_style,
+        });
     }
-    f.render_widget(
-        Paragraph::new(lines).style(bg).wrap(Wrap { trim: true }),
-        inner,
-    );
+    scroll = render_detail_table(f, app, area, rows, scroll);
+    app.network_details_scroll = scroll;
 }
 
 fn draw_shell_stack_template_details(

@@ -918,6 +918,15 @@ struct App {
     templates_state: TemplatesState,
 
     theme_refresh_after_edit: Option<String>,
+
+    container_details_scroll: usize,
+    image_details_scroll: usize,
+    volume_details_scroll: usize,
+    network_details_scroll: usize,
+    container_details_id: Option<String>,
+    image_details_id: Option<String>,
+    volume_details_id: Option<String>,
+    network_details_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -1253,6 +1262,15 @@ impl App {
             },
 
             theme_refresh_after_edit: None,
+
+            container_details_scroll: 0,
+            image_details_scroll: 0,
+            volume_details_scroll: 0,
+            network_details_scroll: 0,
+            container_details_id: None,
+            image_details_id: None,
+            volume_details_id: None,
+            network_details_id: None,
         };
         app.shell_server_shortcuts = build_server_shortcuts(&app.servers);
         app.rebuild_keymap();
