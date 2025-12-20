@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::DockerCmd;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -26,7 +27,7 @@ fn mk_test_app() -> App {
             target: "local".to_string(),
             port: None,
             identity: None,
-            docker_cmd: "docker".to_string(),
+            docker_cmd: DockerCmd::default(),
         }],
         Vec::new(),
         Some("local".to_string()),
@@ -77,6 +78,38 @@ fn default_keymap_contains_ctrl_shift_c_console_sh() {
         .get(&(KeyScope::View(ShellView::Containers), key))
         .cloned();
     assert_eq!(cmd.as_deref(), Some("container console sh"));
+}
+
+#[test]
+fn parse_cmdline_tokens_keeps_quoted_args() {
+    let tokens = parse_cmdline_tokens("server add srv ssh host --cmd \"sudo docker\"")
+        .expect("parse cmdline");
+    assert_eq!(tokens.last().map(|s| s.as_str()), Some("sudo docker"));
+}
+
+#[test]
+fn parse_cmdline_tokens_allows_escaped_space() {
+    let tokens = parse_cmdline_tokens("set key foo\\ bar").expect("parse cmdline");
+    assert_eq!(tokens, vec!["set", "key", "foo bar"]);
+}
+
+#[test]
+fn parse_cmdline_tokens_supports_mixed_quotes() {
+    let tokens = parse_cmdline_tokens("cmd \"a b\" 'c d' \"e \\\"f\\\"\"")
+        .expect("parse cmdline");
+    assert_eq!(tokens, vec!["cmd", "a b", "c d", "e \"f\""]);
+}
+
+#[test]
+fn parse_cmdline_tokens_rejects_unterminated_quote() {
+    let err = parse_cmdline_tokens("cmd \"unterminated").unwrap_err();
+    assert!(err.contains("unterminated"));
+}
+
+#[test]
+fn parse_cmdline_tokens_allows_single_quote_escapes() {
+    let tokens = parse_cmdline_tokens("cmd 'a\\'b' 'c\\\\d'").expect("parse cmdline");
+    assert_eq!(tokens, vec!["cmd", "a'b", "c\\d"]);
 }
 
 #[test]

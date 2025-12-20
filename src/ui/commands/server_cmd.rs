@@ -153,7 +153,7 @@ pub fn handle_server(
 
             let mut rest: Vec<String> = args.iter().skip(3).map(|s| (*s).to_string()).collect();
             let (port, identity, docker_cmd, tail) = parse_kv_args(rest.drain(..).into_iter());
-            let docker_cmd = docker_cmd.unwrap_or_else(|| "docker".to_string());
+            let docker_cmd = docker_cmd.unwrap_or_default();
 
             match kind {
                 "ssh" => {

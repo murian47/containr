@@ -287,6 +287,10 @@ fn shell_refresh(
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
 ) {
+    if app.servers.is_empty() && app.current_target.trim().is_empty() {
+        app.set_warn("no server configured");
+        return;
+    }
     app.start_loading(true);
     app.dashboard.loading = true;
     let _ = refresh_tx.send(());
@@ -296,7 +300,7 @@ fn shell_refresh(
 impl App {
     fn persist_config(&mut self) {
         let cfg = ContainrConfig {
-            version: 9,
+            version: 10,
             last_server: self.active_server.clone(),
             refresh_secs: self.refresh_secs.max(1),
             logs_tail: self.logs.tail.max(1),
@@ -533,11 +537,16 @@ fn delete_net_template(app: &mut App, name: &str) -> anyhow::Result<()> {
 
 fn parse_kv_args(
     mut it: impl Iterator<Item = String>,
-) -> (Option<u16>, Option<String>, Option<String>, Vec<String>) {
+) -> (
+    Option<u16>,
+    Option<String>,
+    Option<crate::config::DockerCmd>,
+    Vec<String>,
+) {
     // Supports: -p <port>  -i <identity>  --cmd <docker_cmd>
     let mut port: Option<u16> = None;
     let mut identity: Option<String> = None;
-    let mut docker_cmd: Option<String> = None;
+    let mut docker_cmd: Option<crate::config::DockerCmd> = None;
     let mut rest: Vec<String> = Vec::new();
     while let Some(tok) = it.next() {
         match tok.as_str() {
@@ -553,7 +562,14 @@ fn parse_kv_args(
             }
             "--cmd" => {
                 if let Some(v) = it.next() {
-                    docker_cmd = Some(v);
+                    let parsed = crate::shell_parse::parse_shell_tokens(&v)
+                        .ok()
+                        .unwrap_or_else(|| vec![v]);
+                    if parsed.is_empty() {
+                        docker_cmd = Some(crate::config::DockerCmd::default());
+                    } else {
+                        docker_cmd = Some(crate::config::DockerCmd::new(parsed));
+                    }
                 }
             }
             _ => rest.push(tok),
@@ -626,6 +642,10 @@ fn shell_escape_double_quoted(s: &str) -> String {
     out
 }
 
+fn parse_cmdline_tokens(input: &str) -> Result<Vec<String>, String> {
+    crate::shell_parse::parse_shell_tokens(input)
+}
+
 fn shell_open_console(app: &mut App, user: Option<&str>, shell: &str) {
     let Some(c) = app.selected_container() else {
         app.set_warn("no container selected");
@@ -639,7 +659,7 @@ fn shell_open_console(app: &mut App, user: Option<&str>, shell: &str) {
         app.set_warn("invalid shell");
         return;
     }
-    let docker_cmd = current_docker_cmd_from_app(app);
+    let docker_cmd = current_docker_cmd_from_app(app).to_shell();
     let id = shell_single_quote(&c.id);
     let server = current_server_label(app);
     // Bash interprets prompt escapes like \\e and needs \\[ \\] wrappers for correct line editing.
@@ -697,7 +717,14 @@ fn shell_execute_cmdline(
     let cmdline = cmdline.trim_start_matches(':').trim();
     let cmdline_full = cmdline.to_string();
 
-    let mut it = cmdline.split_whitespace();
+    let tokens = match parse_cmdline_tokens(cmdline) {
+        Ok(v) => v,
+        Err(e) => {
+            app.set_warn(format!("invalid command line: {e}"));
+            return;
+        }
+    };
+    let mut it = tokens.iter().map(|s| s.as_str());
     let Some(cmd_raw) = it.next() else {
         return;
     };
@@ -3960,6 +3987,18 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
         horizontal: 1,
     });
 
+    if app.servers.is_empty() && app.current_target.trim().is_empty() {
+        let msg = "No server configured. Use :server add to get started.";
+        f.render_widget(
+            Paragraph::new(msg)
+                .style(bg.patch(app.theme.text_dim.to_style()))
+                .alignment(Alignment::Center)
+                .wrap(Wrap { trim: true }),
+            inner,
+        );
+        return;
+    }
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -5816,12 +5855,12 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item(
         "Global",
         ":server add <name> ssh <target> [-p <port>] [-i <identity>] [--cmd <docker|podman>]",
-        "Add SSH server entry",
+        "Add SSH server entry (quote --cmd if it contains spaces, e.g. --cmd \"sudo docker\"; use \\' inside single quotes)",
     ));
     out.push(item(
         "Global",
         ":server add <name> local [--cmd <docker|podman>]",
-        "Add local engine entry",
+        "Add local engine entry (quote --cmd if it contains spaces, e.g. --cmd \"sudo docker\"; use \\' inside single quotes)",
     ));
     out.push(Line::from(""));
 

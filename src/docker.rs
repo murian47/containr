@@ -1,3 +1,4 @@
+use crate::config::DockerCmd;
 use crate::runner::Runner;
 use anyhow::Context as _;
 use serde::Deserialize;
@@ -6,7 +7,7 @@ use std::collections::HashMap;
 #[derive(Clone, Debug)]
 pub struct DockerCfg {
     // Shell fragment executed on the remote side, e.g. "docker" or "sudo docker".
-    pub docker_cmd: String,
+    pub docker_cmd: DockerCmd,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -164,30 +165,38 @@ fn parse_json_lines<T: for<'de> Deserialize<'de>>(text: &str) -> anyhow::Result<
 }
 
 pub fn containers_command(cfg: &DockerCfg) -> String {
+    if cfg.docker_cmd.is_empty() {
+        return String::new();
+    }
     // Run "ps -a" and "stats --no-stream" in a single SSH session to reduce latency.
     // We separate the outputs using a unique marker line.
     const SPLIT: &str = "__MCDOC_SPLIT__";
+    let cmd = cfg.docker_cmd.to_shell();
     format!(
         "{cmd} ps -a --no-trunc --format '{{{{json .}}}}'; echo {split}; {cmd} stats --no-stream --format '{{{{json .}}}}'",
-        cmd = cfg.docker_cmd,
+        cmd = cmd,
         split = SPLIT
     )
 }
 
 pub fn overview_command(cfg: &DockerCfg) -> String {
+    if cfg.docker_cmd.is_empty() {
+        return String::new();
+    }
     // Fetch containers + stats + images + volumes + networks in a single SSH session.
     // Outputs are separated using unique marker lines.
     const S1: &str = "__MCDOC_SPLIT_1__";
     const S2: &str = "__MCDOC_SPLIT_2__";
     const S3: &str = "__MCDOC_SPLIT_3__";
     const S4: &str = "__MCDOC_SPLIT_4__";
+    let cmd = cfg.docker_cmd.to_shell();
     format!(
         "{cmd} ps -a --no-trunc --format '{{{{json .}}}}'; echo {s1}; \
          {cmd} stats --no-stream --format '{{{{json .}}}}'; echo {s2}; \
          {cmd} image ls --no-trunc --format '{{{{json .}}}}'; echo {s3}; \
          {cmd} volume ls --format '{{{{json .}}}}'; echo {s4}; \
          {cmd} network ls --no-trunc --format '{{{{json .}}}}'",
-        cmd = cfg.docker_cmd,
+        cmd = cmd,
         s1 = S1,
         s2 = S2,
         s3 = S3,
@@ -378,6 +387,9 @@ pub async fn fetch_containers(
     runner: &Runner,
     cfg: &DockerCfg,
 ) -> anyhow::Result<Vec<ContainerRow>> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
     let cmd = containers_command(cfg);
     let out = runner.run(&cmd).await?;
     parse_containers_output(&out)
@@ -393,6 +405,9 @@ pub async fn fetch_overview(
     Vec<VolumeRow>,
     Vec<NetworkRow>,
 )> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
     let cmd = overview_command(cfg);
     let out = runner.run(&cmd).await?;
     parse_overview_output(&out)
@@ -403,10 +418,14 @@ pub async fn fetch_inspect(
     cfg: &DockerCfg,
     id_or_name: &str,
 ) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
     // Return a single JSON object (not an array) so the UI can render a tree view.
+    let cmd = cfg.docker_cmd.to_shell();
     let inspect_cmd = format!(
         "{cmd} inspect {arg} --format '{{{{json .}}}}'",
-        cmd = cfg.docker_cmd,
+        cmd = cmd,
         arg = shell_escape_arg(id_or_name)
     );
     let out = runner.run(&inspect_cmd).await?;
@@ -422,9 +441,13 @@ pub async fn fetch_image_inspect(
     cfg: &DockerCfg,
     id_or_name: &str,
 ) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let docker = cfg.docker_cmd.to_shell();
     let cmd = format!(
         "{docker} image inspect {arg} --format '{{{{json .}}}}'",
-        docker = cfg.docker_cmd,
+        docker = docker,
         arg = shell_escape_arg(id_or_name)
     );
     let out = runner.run(&cmd).await?;
@@ -440,9 +463,13 @@ pub async fn fetch_volume_inspect(
     cfg: &DockerCfg,
     name: &str,
 ) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let docker = cfg.docker_cmd.to_shell();
     let cmd = format!(
         "{docker} volume inspect {arg} --format '{{{{json .}}}}'",
-        docker = cfg.docker_cmd,
+        docker = docker,
         arg = shell_escape_arg(name)
     );
     let out = runner.run(&cmd).await?;
@@ -458,9 +485,13 @@ pub async fn fetch_network_inspect(
     cfg: &DockerCfg,
     id_or_name: &str,
 ) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let docker = cfg.docker_cmd.to_shell();
     let cmd = format!(
         "{docker} network inspect {arg} --format '{{{{json .}}}}'",
-        docker = cfg.docker_cmd,
+        docker = docker,
         arg = shell_escape_arg(id_or_name)
     );
     let out = runner.run(&cmd).await?;
@@ -476,6 +507,9 @@ pub async fn fetch_inspects(
     cfg: &DockerCfg,
     ids: &[String],
 ) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
     if ids.is_empty() {
         return Ok("[]".to_string());
     }
@@ -488,7 +522,8 @@ pub async fn fetch_inspects(
     }
 
     // Default output is a JSON array.
-    let inspect_cmd = format!("{cmd} inspect {args}", cmd = cfg.docker_cmd, args = args);
+    let cmd = cfg.docker_cmd.to_shell();
+    let inspect_cmd = format!("{cmd} inspect {args}", cmd = cmd, args = args);
     let out = runner.run(&inspect_cmd).await?;
     let out = out.trim();
     if out.is_empty() {
@@ -511,25 +546,29 @@ pub async fn container_action(
     action: ContainerAction,
     id_or_name: &str,
 ) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let docker = cfg.docker_cmd.to_shell();
     let cmd = match action {
         ContainerAction::Start => format!(
             "{docker} start {arg}",
-            docker = cfg.docker_cmd,
+            docker = docker,
             arg = shell_escape_arg(id_or_name)
         ),
         ContainerAction::Stop => format!(
             "{docker} stop {arg}",
-            docker = cfg.docker_cmd,
+            docker = docker,
             arg = shell_escape_arg(id_or_name)
         ),
         ContainerAction::Restart => format!(
             "{docker} restart {arg}",
-            docker = cfg.docker_cmd,
+            docker = docker,
             arg = shell_escape_arg(id_or_name)
         ),
         ContainerAction::Remove => format!(
             "{docker} rm -f {arg}",
-            docker = cfg.docker_cmd,
+            docker = docker,
             arg = shell_escape_arg(id_or_name)
         ),
     };
@@ -542,9 +581,13 @@ pub async fn image_remove(
     cfg: &DockerCfg,
     id_or_name: &str,
 ) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let docker = cfg.docker_cmd.to_shell();
     let cmd = format!(
         "{docker} image rm {arg}",
-        docker = cfg.docker_cmd,
+        docker = docker,
         arg = shell_escape_arg(id_or_name)
     );
     let out = runner.run(&cmd).await?;
@@ -556,9 +599,13 @@ pub async fn image_remove_force(
     cfg: &DockerCfg,
     id_or_name: &str,
 ) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let docker = cfg.docker_cmd.to_shell();
     let cmd = format!(
         "{docker} image rm -f {arg}",
-        docker = cfg.docker_cmd,
+        docker = docker,
         arg = shell_escape_arg(id_or_name)
     );
     let out = runner.run(&cmd).await?;
@@ -566,9 +613,13 @@ pub async fn image_remove_force(
 }
 
 pub async fn volume_remove(runner: &Runner, cfg: &DockerCfg, name: &str) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let docker = cfg.docker_cmd.to_shell();
     let cmd = format!(
         "{docker} volume rm {arg}",
-        docker = cfg.docker_cmd,
+        docker = docker,
         arg = shell_escape_arg(name)
     );
     let out = runner.run(&cmd).await?;
@@ -580,9 +631,13 @@ pub async fn network_remove(
     cfg: &DockerCfg,
     id_or_name: &str,
 ) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let docker = cfg.docker_cmd.to_shell();
     let cmd = format!(
         "{docker} network rm {arg}",
-        docker = cfg.docker_cmd,
+        docker = docker,
         arg = shell_escape_arg(id_or_name)
     );
     let out = runner.run(&cmd).await?;
@@ -595,10 +650,14 @@ pub async fn fetch_logs(
     id_or_name: &str,
     tail: usize,
 ) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
     // Tail only (default 500) to keep UI responsive over SSH.
+    let docker = cfg.docker_cmd.to_shell();
     let cmd = format!(
         "{docker} logs --timestamps --tail {tail} {arg}",
-        docker = cfg.docker_cmd,
+        docker = docker,
         tail = tail,
         arg = shell_escape_arg(id_or_name)
     );

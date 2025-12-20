@@ -13,7 +13,7 @@
 mod commands;
 pub mod theme;
 
-use crate::config::{self, ContainrConfig, KeyBinding, ServerEntry};
+use crate::config::{self, ContainrConfig, DockerCmd, KeyBinding, ServerEntry};
 use crate::docker::{
     self, ContainerAction, ContainerRow, DockerCfg, ImageRow, NetworkRow, VolumeRow,
 };
@@ -2745,7 +2745,10 @@ struct NicEntry {
     addr: String,
 }
 
-fn dashboard_command(docker_cmd: &str) -> String {
+fn dashboard_command(docker_cmd: &DockerCmd) -> String {
+    if docker_cmd.is_empty() {
+        return String::new();
+    }
     // Single round-trip via SSH/Local runner to collect basic host metrics.
     // Keep dependencies minimal: rely on /proc and coreutils if present.
     const OS: &str = "__CONTAINR_DASH_OS__";
@@ -2760,6 +2763,7 @@ fn dashboard_command(docker_cmd: &str) -> String {
     const ENGINE: &str = "__CONTAINR_DASH_ENGINE__";
 
     let docker_fmt = "{{{{.Server.Version}}}}|{{{{.Server.Os}}}}|{{{{.Server.Arch}}}}|{{{{.Server.ApiVersion}}}}";
+    let dc = docker_cmd.to_shell();
     format!(
         "echo {OS}; \
          ( [ -r /etc/os-release ] && . /etc/os-release && echo \"$PRETTY_NAME\" || uname -s ); \
@@ -2791,7 +2795,7 @@ fn dashboard_command(docker_cmd: &str) -> String {
         DISK = DISK,
         NICS = NICS,
         ENGINE = ENGINE,
-        dc = docker_cmd,
+        dc = dc,
         docker_fmt = docker_fmt,
     )
 }
@@ -3209,6 +3213,12 @@ pub async fn run_tui(
         app.log_msg(MsgLevel::Warn, format!("failed to load theme: {:#}", e));
     }
     app.current_target = runner.key();
+    if cfg.docker_cmd.is_empty() {
+        app.current_target.clear();
+        app.loading = false;
+        app.loading_since = None;
+        app.dashboard.loading = false;
+    }
     app.ascii_only = ascii_only;
     app.refresh_secs = refresh.as_secs().max(1);
     app.logs.tail = logs_tail.max(1);
@@ -3288,6 +3298,9 @@ pub async fn run_tui(
             }
 
             let conn = conn_rx.borrow().clone();
+            if conn.docker.docker_cmd.is_empty() {
+                continue;
+            }
             let key = conn.runner.key();
             let cmd = docker::overview_command(&conn.docker);
             let child = match conn.runner.spawn_killable(&cmd) {
@@ -3376,6 +3389,9 @@ pub async fn run_tui(
             }
 
             let conn = conn_rx.borrow().clone();
+            if conn.docker.docker_cmd.is_empty() {
+                continue;
+            }
             let key = conn.runner.key();
             let cmd = dashboard_command(&conn.docker.docker_cmd);
             let child = match conn.runner.spawn_killable(&cmd) {
@@ -3475,6 +3491,9 @@ pub async fn run_tui(
                     local_compose,
                 } => {
                     async {
+                        if docker.docker_cmd.is_empty() {
+                            anyhow::bail!("no server configured");
+                        }
                         let remote_dir = match runner {
                             Runner::Local => {
                                 let home = std::env::var("HOME")
@@ -3484,9 +3503,11 @@ pub async fn run_tui(
                             Runner::Ssh(_) => deploy_remote_dir_for(name),
                         };
                         let remote_compose = format!("{remote_dir}/compose.yaml");
-                        let mkdir_cmd = format!("mkdir -p {remote_dir}");
+                        let remote_dir_q = shell_single_quote(&remote_dir);
+                        let docker_cmd = docker.docker_cmd.to_shell();
+                        let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
                         let up_cmd =
-                            format!("cd {remote_dir} && {} compose up -d", docker.docker_cmd);
+                            format!("cd {remote_dir_q} && {docker_cmd} compose up -d");
                         runner.run(&mkdir_cmd).await?;
                         runner.copy_file_to(local_compose, &remote_compose).await?;
                         let out = runner.run(&up_cmd).await?;
@@ -3502,6 +3523,9 @@ pub async fn run_tui(
                     force,
                 } => {
                     async {
+                        if docker.docker_cmd.is_empty() {
+                            anyhow::bail!("no server configured");
+                        }
                         let raw = fs::read_to_string(local_cfg)
                             .with_context(|| format!("failed to read {}", local_cfg.display()))?;
                         let spec: NetworkTemplateSpec = serde_json::from_str(&raw)
@@ -3518,11 +3542,12 @@ pub async fn run_tui(
                             Runner::Ssh(_) => deploy_remote_net_dir_for(name),
                         };
                         let remote_cfg = format!("{remote_dir}/network.json");
-                        let mkdir_cmd = format!("mkdir -p {remote_dir}");
+                        let remote_dir_q = shell_single_quote(&remote_dir);
+                        let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
                         runner.run(&mkdir_cmd).await?;
                         runner.copy_file_to(local_cfg, &remote_cfg).await?;
 
-                        let docker_cmd = &docker.docker_cmd;
+                        let docker_cmd = docker.docker_cmd.to_shell();
                         let net_q = shell_single_quote(net_name);
                         let exists_cmd =
                             format!("{docker_cmd} network inspect {net_q} >/dev/null 2>&1");
@@ -4434,20 +4459,23 @@ fn current_runner_from_app(app: &App) -> Runner {
     }
 }
 
-fn current_docker_cmd_from_app(app: &App) -> String {
+fn current_docker_cmd_from_app(app: &App) -> DockerCmd {
     if let Some(name) = &app.active_server {
         if let Some(s) = app.servers.iter().find(|x| &x.name == name) {
             return s.docker_cmd.clone();
         }
     }
-    "docker".to_string()
+    DockerCmd::default()
 }
 
 fn current_server_label(app: &App) -> String {
-    app.active_server
-        .as_deref()
-        .unwrap_or_else(|| app.current_target.as_str())
-        .to_string()
+    if let Some(name) = app.active_server.as_deref() {
+        return name.to_string();
+    }
+    if !app.current_target.trim().is_empty() {
+        return app.current_target.clone();
+    }
+    "no server".to_string()
 }
 
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow::Result<()> {

@@ -1,6 +1,7 @@
 mod config;
 mod docker;
 mod runner;
+mod shell_parse;
 mod ssh;
 mod ui;
 
@@ -72,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
         templates_dir,
         view_layout,
     ) = if let Some(target) = args.target.clone() {
+        let parsed_docker_cmd = config::DockerCmd::from_shell(&args.docker_cmd)?;
         // "target mode": connect directly and (optionally) persist it as a named server.
         let desired_name = args
             .server
@@ -88,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
                     existing.identity = args.identity.clone();
                 }
                 if args.docker_cmd != "docker" {
-                    existing.docker_cmd = args.docker_cmd.clone();
+                    existing.docker_cmd = parsed_docker_cmd.clone();
                 }
                 Some(existing.name.clone())
             } else {
@@ -98,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
                     target: target.clone(),
                     port: args.port,
                     identity: args.identity.clone(),
-                    docker_cmd: args.docker_cmd.clone(),
+                    docker_cmd: parsed_docker_cmd.clone(),
                 });
                 Some(unique_name)
             };
@@ -120,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
         (
             runner,
             docker::DockerCfg {
-                docker_cmd: args.docker_cmd,
+                docker_cmd: parsed_docker_cmd,
             },
             config.servers.clone(),
             config.keymap.clone(),
@@ -138,47 +140,60 @@ async fn main() -> anyhow::Result<()> {
             .server
             .clone()
             .or_else(|| config.last_server.clone())
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "no --target given and no server configured; add one to {}",
-                    config_path.display()
-                )
-            })?;
+            .or_else(|| config.servers.first().map(|s| s.name.clone()));
 
-        let entry = config
-            .servers
-            .iter()
-            .find(|s| s.name == wanted)
-            .ok_or_else(|| {
-                anyhow::anyhow!("server '{}' not found in {}", wanted, config_path.display())
-            })?
-            .clone();
+        if let Some(wanted) = wanted {
+            let entry = config
+                .servers
+                .iter()
+                .find(|s| s.name == wanted)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("server '{}' not found in {}", wanted, config_path.display())
+                })?
+                .clone();
 
-        let runner = if entry.target == "local" {
-            Runner::Local
+            let runner = if entry.target == "local" {
+                Runner::Local
+            } else {
+                Runner::Ssh(ssh::Ssh {
+                    target: entry.target,
+                    identity: entry.identity,
+                    port: entry.port,
+                })
+            };
+
+            (
+                runner,
+                docker::DockerCfg {
+                    docker_cmd: entry.docker_cmd,
+                },
+                config.servers.clone(),
+                config.keymap.clone(),
+                Some(wanted),
+                config.refresh_secs,
+                config.logs_tail,
+                config.cmd_history_max,
+                config.cmd_history.clone(),
+                config.templates_dir.clone(),
+                config.view_layout.clone(),
+            )
         } else {
-            Runner::Ssh(ssh::Ssh {
-                target: entry.target,
-                identity: entry.identity,
-                port: entry.port,
-            })
-        };
-
-        (
-            runner,
-            docker::DockerCfg {
-                docker_cmd: entry.docker_cmd,
-            },
-            config.servers.clone(),
-            config.keymap.clone(),
-            Some(wanted),
-            config.refresh_secs,
-            config.logs_tail,
-            config.cmd_history_max,
-            config.cmd_history.clone(),
-            config.templates_dir.clone(),
-            config.view_layout.clone(),
-        )
+            (
+                Runner::Local,
+                docker::DockerCfg {
+                    docker_cmd: config::DockerCmd::empty(),
+                },
+                config.servers.clone(),
+                config.keymap.clone(),
+                None,
+                config.refresh_secs,
+                config.logs_tail,
+                config.cmd_history_max,
+                config.cmd_history.clone(),
+                config.templates_dir.clone(),
+                config.view_layout.clone(),
+            )
+        }
     };
 
     let refresh_secs = args.refresh_secs.unwrap_or(refresh_secs).max(1);

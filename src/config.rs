@@ -5,10 +5,133 @@
 //! No secrets are stored; only non-sensitive connection metadata and UI preferences.
 
 use anyhow::Context as _;
+use crate::shell_parse::parse_shell_tokens;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(transparent)]
+pub struct DockerCmd {
+    tokens: Vec<String>,
+}
+
+impl DockerCmd {
+    pub fn new(tokens: Vec<String>) -> Self {
+        let tokens = tokens
+            .into_iter()
+            .filter(|t| !t.trim().is_empty())
+            .collect::<Vec<_>>();
+        Self { tokens }
+    }
+
+    pub fn empty() -> Self {
+        Self { tokens: Vec::new() }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
+    }
+
+    pub fn from_shell(input: &str) -> anyhow::Result<Self> {
+        let tokens = parse_shell_tokens(input).map_err(|e| anyhow::anyhow!(e))?;
+        if tokens.is_empty() {
+            Ok(DockerCmd::default())
+        } else {
+            Ok(DockerCmd::new(tokens))
+        }
+    }
+
+    pub fn to_shell(&self) -> String {
+        if self.tokens.is_empty() {
+            return String::new();
+        }
+        self.tokens
+            .iter()
+            .map(|t| shell_escape_token(t))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
+impl Default for DockerCmd {
+    fn default() -> Self {
+        Self::new(vec!["docker".to_string()])
+    }
+}
+
+impl std::fmt::Display for DockerCmd {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.tokens.join(" "))
+    }
+}
+
+impl<'de> Deserialize<'de> for DockerCmd {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct DockerCmdVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for DockerCmdVisitor {
+            type Value = DockerCmd;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("string or array of strings")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let tokens = parse_shell_tokens(v).map_err(E::custom)?;
+                if tokens.is_empty() {
+                    Ok(DockerCmd::default())
+                } else {
+                    Ok(DockerCmd::new(tokens))
+                }
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(&v)
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut tokens: Vec<String> = Vec::new();
+                while let Some(v) = seq.next_element::<String>()? {
+                    if !v.trim().is_empty() {
+                        tokens.push(v);
+                    }
+                }
+                if tokens.is_empty() {
+                    Ok(DockerCmd::default())
+                } else {
+                    Ok(DockerCmd::new(tokens))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(DockerCmdVisitor)
+    }
+}
+
+fn shell_escape_token(text: &str) -> String {
+    if text
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "._-/:@=".contains(c))
+    {
+        return text.to_string();
+    }
+    let escaped = text.replace('\'', r"'\''");
+    format!("'{}'", escaped)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerEntry {
@@ -19,11 +142,11 @@ pub struct ServerEntry {
     #[serde(default)]
     pub identity: Option<String>,
     #[serde(default = "default_docker_cmd")]
-    pub docker_cmd: String,
+    pub docker_cmd: DockerCmd,
 }
 
-fn default_docker_cmd() -> String {
-    "docker".to_string()
+fn default_docker_cmd() -> DockerCmd {
+    DockerCmd::default()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,7 +194,7 @@ pub struct ContainrConfig {
 }
 
 fn default_version() -> u32 {
-    9
+    10
 }
 
 fn default_refresh_secs() -> u64 {
