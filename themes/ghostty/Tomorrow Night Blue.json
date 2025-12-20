@@ -1,0 +1,212 @@
+{
+  "version": 1,
+  "name": "Tomorrow Night Blue",
+  "background": {
+    "fg": "#ffffff",
+    "bg": "#002451",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "header": {
+    "fg": "#ffffff",
+    "bg": "#0d2f5a",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "footer": {
+    "fg": "#8c9cb1",
+    "bg": "#0d2f5a",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "panel": {
+    "fg": "#ffffff",
+    "bg": "#002451",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "panel_focused": {
+    "fg": "#ffffff",
+    "bg": "#14365f",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline": {
+    "fg": "#8c9cb1",
+    "bg": "#002451",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "overlay": {
+    "fg": "#ffffff",
+    "bg": "#00234e",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "divider": {
+    "fg": "#4c4c4c",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text": {
+    "fg": "#ffffff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_dim": {
+    "fg": "#8c9cb1",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_faint": {
+    "fg": "#667c97",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_error": {
+    "fg": "#ff9da4",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_warn": {
+    "fg": "#ffeead",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_ok": {
+    "fg": "#d1f1a9",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "list_selected": {
+    "fg": "#ffffff",
+    "bg": "#003f8e",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "table_header": {
+    "fg": "#8c9cb1",
+    "bg": "#082b56",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "active": {
+    "fg": "#ffeead",
+    "bg": "default",
+    "bold": true,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "marked": {
+    "fg": "#ffeead",
+    "bg": "default",
+    "bold": true,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "scroll_track": {
+    "fg": "#4c4c4c",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "scroll_thumb": {
+    "fg": "#ffffff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "syntax_text": {
+    "fg": "#ffffff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "syntax_comment": {
+    "fg": "#667c97",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "syntax_key": {
+    "fg": "#bbdaff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline_label": {
+    "fg": "#8c9cb1",
+    "bg": "#002451",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline_cursor": {
+    "fg": "#ffffff",
+    "bg": "#003f8e",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline_inactive": {
+    "fg": "#8c9cb1",
+    "bg": "#002451",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  }
+}

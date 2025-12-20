@@ -1,0 +1,212 @@
+{
+  "version": 1,
+  "name": "Idle Toes",
+  "background": {
+    "fg": "#ffffff",
+    "bg": "#323232",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "header": {
+    "fg": "#ffffff",
+    "bg": "#3c3c3c",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "footer": {
+    "fg": "#a3a3a3",
+    "bg": "#3c3c3c",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "panel": {
+    "fg": "#ffffff",
+    "bg": "#323232",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "panel_focused": {
+    "fg": "#ffffff",
+    "bg": "#424242",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline": {
+    "fg": "#a3a3a3",
+    "bg": "#323232",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "overlay": {
+    "fg": "#ffffff",
+    "bg": "#303030",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "divider": {
+    "fg": "#606060",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text": {
+    "fg": "#ffffff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_dim": {
+    "fg": "#a3a3a3",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_faint": {
+    "fg": "#848484",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_error": {
+    "fg": "#d25252",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_warn": {
+    "fg": "#ffc66d",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_ok": {
+    "fg": "#7fe173",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "list_selected": {
+    "fg": "#000000",
+    "bg": "#5b5b5b",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "table_header": {
+    "fg": "#a3a3a3",
+    "bg": "#383838",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "active": {
+    "fg": "#ffc66d",
+    "bg": "default",
+    "bold": true,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "marked": {
+    "fg": "#ffc66d",
+    "bg": "default",
+    "bold": true,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "scroll_track": {
+    "fg": "#606060",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "scroll_thumb": {
+    "fg": "#ffffff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "syntax_text": {
+    "fg": "#ffffff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "syntax_comment": {
+    "fg": "#848484",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "syntax_key": {
+    "fg": "#4099ff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline_label": {
+    "fg": "#a3a3a3",
+    "bg": "#323232",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline_cursor": {
+    "fg": "#000000",
+    "bg": "#5b5b5b",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline_inactive": {
+    "fg": "#a3a3a3",
+    "bg": "#323232",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  }
+}

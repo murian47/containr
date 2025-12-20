@@ -1,0 +1,212 @@
+{
+  "version": 1,
+  "name": "Lab Fox",
+  "background": {
+    "fg": "#ffffff",
+    "bg": "#2e2e2e",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "header": {
+    "fg": "#ffffff",
+    "bg": "#383838",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "footer": {
+    "fg": "#a1a1a1",
+    "bg": "#383838",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "panel": {
+    "fg": "#ffffff",
+    "bg": "#2e2e2e",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "panel_focused": {
+    "fg": "#ffffff",
+    "bg": "#3f3f3f",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline": {
+    "fg": "#a1a1a1",
+    "bg": "#2e2e2e",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "overlay": {
+    "fg": "#ffffff",
+    "bg": "#2c2c2c",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "divider": {
+    "fg": "#5f5f5f",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text": {
+    "fg": "#ffffff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_dim": {
+    "fg": "#a1a1a1",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_faint": {
+    "fg": "#828282",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_error": {
+    "fg": "#fc6d26",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_warn": {
+    "fg": "#fca121",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "text_ok": {
+    "fg": "#3eb383",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "list_selected": {
+    "fg": "#ffffff",
+    "bg": "#cb392e",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "table_header": {
+    "fg": "#a1a1a1",
+    "bg": "#343434",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "active": {
+    "fg": "#fca121",
+    "bg": "default",
+    "bold": true,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "marked": {
+    "fg": "#fca121",
+    "bg": "default",
+    "bold": true,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "scroll_track": {
+    "fg": "#5f5f5f",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "scroll_thumb": {
+    "fg": "#ffffff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "syntax_text": {
+    "fg": "#ffffff",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "syntax_comment": {
+    "fg": "#828282",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "syntax_key": {
+    "fg": "#db3b21",
+    "bg": "default",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline_label": {
+    "fg": "#a1a1a1",
+    "bg": "#2e2e2e",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline_cursor": {
+    "fg": "#ffffff",
+    "bg": "#cb392e",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  },
+  "cmdline_inactive": {
+    "fg": "#a1a1a1",
+    "bg": "#2e2e2e",
+    "bold": false,
+    "dim": false,
+    "underline": false,
+    "reverse": false
+  }
+}

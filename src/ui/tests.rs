@@ -2,6 +2,7 @@ use super::*;
 use crate::config::DockerCmd;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use serde_json::json;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn mk_temp_path(prefix: &str) -> PathBuf {
@@ -60,6 +61,17 @@ fn render_screen(app: &mut App, width: u16, height: u16) -> String {
     out
 }
 
+fn render_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| {
+            draw_shell(f, app, Duration::from_secs(5));
+        })
+        .unwrap();
+    terminal.backend().buffer().clone()
+}
+
 #[test]
 fn parse_key_spec_allows_ctrl_shift_char_chord() {
     let ks = parse_key_spec("C-S-C").expect("parse C-S-C");
@@ -94,6 +106,28 @@ fn parse_cmdline_tokens_allows_escaped_space() {
 }
 
 #[test]
+fn docker_cmd_deserialize_from_string() {
+    let v = json!({ "docker_cmd": "sudo docker" });
+    let cmd: DockerCmd = serde_json::from_value(v["docker_cmd"].clone()).unwrap();
+    assert_eq!(cmd.to_string(), "sudo docker");
+    assert_eq!(cmd.to_shell(), "sudo docker");
+}
+
+#[test]
+fn docker_cmd_deserialize_from_array() {
+    let v = json!({ "docker_cmd": ["sudo", "docker"] });
+    let cmd: DockerCmd = serde_json::from_value(v["docker_cmd"].clone()).unwrap();
+    assert_eq!(cmd.to_string(), "sudo docker");
+    assert_eq!(cmd.to_shell(), "sudo docker");
+}
+
+#[test]
+fn docker_cmd_to_shell_escapes_tokens() {
+    let cmd: DockerCmd = serde_json::from_value(json!("sudo docker --config 'a b'")).unwrap();
+    assert_eq!(cmd.to_shell(), "sudo docker --config 'a b'");
+}
+
+#[test]
 fn parse_cmdline_tokens_supports_mixed_quotes() {
     let tokens = parse_cmdline_tokens("cmd \"a b\" 'c d' \"e \\\"f\\\"\"")
         .expect("parse cmdline");
@@ -110,6 +144,52 @@ fn parse_cmdline_tokens_rejects_unterminated_quote() {
 fn parse_cmdline_tokens_allows_single_quote_escapes() {
     let tokens = parse_cmdline_tokens("cmd 'a\\'b' 'c\\\\d'").expect("parse cmdline");
     assert_eq!(tokens, vec!["cmd", "a'b", "c\\d"]);
+}
+
+#[test]
+fn dashboard_shows_no_server_message() {
+    let tmp = mk_temp_path("config");
+    std::fs::create_dir_all(&tmp).unwrap();
+    let config_path = tmp.join("config.json");
+    let mut app = App::new(
+        Vec::new(),
+        Vec::new(),
+        None,
+        config_path,
+        HashMap::new(),
+        "default".to_string(),
+        theme::default_theme_spec(),
+    );
+    app.loading = false;
+    app.current_target.clear();
+    app.shell_view = ShellView::Dashboard;
+    let screen = render_screen(&mut app, 120, 30);
+    assert!(screen.contains("No server configured"));
+}
+
+#[test]
+fn sidebar_separator_uses_focused_background() {
+    let mut app = mk_test_app();
+    app.loading = false;
+    app.shell_view = ShellView::Containers;
+    app.shell_focus = ShellFocus::Sidebar;
+    let buf = render_buffer(&mut app, 120, 40);
+    let mut found = false;
+    let expected_bg = theme::parse_color(&app.theme.panel_focused.bg);
+    for y in 0..buf.area.height {
+        for x in 0..buf.area.width {
+            let cell = &buf[(x, y)];
+            if cell.symbol() == "─" {
+                found = true;
+                assert_eq!(cell.style().bg, Some(expected_bg));
+                break;
+            }
+        }
+        if found {
+            break;
+        }
+    }
+    assert!(found, "no sidebar separator glyph found");
 }
 
 #[test]

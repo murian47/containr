@@ -16,8 +16,8 @@ fn validate_theme_name(raw: &str) -> anyhow::Result<String> {
     anyhow::ensure!(!name.is_empty(), "theme name is empty");
     anyhow::ensure!(
         name.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'),
-        "theme name must be [A-Za-z0-9._-]"
+            .all(|c| c.is_ascii_alphanumeric() || " ._+-()".contains(c)),
+        "theme name must be [A-Za-z0-9 ._+()-]"
     );
     anyhow::ensure!(!name.starts_with('.'), "theme name must not start with '.'");
     anyhow::ensure!(name != "." && name != "..", "invalid theme name");
