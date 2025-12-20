@@ -2817,9 +2817,10 @@ fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layo
 
         match *it {
             ShellSidebarItem::Separator => {
+                let divider_style = bg.patch(app.theme.divider.to_style());
                 rendered.push(ListItem::new(Line::from(Span::styled(
                     "─".repeat(inner_w),
-                    app.theme.divider.to_style(),
+                    divider_style,
                 ))));
             }
             ShellSidebarItem::Gap => {
