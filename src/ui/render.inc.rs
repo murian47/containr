@@ -2554,12 +2554,8 @@ fn draw_shell_header(
     } else {
         String::new()
     };
-    let commit_label = if commands::git_cmd::git_available() {
-        if app.git_autocommit {
-            "  Commit: auto"
-        } else {
-            "  Commit: manual"
-        }
+    let commit_label = if commands::git_cmd::git_available() && app.git_autocommit {
+        "  Commit: auto"
     } else {
         ""
     };
