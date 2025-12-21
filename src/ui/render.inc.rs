@@ -5855,14 +5855,14 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(Line::from(""));
 
     out.push(h("Git"));
-    out.push(item("Git", ":git <templates|themes> status", "Show repo status (short)"));
-    out.push(item("Git", ":git <templates|themes> diff", "Show repo diff"));
-    out.push(item("Git", ":git <templates|themes> log", "Show recent commits"));
-    out.push(item("Git", ":git <templates|themes> commit -m", "Commit with prompt for message"));
-    out.push(item("Git", ":git <templates|themes> pull", "git pull --rebase"));
-    out.push(item("Git", ":git <templates|themes> push", "git push"));
-    out.push(item("Git", ":git <templates|themes> init", "Initialize repo (only if empty)"));
-    out.push(item("Git", ":git <templates|themes> clone <url>", "Clone repo (only if empty)"));
+    out.push(item("Git", ":git templates status", "Show repo status (short)"));
+    out.push(item("Git", ":git templates diff", "Show repo diff"));
+    out.push(item("Git", ":git templates log", "Show recent commits"));
+    out.push(item("Git", ":git templates commit -m", "Commit with prompt for message"));
+    out.push(item("Git", ":git templates pull", "git pull --rebase"));
+    out.push(item("Git", ":git templates push", "git push"));
+    out.push(item("Git", ":git templates init", "Initialize repo (only if empty)"));
+    out.push(item("Git", ":git templates clone <url>", "Clone repo (only if empty)"));
     out.push(Line::from(""));
 
     out.push(h("Servers"));
