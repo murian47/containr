@@ -4216,7 +4216,6 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
         vertical: 1,
         horizontal: 1,
     });
-
     if app.servers.is_empty() && app.current_target.trim().is_empty() {
         let msg = "No server configured. Use :server add to get started.";
         f.render_widget(
@@ -4909,6 +4908,20 @@ fn draw_shell_container_details(
         .get(&c.id)
         .map(|(ip, _)| ip.clone())
         .unwrap_or_else(|| "-".to_string());
+    let (status_value, status_style) = if let Some(marker) = app.action_inflight.get(&c.id) {
+        (
+            action_status_prefix(marker.action).to_string(),
+            bg.patch(app.theme.text_warn.to_style()),
+        )
+    } else if let Some(err) = app.container_action_error.get(&c.id) {
+        let style = match err.kind {
+            ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+            ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+        };
+        (action_error_label(err).to_string(), style)
+    } else {
+        (c.status.clone(), val)
+    };
     let mut rows = vec![
         DetailRow {
             key: "Name",
@@ -4927,8 +4940,8 @@ fn draw_shell_container_details(
         },
         DetailRow {
             key: "Status",
-            value: c.status.clone(),
-            style: val,
+            value: status_value,
+            style: status_style,
         },
         DetailRow {
             key: "CPU / MEM",
@@ -5069,10 +5082,27 @@ fn draw_stack_containers_table(
         .skip(scroll)
         .take(view_height)
         .map(|c| {
+            let status = if let Some(marker) = app.action_inflight.get(&c.id) {
+                action_status_prefix(marker.action).to_string()
+            } else if let Some(err) = app.container_action_error.get(&c.id) {
+                action_error_label(err).to_string()
+            } else {
+                c.status.clone()
+            };
+            let status_style = if app.action_inflight.contains_key(&c.id) {
+                bg.patch(app.theme.text_warn.to_style())
+            } else if let Some(err) = app.container_action_error.get(&c.id) {
+                match err.kind {
+                    ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                    ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                }
+            } else {
+                bg
+            };
             Row::new(vec![
                 Cell::from(c.name.clone()),
                 Cell::from(c.image.clone()),
-                Cell::from(c.status.clone()),
+                Cell::from(status).style(status_style),
                 Cell::from(c.ports.clone()),
             ])
         })
@@ -5184,11 +5214,32 @@ fn draw_shell_image_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui
         used_by.join(", ")
     };
     let val = bg;
+    let key = App::image_row_key(&img);
     let mut rows = vec![
         DetailRow {
             key: "Ref",
             value: img.name(),
             style: val,
+        },
+        DetailRow {
+            key: "Status",
+            value: if app.image_action_inflight.contains_key(&key) {
+                "removing".to_string()
+            } else if let Some(err) = app.image_action_error.get(&key) {
+                action_error_label(err).to_string()
+            } else {
+                "-".to_string()
+            },
+            style: if app.image_action_inflight.contains_key(&key) {
+                bg.patch(app.theme.text_warn.to_style())
+            } else if let Some(err) = app.image_action_error.get(&key) {
+                match err.kind {
+                    ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                    ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                }
+            } else {
+                val
+            },
         },
         DetailRow {
             key: "ID",
@@ -5206,7 +5257,6 @@ fn draw_shell_image_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui
             style: val,
         },
     ];
-    let key = App::image_row_key(&img);
     if let Some(err) = app.image_action_error.get(&key) {
         let v = match err.kind {
             ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
@@ -5252,6 +5302,26 @@ fn draw_shell_volume_details(
             key: "Name",
             value: v.name.clone(),
             style: val,
+        },
+        DetailRow {
+            key: "Status",
+            value: if app.volume_action_inflight.contains_key(&v.name) {
+                "removing".to_string()
+            } else if let Some(err) = app.volume_action_error.get(&v.name) {
+                action_error_label(err).to_string()
+            } else {
+                "-".to_string()
+            },
+            style: if app.volume_action_inflight.contains_key(&v.name) {
+                bg.patch(app.theme.text_warn.to_style())
+            } else if let Some(err) = app.volume_action_error.get(&v.name) {
+                match err.kind {
+                    ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                    ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                }
+            } else {
+                val
+            },
         },
         DetailRow {
             key: "Driver",
@@ -5322,6 +5392,26 @@ fn draw_shell_network_details(
             style: val,
         },
         DetailRow {
+            key: "Status",
+            value: if app.network_action_inflight.contains_key(&n.id) {
+                "removing".to_string()
+            } else if let Some(err) = app.network_action_error.get(&n.id) {
+                action_error_label(err).to_string()
+            } else {
+                "-".to_string()
+            },
+            style: if app.network_action_inflight.contains_key(&n.id) {
+                bg.patch(app.theme.text_warn.to_style())
+            } else if let Some(err) = app.network_action_error.get(&n.id) {
+                match err.kind {
+                    ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                    ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                }
+            } else {
+                val
+            },
+        },
+        DetailRow {
             key: "Type",
             value: if is_system { "System" } else { "User" }.to_string(),
             style: type_style,
@@ -5377,6 +5467,12 @@ fn draw_shell_stack_template_details(
         vertical: 1,
         horizontal: 1,
     });
+    let parts = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(1)])
+        .split(inner);
+    let status_area = parts[0];
+    let content_area = parts[1];
 
     if let Some(err) = &app.templates_state.templates_error {
         f.render_widget(
@@ -5388,7 +5484,7 @@ fn draw_shell_stack_template_details(
         return;
     }
 
-    let Some(t) = app.selected_template() else {
+    let Some(t) = app.selected_template().cloned() else {
         f.render_widget(
             Paragraph::new("No template selected.")
                 .style(bg.patch(app.theme.text_dim.to_style()))
@@ -5412,7 +5508,7 @@ fn draw_shell_stack_template_details(
         fs::read_to_string(&t.compose_path).unwrap_or_else(|e| format!("read failed: {e}"));
     let lines: Vec<&str> = content.lines().collect();
     let lnw = lines.len().max(1).to_string().len();
-    let view_h = inner.height.max(1) as usize;
+    let view_h = content_area.height.max(1) as usize;
     let max_scroll = lines.len().saturating_sub(view_h);
     app.templates_state.templates_details_scroll = app.templates_state.templates_details_scroll.min(max_scroll);
 
@@ -5430,12 +5526,35 @@ fn draw_shell_stack_template_details(
         out.push(Line::from(Span::styled(format!("{:>lnw$} ", 1), ln_style)));
     }
 
+    let (status_text, status_style) = if let Some(m) =
+        app.templates_state.template_deploy_inflight.get(&t.name)
+    {
+        let secs = m.started.elapsed().as_secs();
+        (
+            format!("Status: deploying ({secs}s)"),
+            bg.patch(app.theme.text_warn.to_style()),
+        )
+    } else if let Some(err) = app.template_action_error.get(&t.name) {
+        let st = match err.kind {
+            ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+            ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+        };
+        (format!("Status: {}", action_error_label(err)), st)
+    } else {
+        ("Status: -".to_string(), bg.patch(app.theme.text_dim.to_style()))
+    };
+    f.render_widget(
+        Paragraph::new(status_text)
+            .style(status_style)
+            .wrap(Wrap { trim: true }),
+        status_area,
+    );
     f.render_widget(
         Paragraph::new(Text::from(out)).style(bg).scroll((
             app.templates_state.templates_details_scroll.min(u16::MAX as usize) as u16,
             0,
         )),
-        inner,
+        content_area,
     );
 }
 
@@ -5461,6 +5580,12 @@ fn draw_shell_net_template_details(
         vertical: 1,
         horizontal: 1,
     });
+    let parts = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(1)])
+        .split(inner);
+    let status_area = parts[0];
+    let content_area = parts[1];
 
     if let Some(err) = &app.templates_state.net_templates_error {
         f.render_widget(
@@ -5472,7 +5597,7 @@ fn draw_shell_net_template_details(
         return;
     }
 
-    let Some(t) = app.selected_net_template() else {
+    let Some(t) = app.selected_net_template().cloned() else {
         f.render_widget(
             Paragraph::new("No network template selected.")
                 .style(bg.patch(app.theme.text_dim.to_style()))
@@ -5495,7 +5620,7 @@ fn draw_shell_net_template_details(
     let content = fs::read_to_string(&t.cfg_path).unwrap_or_else(|e| format!("read failed: {e}"));
     let lines: Vec<&str> = content.lines().collect();
     let lnw = lines.len().max(1).to_string().len();
-    let view_h = inner.height.max(1) as usize;
+    let view_h = content_area.height.max(1) as usize;
     let max_scroll = lines.len().saturating_sub(view_h);
     app.templates_state.net_templates_details_scroll = app.templates_state.net_templates_details_scroll.min(max_scroll);
 
@@ -5513,13 +5638,36 @@ fn draw_shell_net_template_details(
         out.push(Line::from(Span::styled(format!("{:>lnw$} ", 1), ln_style)));
     }
 
+    let (status_text, status_style) = if let Some(m) =
+        app.templates_state.net_template_deploy_inflight.get(&t.name)
+    {
+        let secs = m.started.elapsed().as_secs();
+        (
+            format!("Status: deploying ({secs}s)"),
+            bg.patch(app.theme.text_warn.to_style()),
+        )
+    } else if let Some(err) = app.net_template_action_error.get(&t.name) {
+        let st = match err.kind {
+            ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+            ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+        };
+        (format!("Status: {}", action_error_label(err)), st)
+    } else {
+        ("Status: -".to_string(), bg.patch(app.theme.text_dim.to_style()))
+    };
+    f.render_widget(
+        Paragraph::new(status_text)
+            .style(status_style)
+            .wrap(Wrap { trim: true }),
+        status_area,
+    );
     f.render_widget(
         Paragraph::new(Text::from(out)).style(bg).scroll((
             app.templates_state.net_templates_details_scroll
                 .min(u16::MAX as usize) as u16,
             0,
         )),
-        inner,
+        content_area,
     );
 }
 
