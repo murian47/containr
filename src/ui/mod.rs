@@ -1074,6 +1074,19 @@ impl App {
             .count()
     }
 
+    fn stack_network_ids(&self, name: &str) -> Vec<String> {
+        let mut ids: Vec<String> = self
+            .networks
+            .iter()
+            .filter(|n| stack_name_from_labels(&n.labels).as_deref() == Some(name))
+            .filter(|n| !App::is_system_network(n))
+            .map(|n| n.id.clone())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    }
+
     pub(crate) fn editor_cmd(&self) -> String {
         let configured = self.editor_cmd.trim();
         if !configured.is_empty() {

@@ -1345,7 +1345,22 @@ fn shell_exec_stack_action(
         app.set_warn("no containers in stack");
         return;
     }
-    app.set_info(format!("stack {stack_name}: {} containers", ids.len()));
+    let remove_networks = matches!(action, ContainerAction::Remove);
+    let network_ids = if remove_networks {
+        app.stack_network_ids(&stack_name)
+    } else {
+        Vec::new()
+    };
+    let info = if network_ids.is_empty() {
+        format!("stack {stack_name}: {} containers", ids.len())
+    } else {
+        format!(
+            "stack {stack_name}: {} containers, {} networks",
+            ids.len(),
+            network_ids.len()
+        )
+    };
+    app.set_info(info);
     let now = Instant::now();
     for id in ids {
         app.action_inflight.insert(
@@ -1356,6 +1371,17 @@ fn shell_exec_stack_action(
             },
         );
         let _ = action_req_tx.send(ActionRequest::Container { action, id });
+    }
+    if remove_networks {
+        for id in network_ids {
+            app.network_action_inflight.insert(
+                id.clone(),
+                SimpleMarker {
+                    until: now + Duration::from_secs(120),
+                },
+            );
+            let _ = action_req_tx.send(ActionRequest::NetworkRemove { id });
+        }
     }
 }
 
