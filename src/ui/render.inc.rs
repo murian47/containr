@@ -1103,6 +1103,23 @@ fn shell_execute_cmdline(
             return;
         }
         match sub {
+            "running" => {
+                app.stacks_only_running = !app.stacks_only_running;
+                app.rebuild_stacks();
+                app.set_info(format!(
+                    "stacks filter: {}",
+                    if app.stacks_only_running {
+                        "running"
+                    } else {
+                        "all"
+                    }
+                ));
+            }
+            "all" => {
+                app.stacks_only_running = false;
+                app.rebuild_stacks();
+                app.set_info("stacks filter: all");
+            }
             "start" => {
                 shell_exec_stack_action(app, ContainerAction::Start, name, action_req_tx);
             }
@@ -1131,7 +1148,7 @@ fn shell_execute_cmdline(
                 shell_exec_stack_action(app, ContainerAction::Remove, Some(&target), action_req_tx);
             }
             _ => {
-                app.set_warn("usage: :stack [start|stop|restart|rm] [name]");
+                app.set_warn("usage: :stack [start|stop|restart|rm] [name] | :stacks running|all");
             }
         }
         return;
@@ -1328,6 +1345,7 @@ fn shell_exec_stack_action(
         app.set_warn("no containers in stack");
         return;
     }
+    app.set_info(format!("stack {stack_name}: {} containers", ids.len()));
     let now = Instant::now();
     for id in ids {
         app.action_inflight.insert(
@@ -2332,8 +2350,31 @@ fn handle_shell_key(
         | ShellView::Volumes
         | ShellView::Networks => {
             if app.shell_focus == ShellFocus::Details {
+                let stack_name = if app.shell_view == ShellView::Stacks {
+                    let name = app.selected_stack_entry().map(|s| s.name.clone());
+                    if let Some(ref n) = name {
+                        if app.stack_network_count(n) == 0 {
+                            app.stack_details_focus = StackDetailsFocus::Containers;
+                        }
+                    }
+                    name
+                } else {
+                    None
+                };
+                let stack_counts = if let (ShellView::Stacks, Some(ref name)) =
+                    (app.shell_view, stack_name.as_ref())
+                {
+                    let containers = app.stack_container_count(name);
+                    let networks = app.stack_network_count(name);
+                    Some((containers, networks))
+                } else {
+                    None
+                };
                 let scroll = match app.shell_view {
-                    ShellView::Stacks => &mut app.stacks_details_scroll,
+                    ShellView::Stacks => match app.stack_details_focus {
+                        StackDetailsFocus::Containers => &mut app.stacks_details_scroll,
+                        StackDetailsFocus::Networks => &mut app.stacks_networks_scroll,
+                    },
                     ShellView::Containers => &mut app.container_details_scroll,
                     ShellView::Images => &mut app.image_details_scroll,
                     ShellView::Volumes => &mut app.volume_details_scroll,
@@ -2341,6 +2382,23 @@ fn handle_shell_key(
                     _ => &mut app.container_details_scroll,
                 };
                 match key.code {
+                    KeyCode::Left | KeyCode::Right => {
+                        if app.shell_view == ShellView::Stacks {
+                            if let Some((_, networks)) = stack_counts {
+                                if networks > 0 {
+                                    app.stack_details_focus = match app.stack_details_focus {
+                                        StackDetailsFocus::Containers => {
+                                            StackDetailsFocus::Networks
+                                        }
+                                        StackDetailsFocus::Networks => {
+                                            StackDetailsFocus::Containers
+                                        }
+                                    };
+                                    return;
+                                }
+                            }
+                        }
+                    }
                     KeyCode::Up | KeyCode::Char('k') => {
                         *scroll = scroll.saturating_sub(1);
                     }
@@ -2354,7 +2412,21 @@ fn handle_shell_key(
                         *scroll = scroll.saturating_add(10);
                     }
                     KeyCode::Home => *scroll = 0,
-                    KeyCode::End => *scroll = usize::MAX,
+                    KeyCode::End => {
+                        if app.shell_view == ShellView::Stacks {
+                            if let Some((containers, networks)) = stack_counts {
+                                let count = match app.stack_details_focus {
+                                    StackDetailsFocus::Containers => containers,
+                                    StackDetailsFocus::Networks => networks,
+                                };
+                                *scroll = count.saturating_sub(1);
+                            } else {
+                                *scroll = 0;
+                            }
+                        } else {
+                            *scroll = usize::MAX;
+                        }
+                    }
                     _ => {}
                 }
                 return;
@@ -3373,7 +3445,7 @@ fn draw_shell_footer(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
     let version = format!("v{} ", env!("CARGO_PKG_VERSION"));
     let hint = match app.shell_view {
         ShellView::Dashboard => {
-            " F1 help  b sidebar  ^p layout  :q quit"
+            " F1 help  b sidebar  ^p layout  ^s start  ^o stop  ^r restart  ^d rm  :q quit"
         }
         ShellView::Stacks => {
             " F1 help  b sidebar  ^p layout  :q quit"
@@ -5026,8 +5098,16 @@ fn draw_shell_stack_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui
         return;
     }
 
+    let focus = if app.shell_focus == ShellFocus::Details {
+        app.stack_details_focus
+    } else {
+        StackDetailsFocus::Containers
+    };
+    let containers_focused = focus == StackDetailsFocus::Containers;
+    let networks_focused = focus == StackDetailsFocus::Networks;
+
     if networks.is_empty() {
-        draw_stack_containers_table(f, app, inner, &containers);
+        draw_stack_containers_table(f, app, inner, &containers, true);
         return;
     }
 
@@ -5039,9 +5119,9 @@ fn draw_shell_stack_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui
             Constraint::Percentage(35),
         ])
         .split(inner);
-    draw_stack_containers_table(f, app, parts[0], &containers);
+    draw_stack_containers_table(f, app, parts[0], &containers, containers_focused);
     draw_shell_hr(f, app, parts[1]);
-    draw_stack_networks_table(f, app, parts[2], &networks);
+    draw_stack_networks_table(f, app, parts[2], &networks, networks_focused);
 }
 
 fn draw_stack_containers_table(
@@ -5049,6 +5129,7 @@ fn draw_stack_containers_table(
     app: &mut App,
     area: ratatui::layout::Rect,
     containers: &[ContainerRow],
+    focused: bool,
 ) {
     let bg = if app.shell_focus == ShellFocus::Details {
         app.theme.panel_focused.to_style()
@@ -5107,6 +5188,11 @@ fn draw_stack_containers_table(
             ])
         })
         .collect();
+    let header_style = if focused {
+        shell_header_style(app)
+    } else {
+        bg.patch(app.theme.text_dim.to_style())
+    };
     let table = Table::new(
         rows,
         [
@@ -5123,7 +5209,7 @@ fn draw_stack_containers_table(
             Cell::from("STATUS"),
             Cell::from("PORTS"),
         ])
-        .style(shell_header_style(app)),
+        .style(header_style),
     )
     .style(bg)
     .column_spacing(1)
@@ -5137,6 +5223,7 @@ fn draw_stack_networks_table(
     app: &mut App,
     area: ratatui::layout::Rect,
     networks: &[NetworkRow],
+    focused: bool,
 ) {
     let bg = if app.shell_focus == ShellFocus::Details {
         app.theme.panel_focused.to_style()
@@ -5159,8 +5246,16 @@ fn draw_stack_networks_table(
         return;
     }
 
+    let inner_height = inner.height.max(1) as usize;
+    let header_rows = 1usize;
+    let view_height = inner_height.saturating_sub(header_rows).max(1);
+    let scroll = app
+        .stacks_networks_scroll
+        .min(networks.len().saturating_sub(1));
     let rows: Vec<Row> = networks
         .iter()
+        .skip(scroll)
+        .take(view_height)
         .map(|n| {
             Row::new(vec![
                 Cell::from(n.name.clone()),
@@ -5169,6 +5264,11 @@ fn draw_stack_networks_table(
             ])
         })
         .collect();
+    let header_style = if focused {
+        shell_header_style(app)
+    } else {
+        bg.patch(app.theme.text_dim.to_style())
+    };
     let table = Table::new(
         rows,
         [
@@ -5179,7 +5279,7 @@ fn draw_stack_networks_table(
     )
     .header(
         Row::new(vec![Cell::from("NETWORK"), Cell::from("DRIVER"), Cell::from("SCOPE")])
-            .style(shell_header_style(app)),
+            .style(header_style),
     )
     .style(bg)
     .column_spacing(1)
@@ -6607,6 +6707,11 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Stacks",
         ":stack/:stk (start|stop|restart|rm) [name]",
         "Run action for selected stack (or by name)",
+    ));
+    out.push(item(
+        "Stacks",
+        ":stacks running|all",
+        "Filter stacks list (running only or show all)",
     ));
     out.push(Line::from(""));
 

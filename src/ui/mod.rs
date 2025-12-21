@@ -648,6 +648,12 @@ struct StackEntry {
     running: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StackDetailsFocus {
+    Containers,
+    Networks,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InspectMode {
     Normal,
@@ -938,6 +944,9 @@ struct App {
     stacks: Vec<StackEntry>,
     stacks_selected: usize,
     stacks_details_scroll: usize,
+    stacks_networks_scroll: usize,
+    stack_details_focus: StackDetailsFocus,
+    stacks_only_running: bool,
 
     container_details_scroll: usize,
     image_details_scroll: usize,
@@ -1019,6 +1028,9 @@ impl App {
                 .iter()
                 .filter(|c| !is_container_stopped(&c.status))
                 .count();
+            if self.stacks_only_running && running == 0 {
+                continue;
+            }
             out.push(StackEntry {
                 name,
                 total,
@@ -1046,6 +1058,20 @@ impl App {
         ids.sort();
         ids.dedup();
         ids
+    }
+
+    fn stack_container_count(&self, name: &str) -> usize {
+        self.containers
+            .iter()
+            .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(name))
+            .count()
+    }
+
+    fn stack_network_count(&self, name: &str) -> usize {
+        self.networks
+            .iter()
+            .filter(|n| stack_name_from_labels(&n.labels).as_deref() == Some(name))
+            .count()
     }
 
     pub(crate) fn editor_cmd(&self) -> String {
@@ -1346,6 +1372,9 @@ impl App {
             stacks: Vec::new(),
             stacks_selected: 0,
             stacks_details_scroll: 0,
+            stacks_networks_scroll: 0,
+            stack_details_focus: StackDetailsFocus::Containers,
+            stacks_only_running: false,
 
             container_details_scroll: 0,
             image_details_scroll: 0,
