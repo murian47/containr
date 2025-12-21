@@ -170,6 +170,7 @@ Wichtig: Dry-run, klare Prompts und Sicherheitschecks.
 - M2: Stacks-View (Stacks erkennen, anzeigen, simple lifecycle actions)
 - M3: Deploy (render + copy + compose up) inkl. state/history
 - M4: Update/Rollback (select ref, redeploy, history UI)
+- M5: AI support (assistant-driven template creation/editing)
 
 ## Offene Fragen
 

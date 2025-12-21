@@ -11,6 +11,8 @@ on themes and UI previews.
    - M1: Templates view + Git actions + $EDITOR integration
    - M2: Stacks view + lifecycle actions (start/stop/restart, etc.)
    - M3: Deploy flow (render, copy, compose up) + state/history
+   - M4: Update/Rollback (select ref, redeploy, history UI)
+   - M5: AI support (assistant-driven template creation/editing)
 
 2. Command placeholders
    - Implement placeholder expansion for command line + keybindings
