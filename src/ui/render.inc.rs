@@ -783,6 +783,7 @@ async fn export_stack_template(
     runner: &Runner,
     docker: &DockerCfg,
     name: &str,
+    source: &str,
     stack_name: Option<&str>,
     container_ids: &[String],
     templates_dir: &PathBuf,
@@ -829,20 +830,7 @@ async fn export_stack_template(
             .and_then(|cfg| cfg.labels.as_ref())
             .and_then(stack_name_from_label_map)
     });
-    let source = if let Some(stack) = stack_name.as_deref() {
-        format!("stack {stack}")
-    } else if inspects.len() == 1 {
-        format!(
-            "container {}",
-            inspects
-                .first()
-                .map(|c| c.name.trim_start_matches('/'))
-                .unwrap_or("unknown")
-        )
-    } else {
-        "containers".to_string()
-    };
-    let compose = build_compose_yaml(name, stack_name.as_deref(), &source, &inspects, &networks);
+    let compose = build_compose_yaml(name, stack_name.as_deref(), source, &inspects, &networks);
     write_stack_template_compose(templates_dir, name, &compose)?;
     Ok(warnings.join("\n"))
 }

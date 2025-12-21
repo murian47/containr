@@ -834,11 +834,13 @@ enum ActionRequest {
     TemplateFromStack {
         name: String,
         stack_name: String,
+        source: String,
         container_ids: Vec<String>,
         templates_dir: PathBuf,
     },
     TemplateFromContainer {
         name: String,
+        source: String,
         container_id: String,
         templates_dir: PathBuf,
     },
@@ -3817,12 +3819,14 @@ pub async fn run_tui(
                 ActionRequest::TemplateFromStack {
                     name,
                     stack_name,
+                    source,
                     container_ids,
                     templates_dir,
                 } => export_stack_template(
                     &conn.runner,
                     &conn.docker,
                     name,
+                    source,
                     Some(stack_name),
                     container_ids,
                     templates_dir,
@@ -3830,12 +3834,14 @@ pub async fn run_tui(
                 .await,
                 ActionRequest::TemplateFromContainer {
                     name,
+                    source,
                     container_id,
                     templates_dir,
                 } => export_stack_template(
                     &conn.runner,
                     &conn.docker,
                     name,
+                    source,
                     None,
                     std::slice::from_ref(container_id),
                     templates_dir,

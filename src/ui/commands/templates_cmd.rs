@@ -175,12 +175,14 @@ pub fn handle_template(
                 return true;
             }
             let templates_dir = app.stack_templates_dir();
+            let source = format!("stack {stack_name}");
             app.set_info(format!(
                 "exporting template {name} from stack {stack_name}"
             ));
             let _ = action_req_tx.send(ActionRequest::TemplateFromStack {
                 name: name.to_string(),
                 stack_name,
+                source,
                 container_ids: ids,
                 templates_dir,
             });
@@ -198,12 +200,17 @@ pub fn handle_template(
             let container_id = container.id.clone();
             let container_name = container.name.clone();
             let templates_dir = app.stack_templates_dir();
+            let source = format!(
+                "container {}",
+                container_name.trim_start_matches('/')
+            );
             app.set_info(format!(
                 "exporting template {name} from container {}",
                 container_name
             ));
             let _ = action_req_tx.send(ActionRequest::TemplateFromContainer {
                 name: name.to_string(),
+                source,
                 container_id,
                 templates_dir,
             });
