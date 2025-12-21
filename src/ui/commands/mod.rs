@@ -5,6 +5,7 @@
 //! we can move more subcommands here to keep `ui/mod.rs` smaller.
 
 pub mod container_cmd;
+pub mod git_cmd;
 pub mod image_cmd;
 pub mod keymap_cmd;
 pub mod layout_cmd;

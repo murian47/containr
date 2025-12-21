@@ -974,6 +974,11 @@ fn shell_execute_cmdline(
             }
             return;
         }
+        "git" => {
+            let args: Vec<&str> = it.collect();
+            let _ = commands::git_cmd::handle_git(app, &args);
+            return;
+        }
         "map" => {
             let first = it.next().unwrap_or("");
             let rest: Vec<&str> = it.collect();
@@ -5847,6 +5852,17 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Global", ":theme new <name>", "Create a new theme from default and open $EDITOR"));
     out.push(item("Global", ":theme edit [name]", "Edit theme file via $EDITOR (creates if missing)"));
     out.push(item("Global", ":theme rm[!] <name>", "Delete theme (! skips confirmation)"));
+    out.push(Line::from(""));
+
+    out.push(h("Git"));
+    out.push(item("Git", ":git <templates|themes> status", "Show repo status (short)"));
+    out.push(item("Git", ":git <templates|themes> diff", "Show repo diff"));
+    out.push(item("Git", ":git <templates|themes> log", "Show recent commits"));
+    out.push(item("Git", ":git <templates|themes> commit -m", "Commit with prompt for message"));
+    out.push(item("Git", ":git <templates|themes> pull", "git pull --rebase"));
+    out.push(item("Git", ":git <templates|themes> push", "git push"));
+    out.push(item("Git", ":git <templates|themes> init", "Initialize repo (only if empty)"));
+    out.push(item("Git", ":git <templates|themes> clone <url>", "Clone repo (only if empty)"));
     out.push(Line::from(""));
 
     out.push(h("Servers"));
