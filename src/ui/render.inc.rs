@@ -323,6 +323,8 @@ impl App {
                 .collect(),
             keymap: self.keymap.clone(),
             servers: self.servers.clone(),
+            git_autocommit: self.git_autocommit,
+            git_autocommit_confirm: self.git_autocommit_confirm,
         };
         if let Err(e) = config::save(&self.config_path, &cfg) {
             self.set_error(format!("failed to save config: {:#}", e));
@@ -533,6 +535,64 @@ fn delete_net_template(app: &mut App, name: &str) -> anyhow::Result<()> {
 
     fs::remove_dir_all(&dir_can)?;
     Ok(())
+}
+
+fn maybe_autocommit_templates(app: &mut App, kind: TemplatesKind, action: &str, name: &str) {
+    if !app.git_autocommit {
+        return;
+    }
+    let name = name.trim();
+    if name.is_empty() {
+        return;
+    }
+    if !commands::git_cmd::git_available() {
+        return;
+    }
+    let dir = app.templates_state.dir.clone();
+    if !commands::git_cmd::is_git_repo(&dir) {
+        app.log_msg(
+            MsgLevel::Warn,
+            "git autocommit is enabled but templates repo is not initialized".to_string(),
+        );
+        return;
+    }
+    let status = match commands::git_cmd::run_git(&dir, &["status", "--porcelain"]) {
+        Ok(out) => out,
+        Err(e) => {
+            app.log_msg(MsgLevel::Warn, format!("git autocommit skipped: {e:#}"));
+            return;
+        }
+    };
+    if status.trim().is_empty() {
+        return;
+    }
+    let kind_label = match kind {
+        TemplatesKind::Stacks => "stack",
+        TemplatesKind::Networks => "network",
+    };
+    let msg = format!("templates: {action} {kind_label} {name}");
+    if app.git_autocommit_confirm {
+        let cmdline = format!(
+            "git templates autocommit -m {}",
+            shell_escape_sh_arg(&msg)
+        );
+        shell_begin_confirm(app, "git autocommit", cmdline);
+        return;
+    }
+    if let Err(e) = commands::git_cmd::run_git(&dir, &["add", "-A"]) {
+        app.log_msg(MsgLevel::Warn, format!("git autocommit failed: {e:#}"));
+        return;
+    }
+    match commands::git_cmd::run_git(&dir, &["commit", "-m", msg.as_str()]) {
+        Ok(out) => {
+            if out.trim().is_empty() {
+                app.log_msg(MsgLevel::Info, format!("git autocommit: {msg}"));
+            } else {
+                app.log_msg(MsgLevel::Info, format!("git autocommit: {out}"));
+            }
+        }
+        Err(e) => app.log_msg(MsgLevel::Warn, format!("git autocommit failed: {e:#}")),
+    }
 }
 
 fn parse_kv_args(
@@ -5805,6 +5865,16 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":set history <n>",
         "Set command history size (1..5000), saved to config",
     ));
+    out.push(item(
+        "Global",
+        ":set git_autocommit <on|off>",
+        "Auto-commit template changes when git integration is enabled",
+    ));
+    out.push(item(
+        "Global",
+        ":set git_autocommit_confirm <on|off>",
+        "Ask before auto-committing (only used when git_autocommit=on)",
+    ));
     out.push(Line::from(""));
 
     out.push(h("Keymap"));
@@ -5859,6 +5929,11 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Git", ":git templates diff", "Show repo diff"));
     out.push(item("Git", ":git templates log", "Show recent commits"));
     out.push(item("Git", ":git templates commit -m", "Commit with prompt for message"));
+    out.push(item(
+        "Git",
+        ":git templates config user.name|user.email <value>",
+        "Set local repo identity (used for autocommit)",
+    ));
     out.push(item("Git", ":git templates pull", "git pull --rebase"));
     out.push(item("Git", ":git templates push", "git push"));
     out.push(item("Git", ":git templates init", "Initialize repo (only if empty)"));

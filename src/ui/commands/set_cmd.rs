@@ -4,6 +4,14 @@ use super::super::{App, ShellView};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 
+fn parse_toggle(value: &str) -> Option<bool> {
+    match value.to_ascii_lowercase().as_str() {
+        "1" | "on" | "true" | "yes" => Some(true),
+        "0" | "off" | "false" | "no" => Some(false),
+        _ => None,
+    }
+}
+
 pub fn handle_set(
     app: &mut App,
     args: &[&str],
@@ -65,9 +73,37 @@ pub fn handle_set(
             }
             true
         }
+        "git_autocommit" => {
+            let Some(v) = rest.first().copied() else {
+                app.set_warn("usage: :set git_autocommit <on|off>");
+                return true;
+            };
+            match parse_toggle(v) {
+                Some(flag) => {
+                    app.git_autocommit = flag;
+                    app.persist_config();
+                }
+                None => app.set_warn("git_autocommit must be on/off"),
+            }
+            true
+        }
+        "git_autocommit_confirm" => {
+            let Some(v) = rest.first().copied() else {
+                app.set_warn("usage: :set git_autocommit_confirm <on|off>");
+                return true;
+            };
+            match parse_toggle(v) {
+                Some(flag) => {
+                    app.git_autocommit_confirm = flag;
+                    app.persist_config();
+                }
+                None => app.set_warn("git_autocommit_confirm must be on/off"),
+            }
+            true
+        }
         _ => {
             app.set_warn(
-                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries>",
+                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries> | :set git_autocommit <on|off> | :set git_autocommit_confirm <on|off>",
             );
             true
         }

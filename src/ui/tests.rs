@@ -36,6 +36,8 @@ fn mk_test_app() -> App {
         HashMap::new(),
         "default".to_string(),
         theme::default_theme_spec(),
+        false,
+        false,
     )
 }
 
@@ -159,6 +161,8 @@ fn dashboard_shows_no_server_message() {
         HashMap::new(),
         "default".to_string(),
         theme::default_theme_spec(),
+        false,
+        false,
     );
     app.loading = false;
     app.current_target.clear();

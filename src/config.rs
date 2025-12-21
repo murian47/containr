@@ -191,6 +191,10 @@ pub struct ContainrConfig {
     pub keymap: Vec<KeyBinding>,
     #[serde(default)]
     pub servers: Vec<ServerEntry>,
+    #[serde(default)]
+    pub git_autocommit: bool,
+    #[serde(default)]
+    pub git_autocommit_confirm: bool,
 }
 
 fn default_version() -> u32 {
@@ -246,6 +250,8 @@ impl Default for ContainrConfig {
             view_layout: HashMap::new(),
             keymap: Vec::new(),
             servers: Vec::new(),
+            git_autocommit: false,
+            git_autocommit_confirm: false,
         }
     }
 }

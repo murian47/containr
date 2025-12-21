@@ -906,6 +906,8 @@ struct App {
     shell_help: ShellHelpState,
     refresh_secs: u64,
     cmd_history_max: usize,
+    git_autocommit: bool,
+    git_autocommit_confirm: bool,
 
     session_msgs: Vec<SessionMsg>,
     messages_seen_len: usize,
@@ -1076,6 +1078,8 @@ impl App {
         view_layout: HashMap<String, String>,
         theme_name: String,
         theme: theme::ThemeSpec,
+        git_autocommit: bool,
+        git_autocommit_confirm: bool,
     ) -> Self {
         let mut server_selected = 0usize;
         if let Some(name) = &active_server {
@@ -1231,6 +1235,8 @@ impl App {
             },
             refresh_secs: 5,
             cmd_history_max: 200,
+            git_autocommit,
+            git_autocommit_confirm,
 
             session_msgs: Vec::new(),
             messages_seen_len: 0,
@@ -3194,6 +3200,8 @@ pub async fn run_tui(
     active_server: Option<String>,
     config_path: std::path::PathBuf,
     ascii_only: bool,
+    git_autocommit: bool,
+    git_autocommit_confirm: bool,
 ) -> anyhow::Result<()> {
     let mut terminal = setup_terminal().context("failed to setup terminal")?;
     let (theme_spec, theme_err) = match theme::load_theme(&config_path, &active_theme) {
@@ -3208,6 +3216,8 @@ pub async fn run_tui(
         view_layout,
         active_theme,
         theme_spec,
+        git_autocommit,
+        git_autocommit_confirm,
     );
     if let Some(e) = theme_err {
         app.log_msg(MsgLevel::Warn, format!("failed to load theme: {:#}", e));
@@ -4320,6 +4330,12 @@ pub async fn run_tui(
                             {
                                 app.templates_state.templates_selected = idx;
                             }
+                            maybe_autocommit_templates(
+                                &mut app,
+                                TemplatesKind::Stacks,
+                                "update",
+                                &name,
+                            );
                         }
                         if let Some(name) =
                             app.templates_state.net_templates_refresh_after_edit.take()
@@ -4333,6 +4349,12 @@ pub async fn run_tui(
                             {
                                 app.templates_state.net_templates_selected = idx;
                             }
+                            maybe_autocommit_templates(
+                                &mut app,
+                                TemplatesKind::Networks,
+                                "update",
+                                &name,
+                            );
                         }
                         if let Some(name) = app.theme_refresh_after_edit.take() {
                             commands::theme_cmd::reload_active_theme_after_edit(&mut app, &name);

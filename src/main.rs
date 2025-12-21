@@ -212,6 +212,8 @@ async fn main() -> anyhow::Result<()> {
         active_server,
         config_path,
         args.ascii_only,
+        config.git_autocommit,
+        config.git_autocommit_confirm,
     )
     .await
 }

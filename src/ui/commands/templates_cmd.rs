@@ -205,6 +205,12 @@ pub fn handle_template(
                             app,
                             ShellSidebarItem::Module(ShellView::Templates),
                         );
+                        super::super::maybe_autocommit_templates(
+                            app,
+                            TemplatesKind::Stacks,
+                            "delete",
+                            &name,
+                        );
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
                 },
@@ -216,6 +222,12 @@ pub fn handle_template(
                         shell_sidebar_select_item(
                             app,
                             ShellSidebarItem::Module(ShellView::Templates),
+                        );
+                        super::super::maybe_autocommit_templates(
+                            app,
+                            TemplatesKind::Networks,
+                            "delete",
+                            &name,
                         );
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
@@ -319,6 +331,12 @@ pub fn handle_nettemplate(
                     app.templates_state.kind = TemplatesKind::Networks;
                     shell_set_main_view(app, ShellView::Templates);
                     shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
+                    super::super::maybe_autocommit_templates(
+                        app,
+                        TemplatesKind::Networks,
+                        "delete",
+                        &name,
+                    );
                 }
                 Err(e) => app.set_error(format!("{e:#}")),
             }

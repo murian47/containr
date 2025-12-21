@@ -64,7 +64,77 @@ fn remove_empty_templates_scaffold(root: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_git(dir: &Path, args: &[&str]) -> anyhow::Result<String> {
+pub(crate) fn git_available() -> bool {
+    Command::new("git").arg("--version").output().is_ok()
+}
+
+fn git_config_value(dir: &Path, key: &str) -> Option<String> {
+    if !git_available() {
+        return None;
+    }
+    let out = Command::new("git")
+        .args(["config", "--get", key])
+        .current_dir(dir)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn prompt_git_identity(app: &mut App, ctx_raw: &str, dir: &Path) -> bool {
+    if !is_git_repo(dir) {
+        return false;
+    }
+    let name = git_config_value(dir, "user.name");
+    let email = git_config_value(dir, "user.email");
+    if name.is_none() {
+        app.shell_cmdline.mode = true;
+        set_text_and_cursor(
+            &mut app.shell_cmdline.input,
+            &mut app.shell_cmdline.cursor,
+            format!("git {ctx_raw} config user.name "),
+        );
+        app.shell_cmdline.confirm = None;
+        return true;
+    }
+    if email.is_none() {
+        app.shell_cmdline.mode = true;
+        set_text_and_cursor(
+            &mut app.shell_cmdline.input,
+            &mut app.shell_cmdline.cursor,
+            format!("git {ctx_raw} config user.email "),
+        );
+        app.shell_cmdline.confirm = None;
+        return true;
+    }
+    false
+}
+
+pub(crate) fn is_git_repo(dir: &Path) -> bool {
+    if !git_available() {
+        return false;
+    }
+    let out = Command::new("git")
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .current_dir(dir)
+        .output();
+    match out {
+        Ok(out) if out.status.success() => {
+            let text = String::from_utf8_lossy(&out.stdout);
+            text.trim() == "true"
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn run_git(dir: &Path, args: &[&str]) -> anyhow::Result<String> {
     let out = Command::new("git")
         .args(args)
         .current_dir(dir)
@@ -108,9 +178,12 @@ fn show_git_output(app: &mut App, title: &str, output: &str) {
 }
 
 pub fn handle_git(app: &mut App, args: &[&str]) -> bool {
+    if !git_available() {
+        return true;
+    }
     let ctx_raw = args.first().copied().unwrap_or("");
     let Some(ctx) = parse_context(ctx_raw) else {
-        app.set_warn("usage: :git <templates|themes> <status|diff|log|commit|pull|push|init|clone> ...");
+        app.set_warn("usage: :git <templates|themes> <status|diff|log|commit|config|pull|push|init|clone> ...");
         return true;
     };
     let sub = args.get(1).copied().unwrap_or("");
@@ -178,6 +251,73 @@ pub fn handle_git(app: &mut App, args: &[&str]) -> bool {
                 Err(e) => app.set_error(format!("{e:#}")),
             }
         }
+        "config" => {
+            let key_raw = rest.first().copied().unwrap_or("");
+            let key = match key_raw {
+                "name" | "user.name" => Some("user.name"),
+                "email" | "user.email" => Some("user.email"),
+                _ => None,
+            };
+            let Some(key) = key else {
+                app.set_warn("usage: :git <templates|themes> config user.name|user.email <value>");
+                return true;
+            };
+            let Some(value) = rest.get(1).copied() else {
+                app.shell_cmdline.mode = true;
+                set_text_and_cursor(
+                    &mut app.shell_cmdline.input,
+                    &mut app.shell_cmdline.cursor,
+                    format!("git {ctx_raw} config {key} "),
+                );
+                app.shell_cmdline.confirm = None;
+                return true;
+            };
+            let _ = std::fs::create_dir_all(&dir);
+            match run_git(&dir, &["config", key, value]) {
+                Ok(_) => {
+                    app.set_info(format!("git config {key} updated"));
+                    let _ = prompt_git_identity(app, ctx_raw, &dir);
+                }
+                Err(e) => app.set_error(format!("{e:#}")),
+            }
+        }
+        "autocommit" => {
+            let mut msg: Option<String> = None;
+            let mut i = 0usize;
+            while i < rest.len() {
+                if rest[i] == "-m" {
+                    msg = rest.get(i + 1).map(|s| (*s).to_string());
+                    break;
+                }
+                i += 1;
+            }
+            if msg.as_deref().unwrap_or("").trim().is_empty() {
+                app.set_warn("usage: :git <templates|themes> autocommit -m <message>");
+                return true;
+            }
+            let _ = std::fs::create_dir_all(&dir);
+            match run_git(&dir, &["status", "--porcelain"]) {
+                Ok(out) => {
+                    if out.trim().is_empty() {
+                        app.set_info("git autocommit: no changes".to_string());
+                        return true;
+                    }
+                }
+                Err(e) => {
+                    app.set_error(format!("{e:#}"));
+                    return true;
+                }
+            }
+            if let Err(e) = run_git(&dir, &["add", "-A"]) {
+                app.set_error(format!("{e:#}"));
+                return true;
+            }
+            let msg = msg.unwrap();
+            match run_git(&dir, &["commit", "-m", msg.as_str()]) {
+                Ok(out) => show_git_output(app, "git autocommit", &out),
+                Err(e) => app.set_error(format!("{e:#}")),
+            }
+        }
         "init" => {
             if ctx == GitContext::Templates {
                 if !templates_dir_is_empty(&dir) {
@@ -196,6 +336,7 @@ pub fn handle_git(app: &mut App, args: &[&str]) -> bool {
                         app.refresh_net_templates();
                     }
                     show_git_output(app, "git init", &out);
+                    let _ = prompt_git_identity(app, ctx_raw, &dir);
                 }
                 Err(e) => app.set_error(format!("{e:#}")),
             }
@@ -230,12 +371,13 @@ pub fn handle_git(app: &mut App, args: &[&str]) -> bool {
                         app.refresh_net_templates();
                     }
                     show_git_output(app, "git clone", &out);
+                    let _ = prompt_git_identity(app, ctx_raw, &dir);
                 }
                 Err(e) => app.set_error(format!("{e:#}")),
             }
         }
         _ => {
-            app.set_warn("usage: :git <templates|themes> <status|diff|log|commit|pull|push|init|clone> ...");
+            app.set_warn("usage: :git <templates|themes> <status|diff|log|commit|config|pull|push|init|clone> ...");
         }
     }
     true
