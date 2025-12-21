@@ -2073,9 +2073,9 @@ fn handle_shell_key(
         }
     }
 
-    // Custom key bindings (outside of input modes). Skip when sidebar has focus.
-    if app.shell_focus != ShellFocus::Sidebar {
-        if let Some(spec) = key_spec_from_event(key) {
+    // Custom key bindings (outside of input modes). Skip single-letter shortcuts when sidebar has focus.
+    if let Some(spec) = key_spec_from_event(key) {
+        if app.shell_focus != ShellFocus::Sidebar || !is_single_letter_without_modifiers(spec) {
             if let Some(hit) = lookup_scoped_binding(app, spec) {
                 match hit {
                     BindingHit::Disabled => return,
@@ -2554,8 +2554,17 @@ fn draw_shell_header(
     } else {
         String::new()
     };
+    let commit_label = if commands::git_cmd::git_available() {
+        if app.git_autocommit {
+            "  Commit: auto"
+        } else {
+            "  Commit: manual"
+        }
+    } else {
+        ""
+    };
     let mid = format!(
-        "Server: {server}  {conn} connected{err_badge}  ⟳ {}s  View: {}{crumb}{deploy}",
+        "Server: {server}  {conn} connected{err_badge}  ⟳ {}s{commit_label}  View: {}{crumb}{deploy}",
         app.refresh_secs.max(1),
         app.shell_view.title(),
     );
