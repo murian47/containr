@@ -205,6 +205,10 @@ pub fn handle_git(app: &mut App, args: &[&str]) -> bool {
                 app.set_warn("usage: :git <templates|themes> clone <url>");
                 return true;
             };
+            if url.starts_with('-') {
+                app.set_warn("invalid clone url");
+                return true;
+            }
             if ctx == GitContext::Templates {
                 if !templates_dir_is_empty(&dir) {
                     app.set_warn("templates dir is not empty; git clone blocked");
