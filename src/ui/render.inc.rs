@@ -321,6 +321,7 @@ impl App {
             cmd_history: self.shell_cmdline.history.entries.clone(),
             active_theme: self.theme_name.clone(),
             templates_dir: self.templates_state.dir.to_string_lossy().to_string(),
+            editor_cmd: self.editor_cmd.clone(),
             view_layout: self
                 .shell_split_by_view
                 .iter()
@@ -1565,7 +1566,7 @@ fn shell_edit_selected_template(app: &mut App) {
                 return;
             };
             app.templates_state.templates_refresh_after_edit = Some(name);
-            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+            let editor = app.editor_cmd();
             let target = if has_compose { compose_path } else { dir };
             let cmd = format!(
                 "{} {}",
@@ -1591,7 +1592,7 @@ fn shell_edit_selected_net_template(app: &mut App) {
         return;
     };
     app.templates_state.net_templates_refresh_after_edit = Some(name);
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+    let editor = app.editor_cmd();
     let target = if has_cfg { cfg_path } else { dir };
     let cmd = format!(
         "{} {}",
@@ -5885,6 +5886,11 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     ));
     out.push(item(
         "Global",
+        ":set editor <command>",
+        "Set editor command (falls back to $EDITOR, then vi)",
+    ));
+    out.push(item(
+        "Global",
         ":set git_autocommit <on|off>",
         "Auto-commit template changes when git integration is enabled",
     ));
@@ -5937,8 +5943,16 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(h("Theme"));
     out.push(item("Global", ":theme list", "List available themes"));
     out.push(item("Global", ":theme use <name>", "Switch active theme (persisted)"));
-    out.push(item("Global", ":theme new <name>", "Create a new theme from default and open $EDITOR"));
-    out.push(item("Global", ":theme edit [name]", "Edit theme file via $EDITOR (creates if missing)"));
+    out.push(item(
+        "Global",
+        ":theme new <name>",
+        "Create a new theme from default and open configured editor/$EDITOR/vi",
+    ));
+    out.push(item(
+        "Global",
+        ":theme edit [name]",
+        "Edit theme file via configured editor/$EDITOR/vi (creates if missing)",
+    ));
     out.push(item("Global", ":theme rm[!] <name>", "Delete theme (! skips confirmation)"));
     out.push(Line::from(""));
 

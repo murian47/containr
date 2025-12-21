@@ -101,9 +101,28 @@ pub fn handle_set(
             }
             true
         }
+        "editor" => {
+            let Some(v) = rest.first().copied() else {
+                app.set_warn("usage: :set editor <command> | :set editor reset");
+                return true;
+            };
+            if matches!(v, "reset" | "default" | "unset" | "clear") {
+                app.editor_cmd.clear();
+                app.persist_config();
+                return true;
+            }
+            let cmd = rest.join(" ").trim().to_string();
+            if cmd.is_empty() {
+                app.set_warn("editor command must not be empty");
+                return true;
+            }
+            app.editor_cmd = cmd;
+            app.persist_config();
+            true
+        }
         _ => {
             app.set_warn(
-                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries> | :set git_autocommit <on|off> | :set git_autocommit_confirm <on|off>",
+                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries> | :set editor <command> | :set git_autocommit <on|off> | :set git_autocommit_confirm <on|off>",
             );
             true
         }

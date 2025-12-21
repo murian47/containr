@@ -60,7 +60,7 @@ pub fn edit_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
         spec.name = name.clone();
         theme::save_theme(&app.config_path, &name, &spec)?;
     }
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+    let editor = app.editor_cmd();
     let cmd = format!(
         "{} {}",
         editor,

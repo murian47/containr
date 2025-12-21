@@ -214,6 +214,7 @@ async fn main() -> anyhow::Result<()> {
         args.ascii_only,
         config.git_autocommit,
         config.git_autocommit_confirm,
+        config.editor_cmd.clone(),
     )
     .await
 }

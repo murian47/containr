@@ -908,6 +908,7 @@ struct App {
     cmd_history_max: usize,
     git_autocommit: bool,
     git_autocommit_confirm: bool,
+    editor_cmd: String,
 
     session_msgs: Vec<SessionMsg>,
     messages_seen_len: usize,
@@ -982,6 +983,14 @@ impl App {
         self.logs.cmd_history.reset_nav();
         self.inspect.cmd_history.entries = entries;
         self.inspect.cmd_history.reset_nav();
+    }
+
+    pub(crate) fn editor_cmd(&self) -> String {
+        let configured = self.editor_cmd.trim();
+        if !configured.is_empty() {
+            return configured.to_string();
+        }
+        std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string())
     }
 
     fn push_cmd_history(&mut self, cmd: &str) {
@@ -1080,6 +1089,7 @@ impl App {
         theme: theme::ThemeSpec,
         git_autocommit: bool,
         git_autocommit_confirm: bool,
+        editor_cmd: String,
     ) -> Self {
         let mut server_selected = 0usize;
         if let Some(name) = &active_server {
@@ -1237,6 +1247,7 @@ impl App {
             cmd_history_max: 200,
             git_autocommit,
             git_autocommit_confirm,
+            editor_cmd,
 
             session_msgs: Vec::new(),
             messages_seen_len: 0,
@@ -3202,6 +3213,7 @@ pub async fn run_tui(
     ascii_only: bool,
     git_autocommit: bool,
     git_autocommit_confirm: bool,
+    editor_cmd: String,
 ) -> anyhow::Result<()> {
     let mut terminal = setup_terminal().context("failed to setup terminal")?;
     let (theme_spec, theme_err) = match theme::load_theme(&config_path, &active_theme) {
@@ -3218,6 +3230,7 @@ pub async fn run_tui(
         theme_spec,
         git_autocommit,
         git_autocommit_confirm,
+        editor_cmd,
     );
     if let Some(e) = theme_err {
         app.log_msg(MsgLevel::Warn, format!("failed to load theme: {:#}", e));

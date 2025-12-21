@@ -183,6 +183,8 @@ pub struct ContainrConfig {
     pub active_theme: String,
     #[serde(default = "default_templates_dir")]
     pub templates_dir: String,
+    #[serde(default)]
+    pub editor_cmd: String,
     // Per-view split layout preference for the main view ("horizontal" | "vertical").
     // Keys are view slugs like "containers", "images", ...
     #[serde(default)]
@@ -247,6 +249,7 @@ impl Default for ContainrConfig {
             cmd_history: Vec::new(),
             active_theme: default_active_theme(),
             templates_dir: default_templates_dir(),
+            editor_cmd: String::new(),
             view_layout: HashMap::new(),
             keymap: Vec::new(),
             servers: Vec::new(),

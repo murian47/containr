@@ -38,6 +38,7 @@ fn mk_test_app() -> App {
         theme::default_theme_spec(),
         false,
         false,
+        String::new(),
     )
 }
 
@@ -163,6 +164,7 @@ fn dashboard_shows_no_server_message() {
         theme::default_theme_spec(),
         false,
         false,
+        String::new(),
     );
     app.loading = false;
     app.current_target.clear();
