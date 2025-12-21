@@ -305,7 +305,6 @@ fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
 
     // Templates.
     let t = KeyScope::View(ShellView::Templates);
-    add(t, "Enter", ":template edit");
     add(t, "C-e", ":template edit");
     add(t, "C-n", ":template new");
     add(t, "C-y", ":template deploy");
