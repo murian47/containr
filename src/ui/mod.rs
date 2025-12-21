@@ -370,6 +370,7 @@ fn cmdline_is_destructive(raw: &str) -> bool {
     let cmd = cmd_raw.to_ascii_lowercase();
     let sub = it.next().unwrap_or("").to_ascii_lowercase();
     match cmd.as_str() {
+        "stack" | "stacks" | "stk" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
         "container" | "ctr" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
         "template" | "tpl" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
         "nettemplate" | "nettpl" | "ntpl" | "nt" => {
@@ -399,6 +400,7 @@ enum ListMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ActiveView {
     Containers,
+    Stacks,
     Images,
     Volumes,
     Networks,
@@ -407,6 +409,7 @@ enum ActiveView {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum ShellView {
     Dashboard,
+    Stacks,
     Containers,
     Images,
     Volumes,
@@ -422,6 +425,7 @@ impl ShellView {
     fn slug(self) -> &'static str {
         match self {
             ShellView::Dashboard => "dashboard",
+            ShellView::Stacks => "stacks",
             ShellView::Containers => "containers",
             ShellView::Images => "images",
             ShellView::Volumes => "volumes",
@@ -437,6 +441,7 @@ impl ShellView {
     fn title(self) -> &'static str {
         match self {
             ShellView::Dashboard => "Dashboard",
+            ShellView::Stacks => "Stacks",
             ShellView::Containers => "Containers",
             ShellView::Images => "Images",
             ShellView::Volumes => "Volumes",
@@ -552,6 +557,7 @@ impl ShellAction {
 fn shell_module_shortcut(view: ShellView) -> char {
     match view {
         ShellView::Dashboard => 'd',
+        ShellView::Stacks => 's',
         ShellView::Containers => 'c',
         ShellView::Images => 'm',
         ShellView::Volumes => 'v',
@@ -581,7 +587,7 @@ fn build_server_shortcuts(servers: &[ServerEntry]) -> Vec<char> {
     }
 
     // Avoid letters that could be confused with common module letters in uppercase.
-    for ch in ['C', 'M', 'I', 'V', 'N', 'L'] {
+    for ch in ['C', 'S', 'M', 'I', 'V', 'N', 'L'] {
         used.insert(ch);
     }
 
@@ -633,6 +639,13 @@ enum ViewEntry {
         id: String,
         indent: usize,
     },
+}
+
+#[derive(Clone, Debug)]
+struct StackEntry {
+    name: String,
+    total: usize,
+    running: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -922,6 +935,10 @@ struct App {
 
     theme_refresh_after_edit: Option<String>,
 
+    stacks: Vec<StackEntry>,
+    stacks_selected: usize,
+    stacks_details_scroll: usize,
+
     container_details_scroll: usize,
     image_details_scroll: usize,
     volume_details_scroll: usize,
@@ -983,6 +1000,52 @@ impl App {
         self.logs.cmd_history.reset_nav();
         self.inspect.cmd_history.entries = entries;
         self.inspect.cmd_history.reset_nav();
+    }
+
+    fn rebuild_stacks(&mut self) {
+        use std::collections::BTreeMap;
+
+        let mut stacks: BTreeMap<String, Vec<&ContainerRow>> = BTreeMap::new();
+        for c in &self.containers {
+            if let Some(stack) = stack_name_from_labels(&c.labels) {
+                stacks.entry(stack).or_default().push(c);
+            }
+        }
+
+        let mut out: Vec<StackEntry> = Vec::new();
+        for (name, cs) in stacks {
+            let total = cs.len();
+            let running = cs
+                .iter()
+                .filter(|c| !is_container_stopped(&c.status))
+                .count();
+            out.push(StackEntry {
+                name,
+                total,
+                running,
+            });
+        }
+
+        self.stacks = out;
+        if self.stacks_selected >= self.stacks.len() {
+            self.stacks_selected = self.stacks.len().saturating_sub(1);
+        }
+    }
+
+    fn selected_stack_entry(&self) -> Option<&StackEntry> {
+        self.stacks.get(self.stacks_selected)
+    }
+
+    fn stack_container_ids(&self, name: &str) -> Vec<String> {
+        let mut ids: Vec<String> = self
+            .containers
+            .iter()
+            .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(name))
+            .map(|c| c.id.clone())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
     }
 
     pub(crate) fn editor_cmd(&self) -> String {
@@ -1279,6 +1342,10 @@ impl App {
             },
 
             theme_refresh_after_edit: None,
+
+            stacks: Vec::new(),
+            stacks_selected: 0,
+            stacks_details_scroll: 0,
 
             container_details_scroll: 0,
             image_details_scroll: 0,
@@ -1770,6 +1837,7 @@ impl App {
 
     fn toggle_mark_selected(&mut self) {
         match self.active_view {
+            ActiveView::Stacks => {}
             ActiveView::Containers => {
                 let Some(id) = self.selected_container().map(|c| c.id.clone()) else {
                     return;
@@ -1808,6 +1876,7 @@ impl App {
 
     fn mark_all(&mut self) {
         match self.active_view {
+            ActiveView::Stacks => {}
             ActiveView::Containers => {
                 for c in &self.containers {
                     self.marked.insert(c.id.clone());
@@ -1849,6 +1918,7 @@ impl App {
 
     fn clear_marks(&mut self) {
         match self.active_view {
+            ActiveView::Stacks => {}
             ActiveView::Containers => self.marked.clear(),
             ActiveView::Images => self.marked_images.clear(),
             ActiveView::Volumes => self.marked_volumes.clear(),
@@ -1918,6 +1988,13 @@ impl App {
                 }
                 self.selected = self.selected.saturating_sub(1);
             }
+            ActiveView::Stacks => {
+                if self.stacks.is_empty() {
+                    self.stacks_selected = 0;
+                } else {
+                    self.stacks_selected = self.stacks_selected.saturating_sub(1);
+                }
+            }
             ActiveView::Images => self.images_selected = self.images_selected.saturating_sub(1),
             ActiveView::Volumes => self.volumes_selected = self.volumes_selected.saturating_sub(1),
             ActiveView::Networks => {
@@ -1934,6 +2011,14 @@ impl App {
                     return;
                 }
                 self.selected = (self.selected + 1).min(self.view_len().saturating_sub(1));
+            }
+            ActiveView::Stacks => {
+                if self.stacks.is_empty() {
+                    self.stacks_selected = 0;
+                } else {
+                    self.stacks_selected =
+                        (self.stacks_selected + 1).min(self.stacks.len().saturating_sub(1));
+                }
             }
             ActiveView::Images => {
                 if self.images_visible_len() == 0 {
@@ -1968,6 +2053,7 @@ impl App {
         for (i, c) in self.containers.iter().enumerate() {
             self.container_idx_by_id.insert(c.id.clone(), i);
         }
+        self.rebuild_stacks();
         self.loading = false;
         self.loading_since = None;
         self.ip_refresh_needed = true;
@@ -2636,6 +2722,7 @@ impl App {
 
     fn selected_inspect_target(&self) -> Option<InspectTarget> {
         match self.active_view {
+            ActiveView::Stacks => None,
             ActiveView::Containers => {
                 let c = self.selected_container()?;
                 Some(InspectTarget {

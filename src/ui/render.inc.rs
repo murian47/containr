@@ -31,6 +31,7 @@ fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
     }
     items.push(ShellSidebarItem::Separator);
     items.push(ShellSidebarItem::Module(ShellView::Dashboard));
+    items.push(ShellSidebarItem::Module(ShellView::Stacks));
     items.push(ShellSidebarItem::Module(ShellView::Containers));
     items.push(ShellSidebarItem::Module(ShellView::Images));
     items.push(ShellSidebarItem::Module(ShellView::Volumes));
@@ -43,6 +44,12 @@ fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
 
     let actions: Vec<ShellAction> = match app.shell_view {
         ShellView::Dashboard => vec![],
+        ShellView::Stacks => vec![
+            ShellAction::Start,
+            ShellAction::Stop,
+            ShellAction::Restart,
+            ShellAction::Delete,
+        ],
         ShellView::Containers => vec![
             ShellAction::Start,
             ShellAction::Stop,
@@ -132,6 +139,7 @@ fn shell_set_main_view(app: &mut App, view: ShellView) {
     app.shell_focus = ShellFocus::List;
     app.active_view = match view {
         ShellView::Dashboard => app.active_view,
+        ShellView::Stacks => ActiveView::Stacks,
         ShellView::Containers => ActiveView::Containers,
         ShellView::Images => ActiveView::Images,
         ShellView::Volumes => ActiveView::Volumes,
@@ -885,6 +893,7 @@ fn shell_execute_cmdline(
             }
             match app.shell_view {
                 ShellView::Dashboard => {}
+                ShellView::Stacks => {}
                 ShellView::Containers => {
                     let ids: Vec<String> = if !app.marked.is_empty() {
                         app.marked.iter().cloned().collect()
@@ -1085,6 +1094,49 @@ fn shell_execute_cmdline(
         return;
     }
 
+    if cmd == "stack" || cmd == "stacks" || cmd == "stk" {
+        let sub = it.next().unwrap_or("");
+        let name = it.next();
+        if sub.is_empty() {
+            shell_set_main_view(app, ShellView::Stacks);
+            shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Stacks));
+            return;
+        }
+        match sub {
+            "start" => {
+                shell_exec_stack_action(app, ContainerAction::Start, name, action_req_tx);
+            }
+            "stop" => {
+                shell_exec_stack_action(app, ContainerAction::Stop, name, action_req_tx);
+            }
+            "restart" => {
+                shell_exec_stack_action(app, ContainerAction::Restart, name, action_req_tx);
+            }
+            "rm" | "del" | "delete" => {
+                let target = name
+                    .map(|s| s.to_string())
+                    .or_else(|| app.selected_stack_entry().map(|s| s.name.clone()));
+                let Some(target) = target else {
+                    app.set_warn("no stack selected");
+                    return;
+                };
+                if !force {
+                    shell_begin_confirm(
+                        app,
+                        format!("stack rm {target}"),
+                        format!("stack rm {target}"),
+                    );
+                    return;
+                }
+                shell_exec_stack_action(app, ContainerAction::Remove, Some(&target), action_req_tx);
+            }
+            _ => {
+                app.set_warn("usage: :stack [start|stop|restart|rm] [name]");
+            }
+        }
+        return;
+    }
+
     if cmd == "image" || cmd == "img" {
         let sub = it.next().unwrap_or("");
         let mut args: Vec<&str> = Vec::new();
@@ -1250,6 +1302,45 @@ fn shell_exec_container_action(
     }
 }
 
+fn shell_exec_stack_action(
+    app: &mut App,
+    action: ContainerAction,
+    name: Option<&str>,
+    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
+) {
+    let stack_name = if let Some(name) = name {
+        name.trim().to_string()
+    } else {
+        app.selected_stack_entry()
+            .map(|s| s.name.clone())
+            .unwrap_or_default()
+    };
+    if stack_name.trim().is_empty() {
+        app.set_warn("no stack selected");
+        return;
+    }
+    if !app.stacks.iter().any(|s| s.name == stack_name) {
+        app.set_warn(format!("unknown stack: {stack_name}"));
+        return;
+    }
+    let ids = app.stack_container_ids(&stack_name);
+    if ids.is_empty() {
+        app.set_warn("no containers in stack");
+        return;
+    }
+    let now = Instant::now();
+    for id in ids {
+        app.action_inflight.insert(
+            id.clone(),
+            ActionMarker {
+                action,
+                until: now + Duration::from_secs(120),
+            },
+        );
+        let _ = action_req_tx.send(ActionRequest::Container { action, id });
+    }
+}
+
 fn shell_exec_image_action(
     app: &mut App,
     untag: bool,
@@ -1377,14 +1468,37 @@ fn shell_execute_action(
 ) {
     match a {
         ShellAction::Start => {
-            shell_exec_container_action(app, ContainerAction::Start, action_req_tx)
+            if app.shell_view == ShellView::Stacks {
+                shell_exec_stack_action(app, ContainerAction::Start, None, action_req_tx);
+            } else {
+                shell_exec_container_action(app, ContainerAction::Start, action_req_tx);
+            }
         }
-        ShellAction::Stop => shell_exec_container_action(app, ContainerAction::Stop, action_req_tx),
+        ShellAction::Stop => {
+            if app.shell_view == ShellView::Stacks {
+                shell_exec_stack_action(app, ContainerAction::Stop, None, action_req_tx);
+            } else {
+                shell_exec_container_action(app, ContainerAction::Stop, action_req_tx);
+            }
+        }
         ShellAction::Restart => {
-            shell_exec_container_action(app, ContainerAction::Restart, action_req_tx)
+            if app.shell_view == ShellView::Stacks {
+                shell_exec_stack_action(app, ContainerAction::Restart, None, action_req_tx);
+            } else {
+                shell_exec_container_action(app, ContainerAction::Restart, action_req_tx);
+            }
         }
         ShellAction::Delete => {
-            shell_begin_confirm(app, "container rm", "container rm");
+            if app.shell_view == ShellView::Stacks {
+                let name = app.selected_stack_entry().map(|s| s.name.clone());
+                if let Some(name) = name {
+                    shell_begin_confirm(app, format!("stack rm {name}"), format!("stack rm {name}"));
+                } else {
+                    app.set_warn("no stack selected");
+                }
+            } else {
+                shell_begin_confirm(app, "container rm", "container rm");
+            }
         }
         ShellAction::Console => {
             shell_open_console(app, Some("root"), "bash");
@@ -2152,6 +2266,7 @@ fn handle_shell_key(
                 let ch_lc = ch.to_ascii_lowercase();
                 for v in [
                     ShellView::Dashboard,
+                    ShellView::Stacks,
                     ShellView::Containers,
                     ShellView::Images,
                     ShellView::Volumes,
@@ -2211,9 +2326,14 @@ fn handle_shell_key(
     // Main list / view handling.
     match app.shell_view {
         ShellView::Dashboard => {}
-        ShellView::Containers | ShellView::Images | ShellView::Volumes | ShellView::Networks => {
+        ShellView::Stacks
+        | ShellView::Containers
+        | ShellView::Images
+        | ShellView::Volumes
+        | ShellView::Networks => {
             if app.shell_focus == ShellFocus::Details {
                 let scroll = match app.shell_view {
+                    ShellView::Stacks => &mut app.stacks_details_scroll,
                     ShellView::Containers => &mut app.container_details_scroll,
                     ShellView::Images => &mut app.image_details_scroll,
                     ShellView::Volumes => &mut app.volume_details_scroll,
@@ -2241,6 +2361,7 @@ fn handle_shell_key(
             }
             // Ensure active_view matches (used by the existing selection/mark logic).
             app.active_view = match app.shell_view {
+                ShellView::Stacks => ActiveView::Stacks,
                 ShellView::Containers => ActiveView::Containers,
                 ShellView::Images => ActiveView::Images,
                 ShellView::Volumes => ActiveView::Volumes,
@@ -2262,12 +2383,16 @@ fn handle_shell_key(
                     }
                 }
                 KeyCode::Home => match app.active_view {
+                    ActiveView::Stacks => app.stacks_selected = 0,
                     ActiveView::Containers => app.selected = 0,
                     ActiveView::Images => app.images_selected = 0,
                     ActiveView::Volumes => app.volumes_selected = 0,
                     ActiveView::Networks => app.networks_selected = 0,
                 },
                 KeyCode::End => match app.active_view {
+                    ActiveView::Stacks => {
+                        app.stacks_selected = app.stacks.len().saturating_sub(1);
+                    }
                     ActiveView::Containers => {
                         let max = app.view_len().saturating_sub(1);
                         app.selected = max;
@@ -2808,6 +2933,10 @@ fn contrast_ratio(bg: (u8, u8, u8), fg: Color) -> f32 {
 fn shell_breadcrumbs(app: &App) -> String {
     match app.shell_view {
         ShellView::Dashboard => String::new(),
+        ShellView::Stacks => app
+            .selected_stack_entry()
+            .map(|s| format!("/{}", s.name))
+            .unwrap_or_default(),
         ShellView::Containers => {
             if let Some((name, ..)) = app.selected_stack() {
                 return format!("/{name}");
@@ -3044,7 +3173,8 @@ fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout:
     let is_full = matches!(app.shell_view, ShellView::Logs | ShellView::Inspect);
     let is_split_view = matches!(
         app.shell_view,
-        ShellView::Containers
+        ShellView::Stacks
+            | ShellView::Containers
             | ShellView::Images
             | ShellView::Volumes
             | ShellView::Networks
@@ -3164,6 +3294,10 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             draw_shell_title(f, app, "Dashboard", usize::MAX, title_area);
             draw_shell_dashboard(f, app, content_area);
         }
+        ShellView::Stacks => {
+            draw_shell_title(f, app, "Stacks", app.stacks.len(), title_area);
+            draw_shell_stacks_table(f, app, content_area);
+        }
         ShellView::Containers => {
             draw_shell_title(f, app, "Containers", app.containers.len(), title_area);
             draw_shell_containers_table(f, app, content_area);
@@ -3219,6 +3353,7 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
 fn draw_shell_main_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
     match app.shell_view {
         ShellView::Dashboard => {}
+        ShellView::Stacks => draw_shell_stack_details(f, app, area),
         ShellView::Containers => draw_shell_container_details(f, app, area),
         ShellView::Images => draw_shell_image_details(f, app, area),
         ShellView::Volumes => draw_shell_volume_details(f, app, area),
@@ -3238,6 +3373,9 @@ fn draw_shell_footer(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
     let version = format!("v{} ", env!("CARGO_PKG_VERSION"));
     let hint = match app.shell_view {
         ShellView::Dashboard => {
+            " F1 help  b sidebar  ^p layout  :q quit"
+        }
+        ShellView::Stacks => {
             " F1 help  b sidebar  ^p layout  :q quit"
         }
         ShellView::Containers => {
@@ -3466,7 +3604,9 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
         } else {
             c.status.clone()
         };
-        let status_style = if let Some(err) = app.container_action_error.get(&c.id) {
+        let status_style = if app.action_inflight.contains_key(&c.id) {
+            bg.patch(app.theme.text_warn.to_style())
+        } else if let Some(err) = app.container_action_error.get(&c.id) {
             match err.kind {
                 ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
                 ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
@@ -4643,6 +4783,95 @@ fn draw_shell_net_templates_table(
     f.render_stateful_widget(table, inner, &mut state);
 }
 
+fn draw_shell_stacks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+    let bg = app.theme.panel.to_style();
+    f.render_widget(Block::default().style(bg), area);
+    let inner = area.inner(ratatui::layout::Margin {
+        vertical: 0,
+        horizontal: 1,
+    });
+
+    if app.stacks.is_empty() {
+        f.render_widget(
+            Paragraph::new("No stacks found (no compose/stack labels).")
+                .style(bg.patch(app.theme.text_dim.to_style()))
+                .wrap(Wrap { trim: true }),
+            inner,
+        );
+        return;
+    }
+
+    let rows: Vec<Row> = app
+        .stacks
+        .iter()
+        .map(|s| {
+            let row_style = if s.running == 0 {
+                bg.patch(app.theme.text_dim.to_style())
+            } else {
+                Style::default()
+            };
+            let mut state = String::new();
+            let mut state_style = row_style;
+            for c in app
+                .containers
+                .iter()
+                .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(s.name.as_str()))
+            {
+                if let Some(marker) = app.action_inflight.get(&c.id) {
+                    state = action_status_prefix(marker.action).to_string();
+                    state_style = bg.patch(app.theme.text_warn.to_style());
+                    break;
+                }
+                if let Some(err) = app.container_action_error.get(&c.id) {
+                    state = action_error_label(err).to_string();
+                    state_style = match err.kind {
+                        ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                        ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                    };
+                    break;
+                }
+            }
+
+            let name_cell = if state.is_empty() {
+                Cell::from(s.name.clone())
+            } else {
+                Cell::from(Line::from(vec![
+                    Span::raw(s.name.clone()),
+                    Span::styled(format!(" ({state})"), state_style),
+                ]))
+            };
+            let row = Row::new(vec![
+                name_cell,
+                Cell::from(s.total.to_string()),
+                Cell::from(s.running.to_string()),
+            ]);
+            row.style(row_style)
+        })
+        .collect();
+
+    let mut state = TableState::default();
+    state.select(Some(
+        app.stacks_selected.min(rows.len().saturating_sub(1)),
+    ));
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Min(26),
+            Constraint::Length(7),
+            Constraint::Length(8),
+        ],
+    )
+    .header(
+        Row::new(vec![Cell::from("NAME"), Cell::from("TOTAL"), Cell::from("RUN")])
+        .style(shell_header_style(app)),
+    )
+    .style(bg)
+    .column_spacing(1)
+    .row_highlight_style(shell_row_highlight(app))
+    .highlight_symbol("");
+    f.render_stateful_widget(table, inner, &mut state);
+}
+
 fn draw_shell_container_details(
     f: &mut ratatui::Frame,
     app: &mut App,
@@ -4730,6 +4959,203 @@ fn draw_shell_container_details(
     }
     scroll = render_detail_table(f, app, area, rows, scroll);
     app.container_details_scroll = scroll;
+}
+
+fn draw_shell_stack_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+    let bg = if app.shell_focus == ShellFocus::Details {
+        app.theme.panel_focused.to_style()
+    } else {
+        app.theme.panel.to_style()
+    };
+    f.render_widget(Block::default().style(bg), area);
+
+    let Some(stack) = app.selected_stack_entry() else {
+        let inner = area.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+        f.render_widget(
+            Paragraph::new("Select a stack to see details.")
+                .style(bg.patch(app.theme.text_dim.to_style()))
+                .wrap(Wrap { trim: true }),
+            inner,
+        );
+        return;
+    };
+
+    let mut containers: Vec<ContainerRow> = app
+        .containers
+        .iter()
+        .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(stack.name.as_str()))
+        .cloned()
+        .collect();
+    containers.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    let mut networks: Vec<NetworkRow> = app
+        .networks
+        .iter()
+        .filter(|n| stack_name_from_labels(&n.labels).as_deref() == Some(stack.name.as_str()))
+        .cloned()
+        .collect();
+    networks.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    let inner = area.inner(ratatui::layout::Margin {
+        vertical: 0,
+        horizontal: 1,
+    });
+    if containers.is_empty() && networks.is_empty() {
+        f.render_widget(
+            Paragraph::new("No stack resources found.")
+                .style(bg.patch(app.theme.text_dim.to_style()))
+                .wrap(Wrap { trim: true }),
+            inner,
+        );
+        return;
+    }
+
+    if networks.is_empty() {
+        draw_stack_containers_table(f, app, inner, &containers);
+        return;
+    }
+
+    let parts = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(65),
+            Constraint::Length(1),
+            Constraint::Percentage(35),
+        ])
+        .split(inner);
+    draw_stack_containers_table(f, app, parts[0], &containers);
+    draw_shell_hr(f, app, parts[1]);
+    draw_stack_networks_table(f, app, parts[2], &networks);
+}
+
+fn draw_stack_containers_table(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+    containers: &[ContainerRow],
+) {
+    let bg = if app.shell_focus == ShellFocus::Details {
+        app.theme.panel_focused.to_style()
+    } else {
+        app.theme.panel.to_style()
+    };
+    f.render_widget(Block::default().style(bg), area);
+    let inner = area.inner(ratatui::layout::Margin {
+        vertical: 0,
+        horizontal: 1,
+    });
+
+    if containers.is_empty() {
+        f.render_widget(
+            Paragraph::new("No containers in this stack.")
+                .style(bg.patch(app.theme.text_dim.to_style()))
+                .wrap(Wrap { trim: true }),
+            inner,
+        );
+        return;
+    }
+
+    let inner_height = inner.height.max(1) as usize;
+    let header_rows = 1usize;
+    let view_height = inner_height.saturating_sub(header_rows).max(1);
+    let scroll = app
+        .stacks_details_scroll
+        .min(containers.len().saturating_sub(1));
+    let rows: Vec<Row> = containers
+        .iter()
+        .skip(scroll)
+        .take(view_height)
+        .map(|c| {
+            Row::new(vec![
+                Cell::from(c.name.clone()),
+                Cell::from(c.image.clone()),
+                Cell::from(c.status.clone()),
+                Cell::from(c.ports.clone()),
+            ])
+        })
+        .collect();
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(26),
+            Constraint::Length(28),
+            Constraint::Length(14),
+            Constraint::Min(12),
+        ],
+    )
+    .header(
+        Row::new(vec![
+            Cell::from("CONTAINER"),
+            Cell::from("IMAGE"),
+            Cell::from("STATUS"),
+            Cell::from("PORTS"),
+        ])
+        .style(shell_header_style(app)),
+    )
+    .style(bg)
+    .column_spacing(1)
+    .row_highlight_style(shell_row_highlight(app))
+    .highlight_symbol("");
+    f.render_widget(table, inner);
+}
+
+fn draw_stack_networks_table(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+    networks: &[NetworkRow],
+) {
+    let bg = if app.shell_focus == ShellFocus::Details {
+        app.theme.panel_focused.to_style()
+    } else {
+        app.theme.panel.to_style()
+    };
+    f.render_widget(Block::default().style(bg), area);
+    let inner = area.inner(ratatui::layout::Margin {
+        vertical: 0,
+        horizontal: 1,
+    });
+
+    if networks.is_empty() {
+        f.render_widget(
+            Paragraph::new("No networks in this stack.")
+                .style(bg.patch(app.theme.text_dim.to_style()))
+                .wrap(Wrap { trim: true }),
+            inner,
+        );
+        return;
+    }
+
+    let rows: Vec<Row> = networks
+        .iter()
+        .map(|n| {
+            Row::new(vec![
+                Cell::from(n.name.clone()),
+                Cell::from(n.driver.clone()),
+                Cell::from(n.scope.clone()),
+            ])
+        })
+        .collect();
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Min(22),
+            Constraint::Length(12),
+            Constraint::Length(10),
+        ],
+    )
+    .header(
+        Row::new(vec![Cell::from("NETWORK"), Cell::from("DRIVER"), Cell::from("SCOPE")])
+            .style(shell_header_style(app)),
+    )
+    .style(bg)
+    .column_spacing(1)
+    .row_highlight_style(shell_row_highlight(app))
+    .highlight_symbol("");
+    f.render_widget(table, inner);
 }
 
 fn draw_shell_image_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
@@ -5867,7 +6293,7 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item(
         "Note",
         "aliases",
-        ":ctr, :tpl, :img, :vol, :net (logs has no alias)",
+        ":ctr, :stk, :tpl, :img, :vol, :net (logs has no alias)",
     ));
     out.push(item(
         "Global",
@@ -6025,6 +6451,14 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Templates",
         ":nettemplate/:nt deploy[!] [name]",
         "Create network on active server (! = recreate if already exists)",
+    ));
+    out.push(Line::from(""));
+
+    out.push(h("Stacks"));
+    out.push(item(
+        "Stacks",
+        ":stack/:stk (start|stop|restart|rm) [name]",
+        "Run action for selected stack (or by name)",
     ));
     out.push(Line::from(""));
 

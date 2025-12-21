@@ -139,6 +139,8 @@ pub struct NetworkLsRow {
     pub driver: String,
     #[serde(rename = "Scope")]
     pub scope: String,
+    #[serde(rename = "Labels")]
+    pub labels: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -147,6 +149,7 @@ pub struct NetworkRow {
     pub name: String,
     pub driver: String,
     pub scope: String,
+    pub labels: String,
 }
 
 fn parse_json_lines<T: for<'de> Deserialize<'de>>(text: &str) -> anyhow::Result<Vec<T>> {
@@ -375,6 +378,7 @@ pub fn parse_overview_output(
             name: r.name,
             driver: r.driver,
             scope: r.scope,
+            labels: r.labels.unwrap_or_default(),
         })
         .collect();
     networks.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));

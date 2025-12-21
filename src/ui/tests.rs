@@ -242,12 +242,14 @@ fn network_remove_uses_marked_ids() {
             name: "net_a".to_string(),
             driver: "bridge".to_string(),
             scope: "local".to_string(),
+            labels: String::new(),
         },
         NetworkRow {
             id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
             name: "net_b".to_string(),
             driver: "bridge".to_string(),
             scope: "local".to_string(),
+            labels: String::new(),
         },
     ];
     app.marked_networks.insert(app.networks[0].id.clone());

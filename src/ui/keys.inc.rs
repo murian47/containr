@@ -223,6 +223,7 @@ fn parse_scope(raw: &str) -> Option<KeyScope> {
 fn parse_view_name(s: &str) -> Option<ShellView> {
     match s {
         "dashboard" | "dash" => Some(ShellView::Dashboard),
+        "stacks" | "stack" | "stk" => Some(ShellView::Stacks),
         "containers" | "container" | "ctr" => Some(ShellView::Containers),
         "images" | "image" | "img" => Some(ShellView::Images),
         "volumes" | "volume" | "vol" => Some(ShellView::Volumes),
@@ -243,6 +244,7 @@ fn scope_to_string(scope: KeyScope) -> &'static str {
         KeyScope::Always => "always",
         KeyScope::Global => "global",
         KeyScope::View(ShellView::Dashboard) => "view:dashboard",
+        KeyScope::View(ShellView::Stacks) => "view:stacks",
         KeyScope::View(ShellView::Containers) => "view:containers",
         KeyScope::View(ShellView::Images) => "view:images",
         KeyScope::View(ShellView::Volumes) => "view:volumes",
@@ -281,6 +283,17 @@ fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
     add(c, "C-c", ":container console bash");
     add(c, "C-S-C", ":container console sh");
     add(c, "C-t", ":container tree");
+
+    // Stacks.
+    let s = KeyScope::View(ShellView::Stacks);
+    add(s, "C-s", ":stack start");
+    add(s, "C-o", ":stack stop");
+    add(s, "C-r", ":stack restart");
+    add(s, "C-d", ":stack rm");
+
+    // Images.
+    let i = KeyScope::View(ShellView::Images);
+    add(i, "C-d", ":image rm");
 
     // Networks.
     let n = KeyScope::View(ShellView::Networks);
