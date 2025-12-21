@@ -37,13 +37,17 @@ use ratatui::{
     },
 };
 use regex::{Regex, RegexBuilder};
+use serde::Deserialize;
 use serde_json::Value;
 use std::fs;
 use std::io::{self, Stdout};
 use std::path::PathBuf;
 use std::process::{Command as StdCommand, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use std::{collections::HashMap, collections::HashSet, fmt::Write as _};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    fmt::Write as _,
+};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
@@ -826,6 +830,17 @@ enum ActionRequest {
         docker: DockerCfg,
         local_cfg: PathBuf,
         force: bool,
+    },
+    TemplateFromStack {
+        name: String,
+        stack_name: String,
+        container_ids: Vec<String>,
+        templates_dir: PathBuf,
+    },
+    TemplateFromContainer {
+        name: String,
+        container_id: String,
+        templates_dir: PathBuf,
     },
     ImageUntag {
         marker_key: String,
@@ -3799,6 +3814,33 @@ pub async fn run_tui(
                     }
                     .await
                 }
+                ActionRequest::TemplateFromStack {
+                    name,
+                    stack_name,
+                    container_ids,
+                    templates_dir,
+                } => export_stack_template(
+                    &conn.runner,
+                    &conn.docker,
+                    name,
+                    Some(stack_name),
+                    container_ids,
+                    templates_dir,
+                )
+                .await,
+                ActionRequest::TemplateFromContainer {
+                    name,
+                    container_id,
+                    templates_dir,
+                } => export_stack_template(
+                    &conn.runner,
+                    &conn.docker,
+                    name,
+                    None,
+                    std::slice::from_ref(container_id),
+                    templates_dir,
+                )
+                .await,
                 ActionRequest::ImageUntag { reference, .. } => {
                     docker::image_remove(&conn.runner, &conn.docker, reference).await
                 }
@@ -4285,6 +4327,30 @@ pub async fn run_tui(
                                 app.set_info(format!("deployed network template {name}"));
                             }
                         }
+                        ActionRequest::TemplateFromStack { name, stack_name, .. } => {
+                            app.refresh_templates();
+                            if let Some(idx) = app
+                                .templates_state
+                                .templates
+                                .iter()
+                                .position(|t| t.name == *name)
+                            {
+                                app.templates_state.templates_selected = idx;
+                            }
+                            app.set_info(format!("saved template {name} from stack {stack_name}"));
+                        }
+                        ActionRequest::TemplateFromContainer { name, .. } => {
+                            app.refresh_templates();
+                            if let Some(idx) = app
+                                .templates_state
+                                .templates
+                                .iter()
+                                .position(|t| t.name == *name)
+                            {
+                                app.templates_state.templates_selected = idx;
+                            }
+                            app.set_info(format!("saved template {name} from container"));
+                        }
                         ActionRequest::ImageUntag { marker_key, .. } => {
                             app.image_action_error.remove(marker_key);
                         }
@@ -4301,6 +4367,16 @@ pub async fn run_tui(
                     // Keep container "in-flight" markers for a short time; the next refresh will
                     // replace the status. For other kinds we just refresh.
                     let _ = refresh_tx.send(());
+                    if matches!(
+                        req,
+                        ActionRequest::TemplateFromStack { .. }
+                            | ActionRequest::TemplateFromContainer { .. }
+                    ) && !out.trim().is_empty()
+                    {
+                        for line in out.lines() {
+                            app.log_msg(MsgLevel::Warn, line.to_string());
+                        }
+                    }
                 }
                 Err(e) => {
                     match &req {
@@ -4344,6 +4420,14 @@ pub async fn run_tui(
                                 },
                             );
                             app.set_error(format!("deploy failed for {name}: {:#}", e));
+                            continue;
+                        }
+                        ActionRequest::TemplateFromStack { name, .. } => {
+                            app.set_error(format!("template export failed for {name}: {:#}", e));
+                            continue;
+                        }
+                        ActionRequest::TemplateFromContainer { name, .. } => {
+                            app.set_error(format!("template export failed for {name}: {:#}", e));
                             continue;
                         }
                         ActionRequest::ImageUntag { marker_key, .. } => {

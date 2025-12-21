@@ -19,6 +19,16 @@ fn begin_new_prompt(app: &mut App) {
     app.shell_cmdline.confirm = None;
 }
 
+fn begin_export_prompt(app: &mut App, sub: &str) {
+    app.shell_cmdline.mode = true;
+    super::super::set_text_and_cursor(
+        &mut app.shell_cmdline.input,
+        &mut app.shell_cmdline.cursor,
+        format!("template {sub} "),
+    );
+    app.shell_cmdline.confirm = None;
+}
+
 fn set_templates_kind(app: &mut App, v: &str) -> bool {
     match v.to_ascii_lowercase().as_str() {
         "stacks" | "stack" | "compose" => app.templates_state.kind = TemplatesKind::Stacks,
@@ -143,6 +153,100 @@ pub fn handle_template(
             }
             true
         }
+        "from-stack" => {
+            let Some(name) = args.get(1).copied() else {
+                begin_export_prompt(app, "from-stack");
+                return true;
+            };
+            let stack_name = if app.shell_view == ShellView::Stacks
+                || app.active_view == super::super::ActiveView::Stacks
+            {
+                app.selected_stack_entry().map(|s| s.name.clone())
+            } else {
+                app.selected_stack().map(|(name, ..)| name.to_string())
+            };
+            let Some(stack_name) = stack_name else {
+                app.set_warn("no stack selected");
+                return true;
+            };
+            let ids = app.stack_container_ids(&stack_name);
+            if ids.is_empty() {
+                app.set_warn("no containers in stack");
+                return true;
+            }
+            let templates_dir = app.stack_templates_dir();
+            app.set_info(format!(
+                "exporting template {name} from stack {stack_name}"
+            ));
+            let _ = action_req_tx.send(ActionRequest::TemplateFromStack {
+                name: name.to_string(),
+                stack_name,
+                container_ids: ids,
+                templates_dir,
+            });
+            true
+        }
+        "from-container" => {
+            let Some(name) = args.get(1).copied() else {
+                begin_export_prompt(app, "from-container");
+                return true;
+            };
+            let Some(container) = app.selected_container() else {
+                app.set_warn("no container selected");
+                return true;
+            };
+            let container_id = container.id.clone();
+            let container_name = container.name.clone();
+            let templates_dir = app.stack_templates_dir();
+            app.set_info(format!(
+                "exporting template {name} from container {}",
+                container_name
+            ));
+            let _ = action_req_tx.send(ActionRequest::TemplateFromContainer {
+                name: name.to_string(),
+                container_id,
+                templates_dir,
+            });
+            true
+        }
+        "from" => {
+            let kind = args.get(1).copied().unwrap_or("");
+            let name = args.get(2).copied().unwrap_or("");
+            if kind.is_empty() {
+                app.set_warn("usage: :template from (stack|container) <name>");
+                return true;
+            }
+            if name.is_empty() {
+                begin_export_prompt(app, &format!("from {kind}"));
+                return true;
+            }
+            match kind {
+                "stack" => {
+                    let _ = handle_template(
+                        app,
+                        force,
+                        cmdline_full,
+                        &["from-stack", name],
+                        action_req_tx,
+                    );
+                    true
+                }
+                "container" => {
+                    let _ = handle_template(
+                        app,
+                        force,
+                        cmdline_full,
+                        &["from-container", name],
+                        action_req_tx,
+                    );
+                    true
+                }
+                _ => {
+                    app.set_warn("usage: :template from (stack|container) <name>");
+                    true
+                }
+            }
+        }
         "deploy" => {
             let name = if let Some(v) = args.get(1).copied() {
                 v.to_string()
@@ -236,7 +340,7 @@ pub fn handle_template(
             true
         }
         _ => {
-            app.set_warn("usage: :template add <name> | :template deploy[!] [name] | :template rm[!] [name] | :templates kind (stacks|networks|toggle)");
+            app.set_warn("usage: :template add <name> | :template from (stack|container) <name> | :template deploy[!] [name] | :template rm[!] [name] | :templates kind (stacks|networks|toggle)");
             true
         }
     }
