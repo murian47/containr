@@ -221,12 +221,25 @@ fn shell_back_from_full(app: &mut App) {
         // Full-screen views should never keep command-line mode active in the background.
         app.shell_cmdline.mode = false;
         app.shell_cmdline.confirm = None;
-        app.shell_view = if app.shell_view == ShellView::Help {
-            app.shell_help.return_view
-        } else if app.shell_view == ShellView::Messages {
-            app.shell_msgs.return_view
+        let fallback = if app.shell_last_main_view == ShellView::Messages {
+            ShellView::Dashboard
         } else {
             app.shell_last_main_view
+        };
+        app.shell_view = if app.shell_view == ShellView::Help {
+            if app.shell_help.return_view == ShellView::Help {
+                fallback
+            } else {
+                app.shell_help.return_view
+            }
+        } else if app.shell_view == ShellView::Messages {
+            if app.shell_msgs.return_view == ShellView::Messages {
+                fallback
+            } else {
+                app.shell_msgs.return_view
+            }
+        } else {
+            fallback
         };
         app.shell_focus = ShellFocus::List;
         shell_sidebar_select_item(app, ShellSidebarItem::Module(app.shell_view));
