@@ -137,9 +137,44 @@ Beispiel-Labels (finaler Satz ist konfigurierbar und wird spaeter festgezurrt):
 2. compose.yaml lesen, Labels injizieren, ggf. Variablen aufloesen (spaeter).
 3. Files nach Remote kopieren:
    - bevorzugt `tar` over ssh oder `rsync`, fallback `scp -r`
-4. Remote: `compose up -d` (optional: vorher `compose pull`)
-5. Remote `meta.json` schreiben (commit/template/time)
-6. Lokal `state.json` aktualisieren
+4. Optional: `compose pull` fuer Services (oder `docker/podman pull` pro Image)
+5. Remote: `compose up -d` (oder `compose up -d --force-recreate` bei Recreate)
+6. Remote `meta.json` schreiben (commit/template/time)
+7. Lokal `state.json` aktualisieren
+
+## Image-Update-Pruefung (M4)
+
+- Ziel: lokale Images gegen Registry vergleichen und Updates im UI markieren.
+- Scope: Container- und Stack-Ansichten, plus Templates-Details.
+- Vorschlag:
+  - Nur qualified Images pruefen (Registry erkennbar).
+  - Unqualified Images (z.B. `nextcloud`) als `docker.io/library/...:latest` behandeln.
+  - Abfragen asynchron mit Cache + TTL (z.B. 6h) um Rate-Limits zu vermeiden.
+
+### Ablauf (Kurz)
+
+1. Normalisiere Image-Referenz (Registry + Tag/Digest).
+2. Cache-Lookup; falls frisch: Status anzeigen.
+3. Falls veraltet: Registry-Manifest abrufen (digest).
+4. Lokales Image-Digest vergleichen.
+5. UI markieren: `up-to-date` / `update available` / `unknown`.
+
+## Recreate-Workflow (M4)
+
+- Ziel: einzelner Container oder ganzer Stack neu anlegen.
+- Optional: vorher Image pullen.
+
+### Ablauf (Container)
+
+1. Optional: `docker/podman pull` fuer das Image.
+2. `compose up -d --force-recreate` wenn Stack-Template verfuegbar,
+   sonst `docker/podman rm -f` + `docker/podman run` ist out-of-scope.
+
+### Ablauf (Stack)
+
+1. Optional: `compose pull` (alle Services im Stack).
+2. `compose up -d --force-recreate`
+3. UI: In-flight Marker + Status/History aktualisieren.
 
 ## Git-Integration
 
@@ -169,7 +204,7 @@ Wichtig: Dry-run, klare Prompts und Sicherheitschecks.
 - M1: Templates-View + Git-Aktionen + `$EDITOR` Integration
 - M2: Stacks-View (Stacks erkennen, anzeigen, simple lifecycle actions)
 - M3: Deploy (render + copy + compose up) inkl. state/history
-- M4: Update/Rollback (select ref, redeploy, history UI)
+- M4: Update/Rollback + image updates (check, pull, recreate, history UI)
 - M5: AI support (assistant-driven template creation/editing)
 
 ## Offene Fragen
