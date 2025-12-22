@@ -197,6 +197,8 @@ pub struct ContainrConfig {
     pub git_autocommit: bool,
     #[serde(default)]
     pub git_autocommit_confirm: bool,
+    #[serde(default = "default_image_update_concurrency")]
+    pub image_update_concurrency: usize,
 }
 
 fn default_version() -> u32 {
@@ -238,6 +240,10 @@ fn default_active_theme() -> String {
     "default".to_string()
 }
 
+fn default_image_update_concurrency() -> usize {
+    4
+}
+
 impl Default for ContainrConfig {
     fn default() -> Self {
         Self {
@@ -255,6 +261,7 @@ impl Default for ContainrConfig {
             servers: Vec::new(),
             git_autocommit: false,
             git_autocommit_confirm: false,
+            image_update_concurrency: default_image_update_concurrency(),
         }
     }
 }

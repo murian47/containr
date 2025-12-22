@@ -72,6 +72,7 @@ async fn main() -> anyhow::Result<()> {
         cmd_history,
         templates_dir,
         view_layout,
+        image_update_concurrency,
     ) = if let Some(target) = args.target.clone() {
         let parsed_docker_cmd = config::DockerCmd::from_shell(&args.docker_cmd)?;
         // "target mode": connect directly and (optionally) persist it as a named server.
@@ -133,6 +134,7 @@ async fn main() -> anyhow::Result<()> {
             config.cmd_history.clone(),
             config.templates_dir.clone(),
             config.view_layout.clone(),
+            config.image_update_concurrency,
         )
     } else {
         // "server mode": resolve from config (or last_server).
@@ -176,6 +178,7 @@ async fn main() -> anyhow::Result<()> {
                 config.cmd_history.clone(),
                 config.templates_dir.clone(),
                 config.view_layout.clone(),
+                config.image_update_concurrency,
             )
         } else {
             (
@@ -192,6 +195,7 @@ async fn main() -> anyhow::Result<()> {
                 config.cmd_history.clone(),
                 config.templates_dir.clone(),
                 config.view_layout.clone(),
+                config.image_update_concurrency,
             )
         }
     };
@@ -215,6 +219,7 @@ async fn main() -> anyhow::Result<()> {
         config.git_autocommit,
         config.git_autocommit_confirm,
         config.editor_cmd.clone(),
+        image_update_concurrency,
     )
     .await
 }

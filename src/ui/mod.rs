@@ -1005,6 +1005,7 @@ struct App {
     git_autocommit: bool,
     git_autocommit_confirm: bool,
     editor_cmd: String,
+    image_update_concurrency: usize,
 
     session_msgs: Vec<SessionMsg>,
     messages_seen_len: usize,
@@ -1272,6 +1273,7 @@ impl App {
         git_autocommit: bool,
         git_autocommit_confirm: bool,
         editor_cmd: String,
+        image_update_concurrency: usize,
     ) -> Self {
         let mut server_selected = 0usize;
         if let Some(name) = &active_server {
@@ -1433,6 +1435,7 @@ impl App {
             git_autocommit,
             git_autocommit_confirm,
             editor_cmd,
+            image_update_concurrency: image_update_concurrency.max(1),
 
             session_msgs: Vec::new(),
             messages_seen_len: 0,
@@ -3441,6 +3444,7 @@ pub async fn run_tui(
     git_autocommit: bool,
     git_autocommit_confirm: bool,
     editor_cmd: String,
+    image_update_concurrency: usize,
 ) -> anyhow::Result<()> {
     let mut terminal = setup_terminal().context("failed to setup terminal")?;
     let (theme_spec, theme_err) = match theme::load_theme(&config_path, &active_theme) {
@@ -3458,6 +3462,7 @@ pub async fn run_tui(
         git_autocommit,
         git_autocommit_confirm,
         editor_cmd,
+        image_update_concurrency,
     );
     if let Some(e) = theme_err {
         app.log_msg(MsgLevel::Warn, format!("failed to load theme: {:#}", e));
@@ -3494,7 +3499,6 @@ pub async fn run_tui(
     let (inspect_res_tx, mut inspect_res_rx) =
         mpsc::unbounded_channel::<(String, anyhow::Result<Value>)>();
 
-    const IMAGE_UPDATE_CONCURRENCY: usize = 4;
     let (action_req_tx, mut action_req_rx) = mpsc::unbounded_channel::<ActionRequest>();
     let (image_update_req_tx, mut image_update_req_rx) = mpsc::unbounded_channel::<String>();
     let (action_res_tx, mut action_res_rx) =
@@ -3523,6 +3527,8 @@ pub async fn run_tui(
 
     let (refresh_interval_tx, refresh_interval_rx) =
         watch::channel(Duration::from_secs(app.refresh_secs.max(1)));
+    let (image_update_limit_tx, image_update_limit_rx) =
+        watch::channel(app.image_update_concurrency.max(1));
     let fetch_task = tokio::spawn(async move {
         let mut refresh_interval_rx = refresh_interval_rx;
         let mut interval = tokio::time::interval(*refresh_interval_rx.borrow());
@@ -3971,17 +3977,34 @@ pub async fn run_tui(
     let image_update_res_tx = action_res_tx.clone();
     let image_update_task = tokio::spawn(async move {
         let image_update_conn_rx = image_update_conn_rx;
-        let semaphore = Arc::new(Semaphore::new(IMAGE_UPDATE_CONCURRENCY.max(1)));
-        while let Some(image) = image_update_req_rx.recv().await {
-            let permit = semaphore.clone().acquire_owned().await;
-            let conn = image_update_conn_rx.borrow().clone();
-            let image_update_res_tx = image_update_res_tx.clone();
-            tokio::spawn(async move {
-                let _permit = permit;
-                let res = check_image_update(&conn.runner, &conn.docker, &image).await;
-                let _ = image_update_res_tx
-                    .send((ActionRequest::ImageUpdateCheck { image }, res));
-            });
+        let mut image_update_limit_rx = image_update_limit_rx;
+        let mut semaphore = Arc::new(Semaphore::new(
+            (*image_update_limit_rx.borrow()).max(1),
+        ));
+        loop {
+            tokio::select! {
+                maybe = image_update_req_rx.recv() => {
+                    let Some(image) = maybe else {
+                        break;
+                    };
+                    let permit = semaphore.clone().acquire_owned().await;
+                    let conn = image_update_conn_rx.borrow().clone();
+                    let image_update_res_tx = image_update_res_tx.clone();
+                    tokio::spawn(async move {
+                        let _permit = permit;
+                        let res = check_image_update(&conn.runner, &conn.docker, &image).await;
+                        let _ = image_update_res_tx
+                            .send((ActionRequest::ImageUpdateCheck { image }, res));
+                    });
+                }
+                changed = image_update_limit_rx.changed() => {
+                    if changed.is_err() {
+                        break;
+                    }
+                    let next = (*image_update_limit_rx.borrow()).max(1);
+                    semaphore = Arc::new(Semaphore::new(next));
+                }
+            }
         }
     });
 
@@ -4714,6 +4737,7 @@ pub async fn run_tui(
                         &refresh_tx,
                         &dash_refresh_tx,
                         &refresh_interval_tx,
+                        &image_update_limit_tx,
                         &inspect_req_tx,
                         &logs_req_tx,
                         &action_req_tx,

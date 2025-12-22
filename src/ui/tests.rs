@@ -39,6 +39,7 @@ fn mk_test_app() -> App {
         false,
         false,
         String::new(),
+        4,
     )
 }
 
@@ -165,6 +166,7 @@ fn dashboard_shows_no_server_message() {
         false,
         false,
         String::new(),
+        4,
     );
     app.loading = false;
     app.current_target.clear();

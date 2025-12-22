@@ -347,6 +347,7 @@ impl App {
             servers: self.servers.clone(),
             git_autocommit: self.git_autocommit,
             git_autocommit_confirm: self.git_autocommit_confirm,
+            image_update_concurrency: self.image_update_concurrency,
         };
         if let Err(e) = config::save(&self.config_path, &cfg) {
             self.set_error(format!("failed to save config: {:#}", e));
@@ -947,8 +948,7 @@ fn image_update_view_for_stack(app: &App, stack_name: &str) -> ImageUpdateView {
     }
 }
 
-fn image_update_indicator(app: &App, view: ImageUpdateView) -> (String, Style) {
-    let bg = app.theme.panel.to_style();
+fn image_update_indicator(app: &App, view: ImageUpdateView, bg: Style) -> (String, Style) {
     let (text, style) = match view {
         ImageUpdateView::UpToDate => (
             if app.ascii_only { "Y" } else { "●" },
@@ -2351,6 +2351,7 @@ fn shell_execute_cmdline(
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
     refresh_interval_tx: &watch::Sender<Duration>,
+    image_update_limit_tx: &watch::Sender<usize>,
     logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
@@ -2847,7 +2848,13 @@ fn shell_execute_cmdline(
 
     if cmd == "set" {
         let args: Vec<&str> = it.collect();
-        let _ = commands::set_cmd::handle_set(app, &args, refresh_interval_tx, logs_req_tx);
+        let _ = commands::set_cmd::handle_set(
+            app,
+            &args,
+            refresh_interval_tx,
+            image_update_limit_tx,
+            logs_req_tx,
+        );
         return;
     }
 
@@ -3455,6 +3462,7 @@ fn handle_shell_key(
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
     refresh_interval_tx: &watch::Sender<Duration>,
+    image_update_limit_tx: &watch::Sender<usize>,
     inspect_req_tx: &mpsc::UnboundedSender<InspectTarget>,
     logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
@@ -3472,6 +3480,7 @@ fn handle_shell_key(
                         refresh_tx,
                         dash_refresh_tx,
                         refresh_interval_tx,
+                        image_update_limit_tx,
                         logs_req_tx,
                         action_req_tx,
                     );
@@ -3499,6 +3508,7 @@ fn handle_shell_key(
                         refresh_tx,
                         dash_refresh_tx,
                         refresh_interval_tx,
+                        image_update_limit_tx,
                         logs_req_tx,
                         action_req_tx,
                     );
@@ -3531,6 +3541,7 @@ fn handle_shell_key(
                     refresh_tx,
                     dash_refresh_tx,
                     refresh_interval_tx,
+                    image_update_limit_tx,
                     logs_req_tx,
                     action_req_tx,
                 );
@@ -3934,6 +3945,7 @@ fn handle_shell_key(
                             refresh_tx,
                             dash_refresh_tx,
                             refresh_interval_tx,
+                            image_update_limit_tx,
                             logs_req_tx,
                             action_req_tx,
                         );
@@ -5406,6 +5418,7 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
         let (upd_text, upd_style) = image_update_indicator(
             app,
             image_update_view_for_ref(app, &c.image).1,
+            bg,
         );
         Row::new(vec![
             Cell::from(truncate_end(&name, 22)).style(row_style),
@@ -5444,7 +5457,7 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
                     };
                     let glyph = if *expanded { "▾" } else { "▸" };
                     let (upd_text, upd_style) =
-                        image_update_indicator(app, image_update_view_for_stack(app, name));
+                        image_update_indicator(app, image_update_view_for_stack(app, name), bg);
                     rows.push(
                         Row::new(vec![
                             Cell::from(format!("{glyph} {name}")).style(st),
@@ -6609,6 +6622,7 @@ fn draw_shell_stacks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
             let (upd_text, upd_style) = image_update_indicator(
                 app,
                 image_update_view_for_stack(app, &s.name),
+                bg,
             );
             let mut state = String::new();
             let mut state_style = row_style;
@@ -6730,6 +6744,11 @@ fn draw_shell_container_details(
     } else {
         (c.status.clone(), val)
     };
+    let (update_text, update_style) = image_update_indicator(
+        app,
+        image_update_view_for_ref(app, &c.image).1,
+        bg,
+    );
     let mut rows = vec![
         DetailRow {
             key: "Name",
@@ -6748,12 +6767,8 @@ fn draw_shell_container_details(
         },
         DetailRow {
             key: "Update",
-            value: {
-                let (text, _) =
-                    image_update_indicator(app, image_update_view_for_ref(app, &c.image).1);
-                text
-            },
-            style: val,
+            value: update_text,
+            style: update_style,
         },
         DetailRow {
             key: "Status",
@@ -8322,6 +8337,11 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Global",
         ":set git_autocommit_confirm <on|off>",
         "Ask before auto-committing (only used when git_autocommit=on)",
+    ));
+    out.push(item(
+        "Global",
+        ":set image_update_concurrency <n>",
+        "Set concurrent image update checks (1..32), saved to config",
     ));
     out.push(Line::from(""));
 

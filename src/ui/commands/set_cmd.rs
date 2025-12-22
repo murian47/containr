@@ -16,6 +16,7 @@ pub fn handle_set(
     app: &mut App,
     args: &[&str],
     refresh_interval_tx: &watch::Sender<Duration>,
+    image_update_limit_tx: &watch::Sender<usize>,
     logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
 ) -> bool {
     let sub = args.first().copied().unwrap_or("");
@@ -120,9 +121,24 @@ pub fn handle_set(
             app.persist_config();
             true
         }
+        "image_update_concurrency" => {
+            let Some(v) = rest.first().copied() else {
+                app.set_warn("usage: :set image_update_concurrency <n>");
+                return true;
+            };
+            match v.parse::<usize>() {
+                Ok(n) if (1..=32).contains(&n) => {
+                    app.image_update_concurrency = n;
+                    let _ = image_update_limit_tx.send(n);
+                    app.persist_config();
+                }
+                _ => app.set_warn("image_update_concurrency must be 1..32"),
+            }
+            true
+        }
         _ => {
             app.set_warn(
-                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries> | :set editor <command> | :set git_autocommit <on|off> | :set git_autocommit_confirm <on|off>",
+                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries> | :set editor <command> | :set git_autocommit <on|off> | :set git_autocommit_confirm <on|off> | :set image_update_concurrency <n>",
             );
             true
         }
