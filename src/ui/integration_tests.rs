@@ -17,7 +17,7 @@ fn it_enabled() -> bool {
 }
 
 fn it_target() -> String {
-    std::env::var(IT_TARGET_ENV).unwrap_or_else(|_| "mag@rpi47.local47.de".to_string())
+    std::env::var(IT_TARGET_ENV).unwrap_or_default()
 }
 
 fn mk_temp_path(prefix: &str) -> PathBuf {
@@ -69,9 +69,14 @@ async fn integration_templates_and_networks() -> anyhow::Result<()> {
         eprintln!("skipping integration tests (set {IT_ENV}=1 to enable)");
         return Ok(());
     }
+    let target = it_target();
+    if target.trim().is_empty() {
+        eprintln!("skipping integration tests (set {IT_TARGET_ENV} to target a host)");
+        return Ok(());
+    }
 
     let runner = Runner::Ssh(Ssh {
-        target: it_target(),
+        target,
         identity: None,
         port: None,
     });

@@ -29,8 +29,7 @@ This document describes a lightweight testing strategy for containr.
 - Optional: `cargo fmt --check`
 
 ## Running integration tests
-- `CONTAINR_IT=1 cargo test --features integration`
-- Optional override: `CONTAINR_IT_TARGET=mag@rpi47.local47.de`
+- `CONTAINR_IT=1 CONTAINR_IT_TARGET=mag@rpi47.local47.de cargo test --features integration`
 
 ## Canary testing
 - Use 1–2 real hosts with simple templates and small stacks.
