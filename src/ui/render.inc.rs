@@ -348,6 +348,7 @@ impl App {
             git_autocommit: self.git_autocommit,
             git_autocommit_confirm: self.git_autocommit_confirm,
             image_update_concurrency: self.image_update_concurrency,
+            image_update_debug: self.image_update_debug,
         };
         if let Err(e) = config::save(&self.config_path, &cfg) {
             self.set_error(format!("failed to save config: {:#}", e));
@@ -360,6 +361,70 @@ impl App {
             .retain(|_, v| now.saturating_sub(v.checked_at) <= IMAGE_UPDATE_TTL_SECS);
     }
 
+    fn prune_rate_limits(&mut self) {
+        let now = now_unix();
+        self.rate_limits.retain(|_, v| {
+            v.hits.retain(|ts| now.saturating_sub(*ts) <= RATE_LIMIT_WINDOW_SECS);
+            if let Some(until) = v.limited_until {
+                if now >= until {
+                    v.limited_until = None;
+                }
+            }
+            !v.hits.is_empty() || v.limited_until.is_some()
+        });
+    }
+
+    fn note_rate_limit_request(&mut self, image_ref: &str) {
+        let now = now_unix();
+        let registry = image_registry_for_ref(image_ref);
+        let entry = self.rate_limits.entry(registry).or_default();
+        entry.hits.push(now);
+        entry
+            .hits
+            .retain(|ts| now.saturating_sub(*ts) <= RATE_LIMIT_WINDOW_SECS);
+    }
+
+    fn note_rate_limit_error(&mut self, image_ref: &str) {
+        let now = now_unix();
+        let registry = image_registry_for_ref(image_ref);
+        let entry = self.rate_limits.entry(registry).or_default();
+        entry.limited_until = Some(now + RATE_LIMIT_WINDOW_SECS);
+    }
+
+    fn rate_limit_banner(&mut self) -> Option<String> {
+        self.prune_rate_limits();
+        let now = now_unix();
+        let mut limited: Option<(String, i64)> = None;
+        let mut warn: Option<(String, usize)> = None;
+        for (reg, entry) in &self.rate_limits {
+            if let Some(until) = entry.limited_until {
+                if until > now {
+                    let remaining = until.saturating_sub(now);
+                    limited = Some((reg.clone(), remaining));
+                    break;
+                }
+            }
+            let count = entry.hits.len();
+            if count >= RATE_LIMIT_WARN {
+                if warn.as_ref().map(|(_, c)| count > *c).unwrap_or(true) {
+                    warn = Some((reg.clone(), count));
+                }
+            }
+        }
+        if let Some((reg, remaining)) = limited {
+            let mins = (remaining / 60).max(1);
+            return Some(format!(
+                "Rate limit reached for {reg}. Try again in ~{mins}m."
+            ));
+        }
+        if let Some((reg, count)) = warn {
+            return Some(format!(
+                "Rate limit nearing for {reg}: {count}/{RATE_LIMIT_MAX} in 6h window."
+            ));
+        }
+        None
+    }
+
     fn save_local_state(&mut self) {
         let dir = self
             .image_updates_path
@@ -370,9 +435,11 @@ impl App {
             self.log_msg(MsgLevel::Warn, format!("state dir create failed: {:#}", e));
             return;
         }
+        self.prune_rate_limits();
         let state = LocalState {
             version: 1,
             image_updates: self.image_updates.clone(),
+            rate_limits: self.rate_limits.clone(),
         };
         match serde_json::to_string_pretty(&state) {
             Ok(raw) => {
@@ -594,6 +661,7 @@ struct ImageInspect {
 struct ImageUpdateResult {
     image: String,
     entry: ImageUpdateEntry,
+    debug: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -857,6 +925,18 @@ fn image_repo_name(image_ref: &str) -> String {
     }
 }
 
+fn image_registry_for_ref(image_ref: &str) -> String {
+    let name = image_ref.split_once('@').map(|(n, _)| n).unwrap_or(image_ref);
+    let name = name.split_once(':').map(|(n, _)| n).unwrap_or(name);
+    let first = name.split('/').next().unwrap_or("");
+    let has_registry = first.contains('.') || first.contains(':') || first == "localhost";
+    if has_registry {
+        first.to_string()
+    } else {
+        "docker.io".to_string()
+    }
+}
+
 fn normalize_docker_hub_repo(name: &str) -> String {
     let mut name = name.trim().to_string();
     if let Some(rest) = name.strip_prefix("docker.io/") {
@@ -889,6 +969,17 @@ enum ImageUpdateView {
     UpToDate,
     UpdateAvailable,
     Error,
+    RateLimited,
+}
+
+fn is_rate_limit_error(err: Option<&str>) -> bool {
+    let Some(err) = err else {
+        return false;
+    };
+    let err = err.to_ascii_lowercase();
+    err.contains("toomanyrequests")
+        || err.contains("rate limit")
+        || err.contains("429")
 }
 
 fn image_update_view_for_ref(app: &App, image: &str) -> (Option<String>, ImageUpdateView) {
@@ -906,7 +997,13 @@ fn image_update_view_for_ref(app: &App, image: &str) -> (Option<String>, ImageUp
     let view = match entry.status {
         ImageUpdateKind::UpToDate => ImageUpdateView::UpToDate,
         ImageUpdateKind::UpdateAvailable => ImageUpdateView::UpdateAvailable,
-        ImageUpdateKind::Error => ImageUpdateView::Error,
+        ImageUpdateKind::Error => {
+            if is_rate_limit_error(entry.error.as_deref()) {
+                ImageUpdateView::RateLimited
+            } else {
+                ImageUpdateView::Error
+            }
+        }
     };
     (Some(key), view)
 }
@@ -916,6 +1013,7 @@ fn image_update_view_for_stack(app: &App, stack_name: &str) -> ImageUpdateView {
     let mut has_error = false;
     let mut has_unknown = false;
     let mut has_checking = false;
+    let mut has_rate_limit = false;
     let mut seen = false;
     for c in app
         .containers
@@ -929,6 +1027,7 @@ fn image_update_view_for_stack(app: &App, stack_name: &str) -> ImageUpdateView {
             ImageUpdateView::Error => has_error = true,
             ImageUpdateView::Unknown => has_unknown = true,
             ImageUpdateView::Checking => has_checking = true,
+            ImageUpdateView::RateLimited => has_rate_limit = true,
             ImageUpdateView::UpToDate => {}
         }
     }
@@ -939,6 +1038,8 @@ fn image_update_view_for_stack(app: &App, stack_name: &str) -> ImageUpdateView {
         ImageUpdateView::UpdateAvailable
     } else if has_checking {
         ImageUpdateView::Checking
+    } else if has_rate_limit {
+        ImageUpdateView::RateLimited
     } else if has_error {
         ImageUpdateView::Error
     } else if has_unknown {
@@ -961,6 +1062,10 @@ fn image_update_indicator(app: &App, view: ImageUpdateView, bg: Style) -> (Strin
         ImageUpdateView::Error => (
             if app.ascii_only { "!" } else { "●" },
             bg.patch(app.theme.text_error.to_style()),
+        ),
+        ImageUpdateView::RateLimited => (
+            if app.ascii_only { "i" } else { "●" },
+            bg.patch(app.theme.text_info.to_style()),
         ),
         ImageUpdateView::Checking => (
             if app.ascii_only { "*" } else { "⟳" },
@@ -1090,10 +1195,35 @@ fn manifest_platform_summary(raw: &str) -> String {
     parts.join(",")
 }
 
+fn manifest_remote_digests(raw: &str) -> Vec<(String, Option<String>, Option<String>)> {
+    let entries = manifest_entries(raw);
+    let mut out: Vec<(String, Option<String>, Option<String>)> = Vec::new();
+    for entry in entries {
+        let digest = match entry_descriptor_digest(&entry) {
+            Some(d) => d,
+            None => continue,
+        };
+        let (arch, os) = entry_platform(&entry);
+        out.push((digest, arch, os));
+    }
+    out
+}
+
+fn format_remote_digest_list(items: &[(String, Option<String>, Option<String>)]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (digest, arch, os) in items {
+        let arch = arch.as_deref().unwrap_or("?");
+        let os = os.as_deref().unwrap_or("?");
+        parts.push(format!("{digest}@{arch}/{os}"));
+    }
+    parts.join(",")
+}
+
 async fn check_image_update(
     runner: &Runner,
     docker: &DockerCfg,
     image: &str,
+    debug: bool,
 ) -> anyhow::Result<String> {
     if docker.docker_cmd.is_empty() {
         anyhow::bail!("no server configured");
@@ -1125,15 +1255,21 @@ async fn check_image_update(
         .as_deref()
         .and_then(|list| local_repo_digest(list, &repo));
 
-    let (status, remote_digest, error) = if let Some(digest) = normalized.digest.clone() {
+    let (status, remote_digest, error, debug_remote, debug_remote_digests, debug_local_index) =
+        if let Some(digest) = normalized.digest.clone() {
         (
             ImageUpdateKind::UpToDate,
             Some(digest),
+            None::<String>,
+            None::<String>,
+            None::<String>,
             None::<String>,
         )
     } else {
         match docker::fetch_manifest_inspect(runner, docker, &normalized.reference).await {
             Ok(raw) => {
+                let summary = manifest_platform_summary(&raw);
+                let remote_digests = manifest_remote_digests(&raw);
                 let remote = if let (Some(arch), Some(os)) =
                     (inspect.architecture.as_deref(), inspect.os.as_deref())
                 {
@@ -1142,36 +1278,131 @@ async fn check_image_update(
                 } else {
                     manifest_descriptor_digest(&raw)
                 };
-                let (status, error) = match (local_digest.clone(), remote.clone()) {
+                let (status, error, local_index_debug) = match (local_digest.clone(), remote.clone()) {
                     (Some(local), Some(remote)) => {
-                        if local == remote {
-                            (ImageUpdateKind::UpToDate, None)
+                        let inspect_arch = inspect.architecture.as_deref().unwrap_or("");
+                        let inspect_os = inspect.os.as_deref().unwrap_or("");
+                        let matches = remote_digests.iter().any(|(digest, arch, os)| {
+                            if digest != &local {
+                                return false;
+                            }
+                            let arch = arch.as_deref().unwrap_or("");
+                            let os = os.as_deref().unwrap_or("");
+                            if arch.is_empty() || os.is_empty() {
+                                return true;
+                            }
+                            if arch == "unknown" || os == "unknown" {
+                                return true;
+                            }
+                            arch == inspect_arch && os == inspect_os
+                        });
+                        if matches {
+                            (ImageUpdateKind::UpToDate, None, None)
                         } else {
-                            (ImageUpdateKind::UpdateAvailable, None)
+                            let idx_ref = format!("{}@{}", normalized.reference, local);
+                            match docker::fetch_manifest_inspect(runner, docker, &idx_ref).await {
+                                Ok(idx_raw) => {
+                                    let idx_digest = if !inspect_arch.is_empty() && !inspect_os.is_empty() {
+                                        manifest_digest_for_platform(&idx_raw, inspect_arch, inspect_os)
+                                            .or_else(|| manifest_descriptor_digest(&idx_raw))
+                                    } else {
+                                        manifest_descriptor_digest(&idx_raw)
+                                    };
+                                    let idx_summary = manifest_platform_summary(&idx_raw);
+                                    let idx_debug = Some(format!(
+                                        "local_index_ref={idx_ref} local_index_platforms={idx_summary} local_index_digest={}",
+                                        idx_digest.as_deref().unwrap_or("-")
+                                    ));
+                                    if let Some(idx_digest) = idx_digest {
+                                        if idx_digest == remote {
+                                            (
+                                                ImageUpdateKind::UpToDate,
+                                                None,
+                                                idx_debug,
+                                            )
+                                        } else {
+                                            (
+                                                ImageUpdateKind::UpdateAvailable,
+                                                None,
+                                                idx_debug,
+                                            )
+                                        }
+                                    } else {
+                                        (
+                                            ImageUpdateKind::UpdateAvailable,
+                                            None,
+                                            idx_debug,
+                                        )
+                                    }
+                                }
+                                Err(_) => (ImageUpdateKind::UpdateAvailable, None, None),
+                            }
                         }
                     }
-                    (None, _) => (
-                        ImageUpdateKind::Error,
-                        Some(format!(
-                            "missing local digest (repo={repo}, repo_digests={repo_digests_len} {repo_digests_preview})"
-                        )),
-                    ),
-                    (_, None) => (
-                        ImageUpdateKind::Error,
-                        Some(format!(
-                            "missing remote digest (platforms={})",
-                            manifest_platform_summary(&raw)
-                        )),
-                    ),
+                    (None, _) => {
+                        (
+                            ImageUpdateKind::Error,
+                            Some(format!(
+                                "missing local digest (repo={repo}, repo_digests={repo_digests_len} {repo_digests_preview})"
+                            )),
+                            None,
+                        )
+                    }
+                    (_, None) => {
+                        (
+                            ImageUpdateKind::Error,
+                            Some(format!("missing remote digest (platforms={summary})")),
+                            None,
+                        )
+                    }
                 };
-                (status, remote, error)
+                (
+                    status,
+                    remote,
+                    error,
+                    Some(summary),
+                    Some(format_remote_digest_list(&remote_digests)),
+                    local_index_debug,
+                )
             }
             Err(e) => (
                 ImageUpdateKind::Error,
                 None,
                 Some(truncate_msg(&format!("{:#}", e), 200)),
+                None,
+                None,
+                None,
             ),
         }
+    };
+
+    let debug_info = if debug {
+        let arch = inspect.architecture.as_deref().unwrap_or("-");
+        let os = inspect.os.as_deref().unwrap_or("-");
+        let local = local_digest.as_deref().unwrap_or("-");
+        let remote = remote_digest.as_deref().unwrap_or("-");
+        let mut parts = vec![
+            format!("image={}", normalized.reference),
+            format!("repo={repo}"),
+            format!("inspect_platform={arch}/{os}"),
+            format!("local_digest={local}"),
+            format!("remote_digest={remote}"),
+            format!(
+                "repo_digests={repo_digests_len} {repo_digests_preview}"
+            ),
+        ];
+        if let Some(summary) = debug_remote.as_deref() {
+            parts.push(format!("remote_platforms={summary}"));
+        }
+        if let Some(list) = debug_remote_digests.as_deref() {
+            parts.push(format!("remote_digests={list}"));
+        }
+        if let Some(idx) = debug_local_index.as_deref() {
+            parts.push(idx.to_string());
+        }
+        Some(parts.join(" | "))
+    } else {
+        None
     };
 
     let entry = ImageUpdateEntry {
@@ -1184,6 +1415,7 @@ async fn check_image_update(
     let result = ImageUpdateResult {
         image: normalized.reference.clone(),
         entry,
+        debug: debug_info,
     };
     Ok(serde_json::to_string(&result)?)
 }
@@ -2054,11 +2286,11 @@ fn create_net_template(app: &mut App, name: &str) -> anyhow::Result<()> {
 }
 
 fn deploy_remote_dir_for(name: &str) -> String {
-    format!("~/.config/containr/apps/{name}")
+    format!(".config/containr/apps/{name}")
 }
 
 fn deploy_remote_net_dir_for(name: &str) -> String {
-    format!("~/.config/containr/networks/{name}")
+    format!(".config/containr/networks/{name}")
 }
 
 fn delete_template(app: &mut App, name: &str) -> anyhow::Result<()> {
@@ -2731,24 +2963,8 @@ fn shell_execute_cmdline(
                 shell_check_image_updates(app, images.into_iter().collect(), action_req_tx);
             }
             "recreate" => {
-                let mut pull = false;
-                let mut target = None;
-                for arg in &args {
-                    if *arg == "--pull" || *arg == "pull" {
-                        pull = true;
-                    } else if target.is_none() {
-                        target = Some(arg.to_string());
-                    } else {
-                        app.set_warn("usage: :stack recreate [--pull] [name]");
-                        return;
-                    }
-                }
-                let target = target.or_else(|| app.selected_stack_entry().map(|s| s.name.clone()));
-                let Some(target) = target else {
-                    app.set_warn("no stack selected");
-                    return;
-                };
-                shell_recreate_stack_from_template(app, &target, pull, action_req_tx);
+                let _ = force;
+                app.set_warn("use :template deploy --recreate [--pull] <name>");
             }
             "rm" | "del" | "delete" => {
                 let target = name
@@ -2769,7 +2985,7 @@ fn shell_execute_cmdline(
                 shell_exec_stack_action(app, ContainerAction::Remove, Some(&target), action_req_tx);
             }
             _ => {
-                app.set_warn("usage: :stack [start|stop|restart|rm|check|recreate] [name] | :stacks running|all");
+        app.set_warn("usage: :stack [start|stop|restart|rm|check] [name] | :stacks running|all");
             }
         }
         return;
@@ -2964,8 +3180,12 @@ fn shell_check_image_updates(
         if app.image_updates_inflight.contains(&key) {
             continue;
         }
+        app.note_rate_limit_request(&key);
         app.image_updates_inflight.insert(key.clone());
-        let _ = action_req_tx.send(ActionRequest::ImageUpdateCheck { image: key.clone() });
+        let _ = action_req_tx.send(ActionRequest::ImageUpdateCheck {
+            image: key.clone(),
+            debug: app.image_update_debug,
+        });
         app.log_msg(
             MsgLevel::Info,
             format!("image update queued: {key}"),
@@ -2977,6 +3197,7 @@ fn shell_check_image_updates(
     } else {
         app.set_info(format!("checking {queued} image(s)"));
     }
+    app.save_local_state();
 }
 
 fn shell_exec_stack_action(
@@ -3336,30 +3557,6 @@ fn shell_deploy_template(
         msg.push_str(" [pull]");
     }
     app.set_info(msg);
-}
-
-fn shell_recreate_stack_from_template(
-    app: &mut App,
-    stack_name: &str,
-    pull: bool,
-    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
-) {
-    let stack_name = stack_name.trim();
-    if stack_name.is_empty() {
-        app.set_warn("no stack selected");
-        return;
-    }
-    app.refresh_templates();
-    let has_template = app
-        .templates_state
-        .templates
-        .iter()
-        .any(|t| t.name == stack_name);
-    if !has_template {
-        app.set_warn(format!("template not found: {stack_name}"));
-        return;
-    }
-    shell_deploy_template(app, stack_name, pull, true, action_req_tx);
 }
 
 fn shell_deploy_net_template(
@@ -5080,36 +5277,69 @@ fn draw_shell_title(
 }
 
 fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(1)])
-        .split(area);
-    let title_area = chunks[0];
-    let content_area = chunks[1];
+    let banner = if matches!(
+        app.shell_view,
+        ShellView::Logs | ShellView::Inspect | ShellView::Messages | ShellView::Help
+    ) {
+        None
+    } else {
+        app.rate_limit_banner()
+    };
+    let (title_area, banner_area, content_area) = if banner.is_some() {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Min(1)])
+            .split(area);
+        (chunks[0], Some(chunks[1]), chunks[2])
+    } else {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(1)])
+            .split(area);
+        (chunks[0], None, chunks[1])
+    };
 
     match app.shell_view {
         ShellView::Dashboard => {
             draw_shell_title(f, app, "Dashboard", usize::MAX, title_area);
+            if let Some(area) = banner_area {
+                draw_rate_limit_banner(f, app, banner, area);
+            }
             draw_shell_dashboard(f, app, content_area);
         }
         ShellView::Stacks => {
             draw_shell_title(f, app, "Stacks", app.stacks.len(), title_area);
+            if let Some(area) = banner_area {
+                draw_rate_limit_banner(f, app, banner, area);
+            }
             draw_shell_stacks_table(f, app, content_area);
         }
         ShellView::Containers => {
             draw_shell_title(f, app, "Containers", app.containers.len(), title_area);
+            if let Some(area) = banner_area {
+                draw_rate_limit_banner(f, app, banner, area);
+            }
             draw_shell_containers_table(f, app, content_area);
         }
         ShellView::Images => {
             draw_shell_title(f, app, "Images", app.images_visible_len(), title_area);
+            if let Some(area) = banner_area {
+                draw_rate_limit_banner(f, app, banner, area);
+            }
             draw_shell_images_table(f, app, content_area);
         }
         ShellView::Volumes => {
             draw_shell_title(f, app, "Volumes", app.volumes_visible_len(), title_area);
+            if let Some(area) = banner_area {
+                draw_rate_limit_banner(f, app, banner, area);
+            }
             draw_shell_volumes_table(f, app, content_area);
         }
         ShellView::Networks => {
             draw_shell_title(f, app, "Networks", app.networks.len(), title_area);
+            if let Some(area) = banner_area {
+                draw_rate_limit_banner(f, app, banner, area);
+            }
             draw_shell_networks_table(f, app, content_area);
         }
         ShellView::Templates => {
@@ -5126,6 +5356,9 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
                         title_area,
                     );
                 }
+            }
+            if let Some(area) = banner_area {
+                draw_rate_limit_banner(f, app, banner, area);
             }
             draw_shell_templates_table(f, app, content_area);
         }
@@ -5146,6 +5379,27 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             draw_shell_messages_view(f, app, content_area);
         }
     }
+}
+
+fn draw_rate_limit_banner(
+    f: &mut ratatui::Frame,
+    app: &App,
+    banner: Option<String>,
+    area: ratatui::layout::Rect,
+) {
+    let bg = app.theme.panel.to_style();
+    let text = banner.unwrap_or_default();
+    let style = bg
+        .patch(app.theme.text_info.to_style())
+        .add_modifier(Modifier::BOLD);
+    let content = truncate_end(&text, area.width.max(1) as usize);
+    f.render_widget(
+        Paragraph::new(content)
+            .style(style)
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
 fn draw_shell_main_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
@@ -8343,6 +8597,11 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":set image_update_concurrency <n>",
         "Set concurrent image update checks (1..32), saved to config",
     ));
+    out.push(item(
+        "Global",
+        ":set image_update_debug <on|off>",
+        "Log extra image update debug details",
+    ));
     out.push(Line::from(""));
 
     out.push(h("Keymap"));
@@ -8471,7 +8730,7 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     ));
     out.push(item(
         "Templates",
-        ":template/:tpl deploy [name]",
+        ":template/:tpl deploy [--pull] [--recreate] [name]",
         "Deploy selected template (or by name) to active server",
     ));
     out.push(Line::from(""));
@@ -8485,18 +8744,13 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(h("Stacks"));
     out.push(item(
         "Stacks",
-        ":stack/:stk (start|stop|restart|rm|check|recreate) [name]",
+        ":stack/:stk (start|stop|restart|rm|check) [name]",
         "Run action for selected stack (or by name)",
     ));
     out.push(item(
         "Stacks",
         ":stack/:stk check [name]",
         "Check image updates for stack containers (manual)",
-    ));
-    out.push(item(
-        "Stacks",
-        ":stack/:stk recreate [--pull] [name]",
-        "Recreate stack from template (optional pull)",
     ));
     out.push(item(
         "Stacks",
@@ -8508,18 +8762,13 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(h("Containers"));
     out.push(item(
         "Containers",
-        ":container/:ctr (start|stop|restart|rm|check|recreate)",
+        ":container/:ctr (start|stop|restart|rm|check)",
         "Run action for selection/marks/stack",
     ));
     out.push(item(
         "Containers",
         ":container/:ctr check",
         "Check image updates for selected containers (manual)",
-    ));
-    out.push(item(
-        "Containers",
-        ":container/:ctr recreate [--pull]",
-        "Recreate stack(s) for selected containers (template required)",
     ));
     out.push(item(
         "Containers",

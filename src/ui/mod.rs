@@ -752,6 +752,9 @@ struct NetworkTemplateSpec {
 }
 
 const IMAGE_UPDATE_TTL_SECS: i64 = 24 * 60 * 60;
+const RATE_LIMIT_WINDOW_SECS: i64 = 6 * 60 * 60;
+const RATE_LIMIT_MAX: usize = 100;
+const RATE_LIMIT_WARN: usize = 80;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 enum ImageUpdateKind {
@@ -769,10 +772,17 @@ struct ImageUpdateEntry {
     error: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct RateLimitEntry {
+    hits: Vec<i64>,
+    limited_until: Option<i64>,
+}
+
 #[derive(Default, Serialize, Deserialize)]
 struct LocalState {
     version: u32,
     image_updates: HashMap<String, ImageUpdateEntry>,
+    rate_limits: HashMap<String, RateLimitEntry>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -842,14 +852,14 @@ fn image_updates_path() -> PathBuf {
     PathBuf::from("state.json")
 }
 
-fn load_local_state() -> (PathBuf, HashMap<String, ImageUpdateEntry>) {
+fn load_local_state() -> (PathBuf, HashMap<String, ImageUpdateEntry>, HashMap<String, RateLimitEntry>) {
     let path = image_updates_path();
     let data = fs::read_to_string(&path).ok();
     let state = data
         .as_deref()
         .and_then(|raw| serde_json::from_str::<LocalState>(raw).ok())
         .unwrap_or_default();
-    (path, state.image_updates)
+    (path, state.image_updates, state.rate_limits)
 }
 
 fn truncate_msg(s: &str, max: usize) -> String {
@@ -903,6 +913,7 @@ enum ActionRequest {
     },
     ImageUpdateCheck {
         image: String,
+        debug: bool,
     },
     ImageUntag {
         marker_key: String,
@@ -1006,6 +1017,7 @@ struct App {
     git_autocommit_confirm: bool,
     editor_cmd: String,
     image_update_concurrency: usize,
+    image_update_debug: bool,
 
     session_msgs: Vec<SessionMsg>,
     messages_seen_len: usize,
@@ -1019,6 +1031,7 @@ struct App {
     image_updates: HashMap<String, ImageUpdateEntry>,
     image_updates_inflight: HashSet<String>,
     image_updates_path: PathBuf,
+    rate_limits: HashMap<String, RateLimitEntry>,
 
     theme_refresh_after_edit: Option<String>,
 
@@ -1274,6 +1287,7 @@ impl App {
         git_autocommit_confirm: bool,
         editor_cmd: String,
         image_update_concurrency: usize,
+        image_update_debug: bool,
     ) -> Self {
         let mut server_selected = 0usize;
         if let Some(name) = &active_server {
@@ -1286,9 +1300,18 @@ impl App {
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_nanos() as u64
             ^ (std::process::id() as u64);
-        let (image_updates_path, mut image_updates) = load_local_state();
+        let (image_updates_path, mut image_updates, mut rate_limits) = load_local_state();
         let now = now_unix();
         image_updates.retain(|_, v| now.saturating_sub(v.checked_at) <= IMAGE_UPDATE_TTL_SECS);
+        rate_limits.retain(|_, v| {
+            v.hits.retain(|ts| now.saturating_sub(*ts) <= RATE_LIMIT_WINDOW_SECS);
+            if let Some(until) = v.limited_until {
+                if now >= until {
+                    v.limited_until = None;
+                }
+            }
+            !v.hits.is_empty() || v.limited_until.is_some()
+        });
         let mut app = Self {
             containers: Vec::new(),
             images: Vec::new(),
@@ -1436,6 +1459,7 @@ impl App {
             git_autocommit_confirm,
             editor_cmd,
             image_update_concurrency: image_update_concurrency.max(1),
+            image_update_debug,
 
             session_msgs: Vec::new(),
             messages_seen_len: 0,
@@ -1477,6 +1501,7 @@ impl App {
             image_updates,
             image_updates_inflight: HashSet::new(),
             image_updates_path,
+            rate_limits,
 
             container_details_scroll: 0,
             image_details_scroll: 0,
@@ -3445,6 +3470,7 @@ pub async fn run_tui(
     git_autocommit_confirm: bool,
     editor_cmd: String,
     image_update_concurrency: usize,
+    image_update_debug: bool,
 ) -> anyhow::Result<()> {
     let mut terminal = setup_terminal().context("failed to setup terminal")?;
     let (theme_spec, theme_err) = match theme::load_theme(&config_path, &active_theme) {
@@ -3463,6 +3489,7 @@ pub async fn run_tui(
         git_autocommit_confirm,
         editor_cmd,
         image_update_concurrency,
+        image_update_debug,
     );
     if let Some(e) = theme_err {
         app.log_msg(MsgLevel::Warn, format!("failed to load theme: {:#}", e));
@@ -3500,7 +3527,8 @@ pub async fn run_tui(
         mpsc::unbounded_channel::<(String, anyhow::Result<Value>)>();
 
     let (action_req_tx, mut action_req_rx) = mpsc::unbounded_channel::<ActionRequest>();
-    let (image_update_req_tx, mut image_update_req_rx) = mpsc::unbounded_channel::<String>();
+    let (image_update_req_tx, mut image_update_req_rx) =
+        mpsc::unbounded_channel::<(String, bool)>();
     let (action_res_tx, mut action_res_rx) =
         mpsc::unbounded_channel::<(ActionRequest, anyhow::Result<String>)>();
 
@@ -3738,8 +3766,8 @@ pub async fn run_tui(
     let action_task = tokio::spawn(async move {
         let action_conn_rx = action_conn_rx;
         while let Some(req) = action_req_rx.recv().await {
-            if let ActionRequest::ImageUpdateCheck { image } = &req {
-                let _ = image_update_req_tx.send(image.clone());
+            if let ActionRequest::ImageUpdateCheck { image, debug } = &req {
+                let _ = image_update_req_tx.send((image.clone(), *debug));
                 continue;
             }
             let conn = action_conn_rx.borrow().clone();
@@ -3984,7 +4012,7 @@ pub async fn run_tui(
         loop {
             tokio::select! {
                 maybe = image_update_req_rx.recv() => {
-                    let Some(image) = maybe else {
+                    let Some((image, debug)) = maybe else {
                         break;
                     };
                     let permit = semaphore.clone().acquire_owned().await;
@@ -3992,9 +4020,9 @@ pub async fn run_tui(
                     let image_update_res_tx = image_update_res_tx.clone();
                     tokio::spawn(async move {
                         let _permit = permit;
-                        let res = check_image_update(&conn.runner, &conn.docker, &image).await;
+                        let res = check_image_update(&conn.runner, &conn.docker, &image, debug).await;
                         let _ = image_update_res_tx
-                            .send((ActionRequest::ImageUpdateCheck { image }, res));
+                            .send((ActionRequest::ImageUpdateCheck { image, debug }, res));
                     });
                 }
                 changed = image_update_limit_rx.changed() => {
@@ -4501,7 +4529,7 @@ pub async fn run_tui(
                             }
                             app.set_info(format!("saved template {name} from container"));
                         }
-                        ActionRequest::ImageUpdateCheck { image } => {
+                        ActionRequest::ImageUpdateCheck { image, .. } => {
                             app.image_updates_inflight.remove(image);
                             match serde_json::from_str::<ImageUpdateResult>(&out) {
                                 Ok(result) => {
@@ -4526,8 +4554,17 @@ pub async fn run_tui(
                                     );
                                     if let Some(err) = result.entry.error.as_deref() {
                                         msg.push_str(&format!(" error={err}"));
+                                        if is_rate_limit_error(Some(err)) {
+                                            app.note_rate_limit_error(&result.image);
+                                        }
                                     }
                                     app.log_msg(MsgLevel::Info, msg);
+                                    if let Some(debug) = result.debug.as_deref() {
+                                        app.log_msg(
+                                            MsgLevel::Info,
+                                            format!("image update debug: {debug}"),
+                                        );
+                                    }
                                     app.image_updates
                                         .insert(result.image.clone(), result.entry);
                                     app.prune_image_updates();
@@ -4620,7 +4657,7 @@ pub async fn run_tui(
                             app.set_error(format!("template export failed for {name}: {:#}", e));
                             continue;
                         }
-                        ActionRequest::ImageUpdateCheck { image } => {
+                        ActionRequest::ImageUpdateCheck { image, .. } => {
                             app.image_updates_inflight.remove(image);
                             let entry = ImageUpdateEntry {
                                 checked_at: now_unix(),
@@ -4629,8 +4666,12 @@ pub async fn run_tui(
                                 remote_digest: None,
                                 error: Some(truncate_msg(&format!("{:#}", e), 240)),
                             };
+                            if is_rate_limit_error(entry.error.as_deref()) {
+                                app.note_rate_limit_error(image);
+                            }
                             app.image_updates.insert(image.clone(), entry);
                             app.prune_image_updates();
+                            app.prune_rate_limits();
                             app.save_local_state();
                             app.log_msg(
                                 MsgLevel::Warn,

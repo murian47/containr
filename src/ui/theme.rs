@@ -111,6 +111,8 @@ pub struct ThemeSpec {
     pub text_warn: StyleSpec,
     #[serde(default = "default_text_ok")]
     pub text_ok: StyleSpec,
+    #[serde(default = "default_text_info")]
+    pub text_info: StyleSpec,
 
     // Selection / highlights.
     #[serde(default = "default_list_selected")]
@@ -266,6 +268,14 @@ fn default_text_ok() -> StyleSpec {
     }
 }
 
+fn default_text_info() -> StyleSpec {
+    StyleSpec {
+        fg: "#6aa9ff".to_string(),
+        bg: "default".to_string(),
+        ..StyleSpec::default()
+    }
+}
+
 fn default_list_selected() -> StyleSpec {
     // Mirrors the current "container list" selection styling.
     StyleSpec {
@@ -383,6 +393,7 @@ pub fn default_theme_spec() -> ThemeSpec {
         text_error: default_text_error(),
         text_warn: default_text_warn(),
         text_ok: default_text_ok(),
+        text_info: default_text_info(),
         list_selected: default_list_selected(),
         table_header: default_table_header(),
         active: default_active(),

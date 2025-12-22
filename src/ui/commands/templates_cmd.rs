@@ -255,24 +255,45 @@ pub fn handle_template(
             }
         }
         "deploy" => {
-            let name = if let Some(v) = args.get(1).copied() {
-                v.to_string()
-            } else {
+            let mut pull = false;
+            let mut recreate = false;
+            let mut name = None;
+            for arg in args.iter().skip(1) {
+                match *arg {
+                    "--pull" | "pull" => pull = true,
+                    "--recreate" | "recreate" | "--force-recreate" => recreate = true,
+                    _ if name.is_none() => name = Some((*arg).to_string()),
+                    _ => {
+                        app.set_warn("usage: :template deploy [--pull] [--recreate] [name]");
+                        return true;
+                    }
+                }
+            }
+            let name = name.unwrap_or_else(|| {
                 match app.templates_state.kind {
                     TemplatesKind::Stacks => app.selected_template().map(|t| t.name.clone()),
                     TemplatesKind::Networks => app.selected_net_template().map(|t| t.name.clone()),
                 }
                 .unwrap_or_default()
-            };
+            });
             if name.trim().is_empty() {
                 app.set_warn("no template selected");
                 return true;
             }
             match app.templates_state.kind {
                 TemplatesKind::Stacks => {
-                    super::super::shell_deploy_template(app, &name, false, false, action_req_tx)
+                    if recreate && !force {
+                        let label = format!("template recreate {name}");
+                        shell_begin_confirm(app, label, cmdline_full);
+                        return true;
+                    }
+                    super::super::shell_deploy_template(app, &name, pull, recreate, action_req_tx)
                 }
                 TemplatesKind::Networks => {
+                    if pull || recreate {
+                        app.set_warn("usage: :nettemplate deploy[!] [name]");
+                        return true;
+                    }
                     super::super::shell_deploy_net_template(app, &name, force, action_req_tx)
                 }
             }
@@ -347,7 +368,7 @@ pub fn handle_template(
             true
         }
         _ => {
-            app.set_warn("usage: :template add <name> | :template from (stack|container) <name> | :template deploy[!] [name] | :template rm[!] [name] | :templates kind (stacks|networks|toggle)");
+            app.set_warn("usage: :template add <name> | :template from (stack|container) <name> | :template deploy[!] [--pull] [--recreate] [name] | :template rm[!] [name] | :templates kind (stacks|networks|toggle)");
             true
         }
     }

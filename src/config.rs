@@ -199,6 +199,8 @@ pub struct ContainrConfig {
     pub git_autocommit_confirm: bool,
     #[serde(default = "default_image_update_concurrency")]
     pub image_update_concurrency: usize,
+    #[serde(default)]
+    pub image_update_debug: bool,
 }
 
 fn default_version() -> u32 {
@@ -262,6 +264,7 @@ impl Default for ContainrConfig {
             git_autocommit: false,
             git_autocommit_confirm: false,
             image_update_concurrency: default_image_update_concurrency(),
+            image_update_debug: false,
         }
     }
 }

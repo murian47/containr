@@ -95,36 +95,12 @@ pub fn handle_container(
             );
         }
         "recreate" => {
-            let pull = rest.iter().any(|v| *v == "--pull" || *v == "pull");
-            if !rest.is_empty() && !rest.iter().all(|v| *v == "--pull" || *v == "pull") {
-                app.set_warn("usage: :container recreate [--pull]");
-                return true;
-            }
-            let ids = app.container_ids_for_selection();
-            if ids.is_empty() {
-                app.set_warn("no containers selected");
-                return true;
-            }
-            let mut stacks: HashSet<String> = HashSet::new();
-            for id in ids {
-                if let Some(idx) = app.container_idx_by_id.get(&id).copied() {
-                    if let Some(c) = app.containers.get(idx) {
-                        if let Some(name) = super::super::stack_name_from_labels(&c.labels) {
-                            stacks.insert(name);
-                        }
-                    }
-                }
-            }
-            if stacks.is_empty() {
-                app.set_warn("no stack labels found (recreate requires template)");
-                return true;
-            }
-            for name in stacks {
-                super::super::shell_recreate_stack_from_template(app, &name, pull, action_req_tx);
-            }
+            let _ = force;
+            let _ = cmdline_full;
+            app.set_warn("use :template deploy --recreate [--pull] <name>");
         }
         _ => app.set_warn(
-            "usage: :container (start|stop|restart|rm|console [bash|sh]|tree|check|recreate)  (uses selection/marked/stack)",
+            "usage: :container (start|stop|restart|rm|console [bash|sh]|tree|check)  (uses selection/marked/stack)",
         ),
     }
     true

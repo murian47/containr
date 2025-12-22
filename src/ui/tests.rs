@@ -40,6 +40,7 @@ fn mk_test_app() -> App {
         false,
         String::new(),
         4,
+        false,
     )
 }
 
@@ -167,6 +168,7 @@ fn dashboard_shows_no_server_message() {
         false,
         String::new(),
         4,
+        false,
     );
     app.loading = false;
     app.current_target.clear();
@@ -205,7 +207,7 @@ fn render_help_contains_core_sections() {
     let mut app = mk_test_app();
     app.loading = false;
     app.shell_view = ShellView::Help;
-    let screen = render_screen(&mut app, 120, 40);
+    let screen = render_screen(&mut app, 120, 60);
     assert!(screen.contains("General"));
     assert!(screen.contains(":map"));
     assert!(screen.contains(":messages"));
