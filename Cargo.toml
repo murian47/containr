@@ -13,3 +13,10 @@ serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.135"
 time = { version = "0.3.37", features = ["formatting", "local-offset"] }
 tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "time", "process", "sync"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
