@@ -10,7 +10,7 @@ on themes and UI previews.
 1. Stacks/Templates core functionality (M1–M3)
    - M1: Templates view + Git actions + $EDITOR integration
    - M2: Stacks view + lifecycle actions (start/stop/restart, etc.)
-   - M3: Deploy flow (render, copy, compose up) + state/history
+   - M3: Deploy flow (render, copy, compose up) + state/history (track last deploy target)
    - M4: Update/Rollback + image updates (check, pull, recreate, history UI)
    - M5: AI support (assistant-driven template creation/editing)
 

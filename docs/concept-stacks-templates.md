@@ -142,6 +142,11 @@ Beispiel-Labels (finaler Satz ist konfigurierbar und wird spaeter festgezurrt):
 6. Remote `meta.json` schreiben (commit/template/time)
 7. Lokal `state.json` aktualisieren
 
+## Deployment History (M3)
+
+- Track the last deployment target (server name) per template.
+- Surface it in the Templates list (e.g. "Last deploy: rpi5").
+
 ## Image-Update-Pruefung (M4)
 
 - Ziel: lokale Images gegen Registry vergleichen und Updates im UI markieren.
