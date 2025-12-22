@@ -43,6 +43,7 @@ use std::fs;
 use std::io::{self, Stdout};
 use std::path::PathBuf;
 use std::process::{Command as StdCommand, Stdio};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -50,6 +51,7 @@ use std::{
 };
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
+use tokio::sync::Semaphore;
 use tokio::sync::watch;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -3492,7 +3494,9 @@ pub async fn run_tui(
     let (inspect_res_tx, mut inspect_res_rx) =
         mpsc::unbounded_channel::<(String, anyhow::Result<Value>)>();
 
+    const IMAGE_UPDATE_CONCURRENCY: usize = 4;
     let (action_req_tx, mut action_req_rx) = mpsc::unbounded_channel::<ActionRequest>();
+    let (image_update_req_tx, mut image_update_req_rx) = mpsc::unbounded_channel::<String>();
     let (action_res_tx, mut action_res_rx) =
         mpsc::unbounded_channel::<(ActionRequest, anyhow::Result<String>)>();
 
@@ -3724,9 +3728,14 @@ pub async fn run_tui(
     });
 
     let action_conn_rx = conn_tx.subscribe();
+    let action_res_tx_action = action_res_tx.clone();
     let action_task = tokio::spawn(async move {
         let action_conn_rx = action_conn_rx;
         while let Some(req) = action_req_rx.recv().await {
+            if let ActionRequest::ImageUpdateCheck { image } = &req {
+                let _ = image_update_req_tx.send(image.clone());
+                continue;
+            }
             let conn = action_conn_rx.borrow().clone();
             let res = match &req {
                 ActionRequest::Container { action, id } => {
@@ -3938,8 +3947,8 @@ pub async fn run_tui(
                     templates_dir,
                 )
                 .await,
-                ActionRequest::ImageUpdateCheck { image } => {
-                    check_image_update(&conn.runner, &conn.docker, image).await
+                ActionRequest::ImageUpdateCheck { .. } => {
+                    unreachable!("image update checks are handled in the dispatcher")
                 }
                 ActionRequest::ImageUntag { reference, .. } => {
                     docker::image_remove(&conn.runner, &conn.docker, reference).await
@@ -3954,7 +3963,25 @@ pub async fn run_tui(
                     docker::network_remove(&conn.runner, &conn.docker, id).await
                 }
             };
-            let _ = action_res_tx.send((req, res));
+            let _ = action_res_tx_action.send((req, res));
+        }
+    });
+
+    let image_update_conn_rx = conn_tx.subscribe();
+    let image_update_res_tx = action_res_tx.clone();
+    let image_update_task = tokio::spawn(async move {
+        let image_update_conn_rx = image_update_conn_rx;
+        let semaphore = Arc::new(Semaphore::new(IMAGE_UPDATE_CONCURRENCY.max(1)));
+        while let Some(image) = image_update_req_rx.recv().await {
+            let permit = semaphore.clone().acquire_owned().await;
+            let conn = image_update_conn_rx.borrow().clone();
+            let image_update_res_tx = image_update_res_tx.clone();
+            tokio::spawn(async move {
+                let _permit = permit;
+                let res = check_image_update(&conn.runner, &conn.docker, &image).await;
+                let _ = image_update_res_tx
+                    .send((ActionRequest::ImageUpdateCheck { image }, res));
+            });
         }
     });
 
@@ -4757,6 +4784,7 @@ pub async fn run_tui(
     dash_task.abort();
     inspect_task.abort();
     action_task.abort();
+    image_update_task.abort();
     logs_task.abort();
     ip_task.abort();
     usage_task.abort();
