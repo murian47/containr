@@ -1,6 +1,6 @@
 [package]
 name = "containr"
-version = "0.4.29"
+version = "0.4.30"
 edition = "2024"
 
 [dependencies]
@@ -13,6 +13,9 @@ serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.135"
 time = { version = "0.3.37", features = ["formatting", "local-offset"] }
 tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "time", "process", "sync"] }
+
+[features]
+integration = []
 
 [profile.release]
 opt-level = "z"

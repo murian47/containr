@@ -3787,174 +3787,22 @@ pub async fn run_tui(
                     local_compose,
                     pull,
                     force_recreate,
-                } => {
-                    async {
-                        if docker.docker_cmd.is_empty() {
-                            anyhow::bail!("no server configured");
-                        }
-                        let remote_dir = match runner {
-                            Runner::Local => {
-                                let home = std::env::var("HOME")
-                                    .map_err(|_| anyhow::anyhow!("HOME is not set"))?;
-                                format!("{home}/.config/containr/apps/{name}")
-                            }
-                            Runner::Ssh(_) => deploy_remote_dir_for(name),
-                        };
-                        let remote_compose = format!("{remote_dir}/compose.yaml");
-                        let remote_dir_q = shell_single_quote(&remote_dir);
-                        let docker_cmd = docker.docker_cmd.to_shell();
-                        let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
-                        let pull_cmd = format!("cd {remote_dir_q} && {docker_cmd} compose pull");
-                        let recreate_flag = if *force_recreate {
-                            " --force-recreate"
-                        } else {
-                            ""
-                        };
-                        let up_cmd = format!(
-                            "cd {remote_dir_q} && {docker_cmd} compose up -d{recreate_flag}"
-                        );
-                        runner.run(&mkdir_cmd).await?;
-                        runner.copy_file_to(local_compose, &remote_compose).await?;
-                        if *pull {
-                            let _ = runner.run(&pull_cmd).await?;
-                        }
-                        let out = runner.run(&up_cmd).await?;
-                        Ok::<_, anyhow::Error>(out)
-                    }
-                    .await
-                }
+                } => perform_template_deploy(
+                    runner,
+                    docker,
+                    name,
+                    local_compose,
+                    *pull,
+                    *force_recreate,
+                )
+                .await,
                 ActionRequest::NetTemplateDeploy {
                     name,
                     runner,
                     docker,
                     local_cfg,
                     force,
-                } => {
-                    async {
-                        if docker.docker_cmd.is_empty() {
-                            anyhow::bail!("no server configured");
-                        }
-                        let raw = fs::read_to_string(local_cfg)
-                            .with_context(|| format!("failed to read {}", local_cfg.display()))?;
-                        let spec: NetworkTemplateSpec = serde_json::from_str(&raw)
-                            .context("network.json was not valid JSON")?;
-                        let net_name = spec.name.trim();
-                        anyhow::ensure!(!net_name.is_empty(), "network template: name is empty");
-
-                        let remote_dir = match runner {
-                            Runner::Local => {
-                                let home = std::env::var("HOME")
-                                    .map_err(|_| anyhow::anyhow!("HOME is not set"))?;
-                                format!("{home}/.config/containr/networks/{name}")
-                            }
-                            Runner::Ssh(_) => deploy_remote_net_dir_for(name),
-                        };
-                        let remote_cfg = format!("{remote_dir}/network.json");
-                        let remote_dir_q = shell_single_quote(&remote_dir);
-                        let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
-                        runner.run(&mkdir_cmd).await?;
-                        runner.copy_file_to(local_cfg, &remote_cfg).await?;
-
-                        let docker_cmd = docker.docker_cmd.to_shell();
-                        let net_q = shell_single_quote(net_name);
-                        let exists_cmd =
-                            format!("{docker_cmd} network inspect {net_q} >/dev/null 2>&1");
-                        let exists = runner.run(&exists_cmd).await.is_ok();
-                        if exists && !*force {
-                            return Ok::<_, anyhow::Error>("exists".to_string());
-                        }
-                        if exists && *force {
-                            let rm_cmd = format!("{docker_cmd} network rm {net_q}");
-                            runner.run(&rm_cmd).await?;
-                        }
-
-                        let mut parts: Vec<String> = Vec::new();
-                        parts.push(docker_cmd.clone());
-                        parts.push("network".to_string());
-                        parts.push("create".to_string());
-
-                        let driver = spec
-                            .driver
-                            .as_deref()
-                            .unwrap_or("bridge")
-                            .trim()
-                            .to_string();
-                        parts.push("--driver".to_string());
-                        parts.push(shell_single_quote(&driver));
-
-                        if spec.internal.unwrap_or(false) {
-                            parts.push("--internal".to_string());
-                        }
-                        if spec.attachable.unwrap_or(false) {
-                            parts.push("--attachable".to_string());
-                        }
-
-                        if let Some(ipv4) = &spec.ipv4 {
-                            if let Some(subnet) =
-                                ipv4.subnet.as_deref().filter(|s| !s.trim().is_empty())
-                            {
-                                parts.push("--subnet".to_string());
-                                parts.push(shell_single_quote(subnet.trim()));
-                            }
-                            if let Some(gw) =
-                                ipv4.gateway.as_deref().filter(|s| !s.trim().is_empty())
-                            {
-                                parts.push("--gateway".to_string());
-                                parts.push(shell_single_quote(gw.trim()));
-                            }
-                            if let Some(r) =
-                                ipv4.ip_range.as_deref().filter(|s| !s.trim().is_empty())
-                            {
-                                parts.push("--ip-range".to_string());
-                                parts.push(shell_single_quote(r.trim()));
-                            }
-                        }
-
-                        // Driver-specific helpers.
-                        if driver == "ipvlan" {
-                            let parent = spec.parent.as_deref().unwrap_or("").trim();
-                            anyhow::ensure!(!parent.is_empty(), "ipvlan requires 'parent'");
-                            parts.push("--opt".to_string());
-                            parts.push(shell_single_quote(&format!("parent={parent}")));
-                            if let Some(mode) =
-                                spec.ipvlan_mode.as_deref().filter(|s| !s.trim().is_empty())
-                            {
-                                parts.push("--opt".to_string());
-                                parts.push(shell_single_quote(&format!(
-                                    "ipvlan_mode={}",
-                                    mode.trim()
-                                )));
-                            }
-                        }
-
-                        if let Some(opts) = &spec.options {
-                            for (k, v) in opts {
-                                let k = k.trim();
-                                if k.is_empty() {
-                                    continue;
-                                }
-                                parts.push("--opt".to_string());
-                                parts.push(shell_single_quote(&format!("{k}={v}")));
-                            }
-                        }
-                        if let Some(labels) = &spec.labels {
-                            for (k, v) in labels {
-                                let k = k.trim();
-                                if k.is_empty() {
-                                    continue;
-                                }
-                                parts.push("--label".to_string());
-                                parts.push(shell_single_quote(&format!("{k}={v}")));
-                            }
-                        }
-
-                        parts.push(net_q);
-                        let create_cmd = parts.join(" ");
-                        let out = runner.run(&create_cmd).await?;
-                        Ok::<_, anyhow::Error>(out)
-                    }
-                    .await
-                }
+                } => perform_net_template_deploy(runner, docker, name, local_cfg, *force).await,
                 ActionRequest::TemplateFromStack {
                     name,
                     stack_name,
@@ -4950,6 +4798,156 @@ fn shell_single_quote(s: &str) -> String {
     out
 }
 
+async fn perform_template_deploy(
+    runner: &Runner,
+    docker: &DockerCfg,
+    name: &str,
+    local_compose: &Path,
+    pull: bool,
+    force_recreate: bool,
+) -> anyhow::Result<String> {
+    if docker.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let remote_dir = match runner {
+        Runner::Local => {
+            let home = std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME is not set"))?;
+            format!("{home}/.config/containr/apps/{name}")
+        }
+        Runner::Ssh(_) => deploy_remote_dir_for(name),
+    };
+    let remote_compose = format!("{remote_dir}/compose.yaml");
+    let remote_dir_q = shell_single_quote(&remote_dir);
+    let docker_cmd = docker.docker_cmd.to_shell();
+    let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
+    let pull_cmd = format!("cd {remote_dir_q} && {docker_cmd} compose pull");
+    let recreate_flag = if force_recreate { " --force-recreate" } else { "" };
+    let up_cmd = format!("cd {remote_dir_q} && {docker_cmd} compose up -d{recreate_flag}");
+    runner.run(&mkdir_cmd).await?;
+    runner.copy_file_to(local_compose, &remote_compose).await?;
+    if pull {
+        let _ = runner.run(&pull_cmd).await?;
+    }
+    let out = runner.run(&up_cmd).await?;
+    Ok(out)
+}
+
+async fn perform_net_template_deploy(
+    runner: &Runner,
+    docker: &DockerCfg,
+    name: &str,
+    local_cfg: &Path,
+    force: bool,
+) -> anyhow::Result<String> {
+    if docker.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let raw = fs::read_to_string(local_cfg)
+        .with_context(|| format!("failed to read {}", local_cfg.display()))?;
+    let spec: NetworkTemplateSpec =
+        serde_json::from_str(&raw).context("network.json was not valid JSON")?;
+    let net_name = spec.name.trim();
+    anyhow::ensure!(!net_name.is_empty(), "network template: name is empty");
+
+    let remote_dir = match runner {
+        Runner::Local => {
+            let home = std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME is not set"))?;
+            format!("{home}/.config/containr/networks/{name}")
+        }
+        Runner::Ssh(_) => deploy_remote_net_dir_for(name),
+    };
+    let remote_cfg = format!("{remote_dir}/network.json");
+    let remote_dir_q = shell_single_quote(&remote_dir);
+    let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
+    runner.run(&mkdir_cmd).await?;
+    runner.copy_file_to(local_cfg, &remote_cfg).await?;
+
+    let docker_cmd = docker.docker_cmd.to_shell();
+    let net_q = shell_single_quote(net_name);
+    let exists_cmd = format!("{docker_cmd} network inspect {net_q} >/dev/null 2>&1");
+    let exists = runner.run(&exists_cmd).await.is_ok();
+    if exists && !force {
+        return Ok("exists".to_string());
+    }
+    if exists && force {
+        let rm_cmd = format!("{docker_cmd} network rm {net_q}");
+        runner.run(&rm_cmd).await?;
+    }
+
+    let mut parts: Vec<String> = Vec::new();
+    parts.push(docker_cmd.clone());
+    parts.push("network".to_string());
+    parts.push("create".to_string());
+
+    let driver = spec
+        .driver
+        .as_deref()
+        .unwrap_or("bridge")
+        .trim()
+        .to_string();
+    parts.push("--driver".to_string());
+    parts.push(shell_single_quote(&driver));
+
+    if spec.internal.unwrap_or(false) {
+        parts.push("--internal".to_string());
+    }
+    if spec.attachable.unwrap_or(false) {
+        parts.push("--attachable".to_string());
+    }
+
+    if let Some(ipv4) = &spec.ipv4 {
+        if let Some(subnet) = ipv4.subnet.as_deref().filter(|s| !s.trim().is_empty()) {
+            parts.push("--subnet".to_string());
+            parts.push(shell_single_quote(subnet.trim()));
+        }
+        if let Some(gw) = ipv4.gateway.as_deref().filter(|s| !s.trim().is_empty()) {
+            parts.push("--gateway".to_string());
+            parts.push(shell_single_quote(gw.trim()));
+        }
+        if let Some(r) = ipv4.ip_range.as_deref().filter(|s| !s.trim().is_empty()) {
+            parts.push("--ip-range".to_string());
+            parts.push(shell_single_quote(r.trim()));
+        }
+    }
+
+    if driver == "ipvlan" {
+        let parent = spec.parent.as_deref().unwrap_or("").trim();
+        anyhow::ensure!(!parent.is_empty(), "ipvlan requires 'parent'");
+        parts.push("--opt".to_string());
+        parts.push(shell_single_quote(&format!("parent={parent}")));
+        if let Some(mode) = spec.ipvlan_mode.as_deref().filter(|s| !s.trim().is_empty()) {
+            parts.push("--opt".to_string());
+            parts.push(shell_single_quote(&format!("ipvlan_mode={}", mode.trim())));
+        }
+    }
+
+    if let Some(opts) = &spec.options {
+        for (k, v) in opts {
+            let k = k.trim();
+            if k.is_empty() {
+                continue;
+            }
+            parts.push("--opt".to_string());
+            parts.push(shell_single_quote(&format!("{k}={v}")));
+        }
+    }
+    if let Some(labels) = &spec.labels {
+        for (k, v) in labels {
+            let k = k.trim();
+            if k.is_empty() {
+                continue;
+            }
+            parts.push("--label".to_string());
+            parts.push(shell_single_quote(&format!("{k}={v}")));
+        }
+    }
+
+    parts.push(net_q);
+    let create_cmd = parts.join(" ");
+    let out = runner.run(&create_cmd).await?;
+    Ok(out)
+}
+
 fn current_runner_from_app(app: &App) -> Runner {
     if let Some(name) = &app.active_server {
         if let Some(s) = app.servers.iter().find(|x| &x.name == name) {
@@ -5004,3 +5002,5 @@ include!("render.inc.rs");
 
 #[cfg(test)]
 mod tests;
+#[cfg(all(test, feature = "integration"))]
+mod integration_tests;

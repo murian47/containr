@@ -17,6 +17,7 @@ This document describes a lightweight testing strategy for containr.
 ### Integration tests (selective)
 - Docker/Podman CLI wrappers (mocked or recorded fixtures).
 - SSH command formation and error handling.
+- Remote integration tests run only when explicitly enabled.
 
 ### Manual smoke checks (release candidates)
 - Follow `docs/testing-checklist.md`.
@@ -26,6 +27,10 @@ This document describes a lightweight testing strategy for containr.
 - `cargo test`
 - Optional: `cargo clippy -- -D warnings`
 - Optional: `cargo fmt --check`
+
+## Running integration tests
+- `CONTAINR_IT=1 cargo test --features integration`
+- Optional override: `CONTAINR_IT_TARGET=mag@rpi47.local47.de`
 
 ## Canary testing
 - Use 1–2 real hosts with simple templates and small stacks.
