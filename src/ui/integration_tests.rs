@@ -1,12 +1,12 @@
 use super::*;
-use anyhow::Context as _;
-use crate::config::{ContainrConfig, DockerCmd, ServerEntry};
+use crate::config::{DockerCmd, ServerEntry};
 use crate::docker::{self, ContainerAction, DockerCfg};
 use crate::runner::Runner;
 use crate::ssh::Ssh;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const IT_ENV: &str = "CONTAINR_IT";
@@ -33,7 +33,7 @@ fn mk_temp_path(prefix: &str) -> PathBuf {
     dir
 }
 
-fn mk_integration_app() -> App {
+fn mk_integration_app(templates_dir: PathBuf) -> App {
     let tmp = mk_temp_path("config");
     fs::create_dir_all(&tmp).unwrap();
     let config_path = tmp.join("config.json");
@@ -58,40 +58,73 @@ fn mk_integration_app() -> App {
         false,
         false,
     );
-    let cfg = ContainrConfig::default();
-    app.templates_state.dir = expand_user_path(&cfg.templates_dir);
+    app.templates_state.dir = templates_dir;
     app
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn integration_templates_and_networks() -> anyhow::Result<()> {
+struct ItContext {
+    runner: Runner,
+    docker: DockerCfg,
+    templates_dir: PathBuf,
+    stamp: u64,
+}
+
+fn it_context() -> anyhow::Result<ItContext> {
+    if !it_enabled() {
+        anyhow::bail!("integration tests disabled");
+    }
+    let target = it_target();
+    anyhow::ensure!(
+        !target.trim().is_empty(),
+        "missing target; set {IT_TARGET_ENV}"
+    );
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_secs(0))
+        .as_secs();
+    let templates_dir = mk_temp_path("templates");
+    fs::create_dir_all(&templates_dir)?;
+    Ok(ItContext {
+        runner: Runner::Ssh(Ssh {
+            target,
+            identity: None,
+            port: None,
+        }),
+        docker: DockerCfg {
+            docker_cmd: DockerCmd::default(),
+        },
+        templates_dir,
+        stamp,
+    })
+}
+
+fn mk_unique(prefix: &str, stamp: u64) -> String {
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{prefix}-{stamp}-{n}")
+}
+
+fn skip_if_disabled() -> bool {
     if !it_enabled() {
         eprintln!("skipping integration tests (set {IT_ENV}=1 to enable)");
-        return Ok(());
+        return true;
     }
     let target = it_target();
     if target.trim().is_empty() {
         eprintln!("skipping integration tests (set {IT_TARGET_ENV} to target a host)");
+        return true;
+    }
+    false
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn integration_network_template_deploy_and_delete() -> anyhow::Result<()> {
+    if skip_if_disabled() {
         return Ok(());
     }
-
-    let runner = Runner::Ssh(Ssh {
-        target,
-        identity: None,
-        port: None,
-    });
-    let docker = DockerCfg {
-        docker_cmd: DockerCmd::default(),
-    };
-
-    let mut app = mk_integration_app();
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_else(|_| Duration::from_secs(0))
-        .as_secs();
-    let net_name = format!("containr-it-net-{now}");
-    let stack_name = format!("containr-it-stack-{now}");
-    let container_name = format!("containr-it-container-{now}");
+    let ctx = it_context()?;
+    let mut app = mk_integration_app(ctx.templates_dir.clone());
+    let net_name = mk_unique("containr-it-net", ctx.stamp);
 
     let net_dir = app.net_templates_dir().join(&net_name);
     fs::create_dir_all(&net_dir)?;
@@ -105,6 +138,61 @@ async fn integration_templates_and_networks() -> anyhow::Result<()> {
 "#
     );
     fs::write(&net_cfg, net_json)?;
+
+    let mut cleanup_errors: Vec<String> = Vec::new();
+    let result = async {
+        let deploy = perform_net_template_deploy(
+            &ctx.runner,
+            &ctx.docker,
+            &net_name,
+            &net_cfg,
+            false,
+        )
+        .await?;
+        if deploy.trim() == "exists" {
+            anyhow::bail!("network already exists: {net_name}");
+        }
+        let _ = docker::fetch_network_inspect(&ctx.runner, &ctx.docker, &net_name).await?;
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+
+    if let Err(e) = docker::network_remove(&ctx.runner, &ctx.docker, &net_name).await {
+        cleanup_errors.push(format!("network cleanup failed: {e:#}"));
+    }
+    let remote_net_dir = deploy_remote_net_dir_for(&net_name);
+    if let Err(e) = ctx
+        .runner
+        .run(&format!("rm -rf {}", shell_single_quote(&remote_net_dir)))
+        .await
+    {
+        cleanup_errors.push(format!("remote net dir cleanup failed: {e:#}"));
+    }
+    if let Err(e) = delete_net_template(&mut app, &net_name) {
+        cleanup_errors.push(format!("local net template cleanup failed: {e:#}"));
+    }
+
+    if let Err(e) = result {
+        if !cleanup_errors.is_empty() {
+            eprintln!("cleanup warnings:\n{}", cleanup_errors.join("\n"));
+        }
+        return Err(e);
+    }
+    if !cleanup_errors.is_empty() {
+        eprintln!("cleanup warnings:\n{}", cleanup_errors.join("\n"));
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn integration_stack_deploy_and_lifecycle() -> anyhow::Result<()> {
+    if skip_if_disabled() {
+        return Ok(());
+    }
+    let ctx = it_context()?;
+    let mut app = mk_integration_app(ctx.templates_dir.clone());
+    let stack_name = mk_unique("containr-it-stack", ctx.stamp);
+    let container_name = mk_unique("containr-it-container", ctx.stamp);
 
     let stacks_dir = app.stack_templates_dir();
     fs::create_dir_all(&stacks_dir)?;
@@ -120,70 +208,71 @@ async fn integration_templates_and_networks() -> anyhow::Result<()> {
 
     let mut cleanup_errors: Vec<String> = Vec::new();
     let result = async {
-        let deploy_net = perform_net_template_deploy(&runner, &docker, &net_name, &net_cfg, false)
-            .await?;
-        if deploy_net.trim() == "exists" {
-            anyhow::bail!("network already exists: {net_name}");
-        }
-        let _ = docker::fetch_network_inspect(&runner, &docker, &net_name).await?;
-
-        perform_template_deploy(&runner, &docker, &stack_name, &compose_path, false, false).await?;
-        let containers = docker::fetch_containers(&runner, &docker).await?;
-        let found = containers
+        perform_template_deploy(
+            &ctx.runner,
+            &ctx.docker,
+            &stack_name,
+            &compose_path,
+            false,
+            false,
+        )
+        .await?;
+        let containers = docker::fetch_containers(&ctx.runner, &ctx.docker).await?;
+        let container_id = containers
             .iter()
             .find(|c| c.name == container_name)
-            .map(|c| c.id.clone());
-        let Some(container_id) = found else {
-            anyhow::bail!("container not found: {container_name}");
-        };
+            .map(|c| c.id.clone())
+            .ok_or_else(|| anyhow::anyhow!("container not found: {container_name}"))?;
 
-        let _ = docker::container_action(&runner, &docker, ContainerAction::Stop, &container_id)
-            .await?;
-        let _ = docker::container_action(&runner, &docker, ContainerAction::Start, &container_id)
-            .await?;
         let _ = docker::container_action(
-            &runner,
-            &docker,
+            &ctx.runner,
+            &ctx.docker,
+            ContainerAction::Stop,
+            &container_id,
+        )
+        .await?;
+        let _ = docker::container_action(
+            &ctx.runner,
+            &ctx.docker,
+            ContainerAction::Start,
+            &container_id,
+        )
+        .await?;
+        let _ = docker::container_action(
+            &ctx.runner,
+            &ctx.docker,
             ContainerAction::Restart,
             &container_id,
         )
         .await?;
 
-        let inspect = docker::fetch_inspect(&runner, &docker, &container_id).await?;
+        let inspect = docker::fetch_inspect(&ctx.runner, &ctx.docker, &container_id).await?;
         let _: serde_json::Value =
             serde_json::from_str(&inspect).context("inspect output was not JSON")?;
-
-        let mut app_for_msgs = mk_integration_app();
-        app_for_msgs.log_msg(MsgLevel::Info, "integration test message");
-        let log_path = mk_temp_path("messages").join("messages.txt");
-        app_for_msgs.messages_save(log_path.to_string_lossy().as_ref());
-        let meta = fs::metadata(&log_path)?;
-        anyhow::ensure!(meta.len() > 0, "messages file is empty");
-
         Ok::<_, anyhow::Error>(())
     }
     .await;
 
-    if let Err(e) = docker::container_action(&runner, &docker, ContainerAction::Remove, &container_name).await {
+    if let Err(e) = docker::container_action(
+        &ctx.runner,
+        &ctx.docker,
+        ContainerAction::Remove,
+        &container_name,
+    )
+    .await
+    {
         cleanup_errors.push(format!("container cleanup failed: {e:#}"));
     }
-    if let Err(e) = docker::network_remove(&runner, &docker, &net_name).await {
-        cleanup_errors.push(format!("network cleanup failed: {e:#}"));
-    }
     let remote_stack_dir = deploy_remote_dir_for(&stack_name);
-    let remote_net_dir = deploy_remote_net_dir_for(&net_name);
-    if let Err(e) = runner.run(&format!("rm -rf {}", shell_single_quote(&remote_stack_dir))).await
+    if let Err(e) = ctx
+        .runner
+        .run(&format!("rm -rf {}", shell_single_quote(&remote_stack_dir)))
+        .await
     {
         cleanup_errors.push(format!("remote stack dir cleanup failed: {e:#}"));
     }
-    if let Err(e) = runner.run(&format!("rm -rf {}", shell_single_quote(&remote_net_dir))).await {
-        cleanup_errors.push(format!("remote net dir cleanup failed: {e:#}"));
-    }
     if let Err(e) = delete_template(&mut app, &stack_name) {
         cleanup_errors.push(format!("local stack template cleanup failed: {e:#}"));
-    }
-    if let Err(e) = delete_net_template(&mut app, &net_name) {
-        cleanup_errors.push(format!("local net template cleanup failed: {e:#}"));
     }
 
     if let Err(e) = result {
@@ -195,5 +284,21 @@ async fn integration_templates_and_networks() -> anyhow::Result<()> {
     if !cleanup_errors.is_empty() {
         eprintln!("cleanup warnings:\n{}", cleanup_errors.join("\n"));
     }
+    Ok(())
+}
+
+#[test]
+fn integration_messages_save() -> anyhow::Result<()> {
+    if skip_if_disabled() {
+        return Ok(());
+    }
+    let templates_dir = mk_temp_path("templates");
+    fs::create_dir_all(&templates_dir)?;
+    let mut app = mk_integration_app(templates_dir);
+    app.log_msg(MsgLevel::Info, "integration test message");
+    let log_path = mk_temp_path("messages").join("messages.txt");
+    app.messages_save(log_path.to_string_lossy().as_ref());
+    let meta = fs::metadata(&log_path)?;
+    anyhow::ensure!(meta.len() > 0, "messages file is empty");
     Ok(())
 }
