@@ -536,6 +536,28 @@ pub async fn fetch_inspects(
     Ok(out.to_string())
 }
 
+pub async fn fetch_manifest_inspect(
+    runner: &Runner,
+    cfg: &DockerCfg,
+    image: &str,
+) -> anyhow::Result<String> {
+    if cfg.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let docker = cfg.docker_cmd.to_shell();
+    let cmd = format!(
+        "{docker} manifest inspect --verbose {arg}",
+        docker = docker,
+        arg = shell_escape_arg(image)
+    );
+    let out = runner.run(&cmd).await?;
+    let out = out.trim();
+    if out.is_empty() {
+        anyhow::bail!("empty manifest inspect output");
+    }
+    Ok(out.to_string())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum ContainerAction {
     Start,

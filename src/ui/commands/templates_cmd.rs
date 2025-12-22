@@ -270,7 +270,7 @@ pub fn handle_template(
             }
             match app.templates_state.kind {
                 TemplatesKind::Stacks => {
-                    super::super::shell_deploy_template(app, &name, action_req_tx)
+                    super::super::shell_deploy_template(app, &name, false, false, action_req_tx)
                 }
                 TemplatesKind::Networks => {
                     super::super::shell_deploy_net_template(app, &name, force, action_req_tx)

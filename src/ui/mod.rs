@@ -37,7 +37,7 @@ use ratatui::{
     },
 };
 use regex::{Regex, RegexBuilder};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::io::{self, Stdout};
@@ -749,6 +749,30 @@ struct NetworkTemplateSpec {
     labels: Option<HashMap<String, String>>,
 }
 
+const IMAGE_UPDATE_TTL_SECS: i64 = 24 * 60 * 60;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+enum ImageUpdateKind {
+    UpToDate,
+    UpdateAvailable,
+    Error,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ImageUpdateEntry {
+    checked_at: i64,
+    status: ImageUpdateKind,
+    local_digest: Option<String>,
+    remote_digest: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct LocalState {
+    version: u32,
+    image_updates: HashMap<String, ImageUpdateEntry>,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct DeployMarker {
     started: Instant,
@@ -797,6 +821,35 @@ fn now_local() -> OffsetDateTime {
     OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc())
 }
 
+fn now_unix() -> i64 {
+    OffsetDateTime::now_utc().unix_timestamp()
+}
+
+fn image_updates_path() -> PathBuf {
+    if let Ok(root) = std::env::var("XDG_STATE_HOME") {
+        let root = PathBuf::from(root);
+        return root.join("containr").join("state.json");
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home)
+            .join(".local")
+            .join("state")
+            .join("containr")
+            .join("state.json");
+    }
+    PathBuf::from("state.json")
+}
+
+fn load_local_state() -> (PathBuf, HashMap<String, ImageUpdateEntry>) {
+    let path = image_updates_path();
+    let data = fs::read_to_string(&path).ok();
+    let state = data
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<LocalState>(raw).ok())
+        .unwrap_or_default();
+    (path, state.image_updates)
+}
+
 fn truncate_msg(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();
@@ -823,6 +876,8 @@ enum ActionRequest {
         runner: Runner,
         docker: DockerCfg,
         local_compose: PathBuf,
+        pull: bool,
+        force_recreate: bool,
     },
     NetTemplateDeploy {
         name: String,
@@ -843,6 +898,9 @@ enum ActionRequest {
         source: String,
         container_id: String,
         templates_dir: PathBuf,
+    },
+    ImageUpdateCheck {
+        image: String,
     },
     ImageUntag {
         marker_key: String,
@@ -955,6 +1013,9 @@ struct App {
     keymap_defaults: HashMap<(KeyScope, KeySpec), String>,
 
     templates_state: TemplatesState,
+    image_updates: HashMap<String, ImageUpdateEntry>,
+    image_updates_inflight: HashSet<String>,
+    image_updates_path: PathBuf,
 
     theme_refresh_after_edit: Option<String>,
 
@@ -1221,6 +1282,9 @@ impl App {
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_nanos() as u64
             ^ (std::process::id() as u64);
+        let (image_updates_path, mut image_updates) = load_local_state();
+        let now = now_unix();
+        image_updates.retain(|_, v| now.saturating_sub(v.checked_at) <= IMAGE_UPDATE_TTL_SECS);
         let mut app = Self {
             containers: Vec::new(),
             images: Vec::new(),
@@ -1405,6 +1469,9 @@ impl App {
             stacks_networks_scroll: 0,
             stack_details_focus: StackDetailsFocus::Containers,
             stacks_only_running: false,
+            image_updates,
+            image_updates_inflight: HashSet::new(),
+            image_updates_path,
 
             container_details_scroll: 0,
             image_details_scroll: 0,
@@ -1726,6 +1793,18 @@ impl App {
         ids.sort();
         ids.dedup();
         Some(ids)
+    }
+
+    fn container_ids_for_selection(&mut self) -> Vec<String> {
+        if let Some(ids) = self.selected_stack_container_ids() {
+            return ids;
+        }
+        if !self.marked.is_empty() {
+            return self.marked.iter().cloned().collect();
+        }
+        self.selected_container()
+            .map(|c| vec![c.id.clone()])
+            .unwrap_or_default()
     }
 
     fn view_len(&mut self) -> usize {
@@ -3658,6 +3737,8 @@ pub async fn run_tui(
                     runner,
                     docker,
                     local_compose,
+                    pull,
+                    force_recreate,
                 } => {
                     async {
                         if docker.docker_cmd.is_empty() {
@@ -3675,10 +3756,20 @@ pub async fn run_tui(
                         let remote_dir_q = shell_single_quote(&remote_dir);
                         let docker_cmd = docker.docker_cmd.to_shell();
                         let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
-                        let up_cmd =
-                            format!("cd {remote_dir_q} && {docker_cmd} compose up -d");
+                        let pull_cmd = format!("cd {remote_dir_q} && {docker_cmd} compose pull");
+                        let recreate_flag = if *force_recreate {
+                            " --force-recreate"
+                        } else {
+                            ""
+                        };
+                        let up_cmd = format!(
+                            "cd {remote_dir_q} && {docker_cmd} compose up -d{recreate_flag}"
+                        );
                         runner.run(&mkdir_cmd).await?;
                         runner.copy_file_to(local_compose, &remote_compose).await?;
+                        if *pull {
+                            let _ = runner.run(&pull_cmd).await?;
+                        }
                         let out = runner.run(&up_cmd).await?;
                         Ok::<_, anyhow::Error>(out)
                     }
@@ -3847,6 +3938,9 @@ pub async fn run_tui(
                     templates_dir,
                 )
                 .await,
+                ActionRequest::ImageUpdateCheck { image } => {
+                    check_image_update(&conn.runner, &conn.docker, image).await
+                }
                 ActionRequest::ImageUntag { reference, .. } => {
                     docker::image_remove(&conn.runner, &conn.docker, reference).await
                 }
@@ -4357,6 +4451,23 @@ pub async fn run_tui(
                             }
                             app.set_info(format!("saved template {name} from container"));
                         }
+                        ActionRequest::ImageUpdateCheck { image } => {
+                            app.image_updates_inflight.remove(image);
+                            match serde_json::from_str::<ImageUpdateResult>(&out) {
+                                Ok(result) => {
+                                    app.image_updates
+                                        .insert(result.image.clone(), result.entry);
+                                    app.prune_image_updates();
+                                    app.save_local_state();
+                                }
+                                Err(e) => {
+                                    app.log_msg(
+                                        MsgLevel::Warn,
+                                        format!("image update parse failed: {:#}", e),
+                                    );
+                                }
+                            }
+                        }
                         ActionRequest::ImageUntag { marker_key, .. } => {
                             app.image_action_error.remove(marker_key);
                         }
@@ -4434,6 +4545,24 @@ pub async fn run_tui(
                         }
                         ActionRequest::TemplateFromContainer { name, .. } => {
                             app.set_error(format!("template export failed for {name}: {:#}", e));
+                            continue;
+                        }
+                        ActionRequest::ImageUpdateCheck { image } => {
+                            app.image_updates_inflight.remove(image);
+                            let entry = ImageUpdateEntry {
+                                checked_at: now_unix(),
+                                status: ImageUpdateKind::Error,
+                                local_digest: None,
+                                remote_digest: None,
+                                error: Some(truncate_msg(&format!("{:#}", e), 240)),
+                            };
+                            app.image_updates.insert(image.clone(), entry);
+                            app.prune_image_updates();
+                            app.save_local_state();
+                            app.log_msg(
+                                MsgLevel::Warn,
+                                format!("image update failed for {image}: {:#}", e),
+                            );
                             continue;
                         }
                         ActionRequest::ImageUntag { marker_key, .. } => {

@@ -352,6 +352,47 @@ impl App {
             self.set_error(format!("failed to save config: {:#}", e));
         }
     }
+
+    fn prune_image_updates(&mut self) {
+        let now = now_unix();
+        self.image_updates
+            .retain(|_, v| now.saturating_sub(v.checked_at) <= IMAGE_UPDATE_TTL_SECS);
+    }
+
+    fn save_local_state(&mut self) {
+        let dir = self
+            .image_updates_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        if let Err(e) = fs::create_dir_all(&dir) {
+            self.log_msg(MsgLevel::Warn, format!("state dir create failed: {:#}", e));
+            return;
+        }
+        let state = LocalState {
+            version: 1,
+            image_updates: self.image_updates.clone(),
+        };
+        match serde_json::to_string_pretty(&state) {
+            Ok(raw) => {
+                if let Err(e) = fs::write(&self.image_updates_path, raw) {
+                    self.log_msg(MsgLevel::Warn, format!("state save failed: {:#}", e));
+                }
+            }
+            Err(e) => {
+                self.log_msg(MsgLevel::Warn, format!("state serialize failed: {:#}", e));
+            }
+        }
+    }
+
+    fn image_update_entry(&self, key: &str) -> Option<&ImageUpdateEntry> {
+        let entry = self.image_updates.get(key)?;
+        let now = now_unix();
+        if now.saturating_sub(entry.checked_at) > IMAGE_UPDATE_TTL_SECS {
+            return None;
+        }
+        Some(entry)
+    }
 }
 
 fn find_server_by_name(servers: &[ServerEntry], name: &str) -> Option<usize> {
@@ -515,6 +556,18 @@ struct NetworkInspectIpamConfig {
     gateway: Option<String>,
     #[serde(rename = "IPRange")]
     ip_range: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ImageInspect {
+    #[serde(rename = "RepoDigests")]
+    repo_digests: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ImageUpdateResult {
+    image: String,
+    entry: ImageUpdateEntry,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -692,10 +745,24 @@ fn yaml_quote(text: &str) -> String {
     out
 }
 
+fn is_digest_only_image(image: &str) -> bool {
+    let image = image.trim();
+    if image.starts_with("sha256:") && image.len() == "sha256:".len() + 64 {
+        return image["sha256:".len()..].chars().all(|c| c.is_ascii_hexdigit());
+    }
+    if image.len() == 64 {
+        return image.chars().all(|c| c.is_ascii_hexdigit());
+    }
+    false
+}
+
 fn normalize_image_ref(image: &str) -> String {
     let image = image.trim();
     if image.is_empty() {
         return String::new();
+    }
+    if is_digest_only_image(image) {
+        return image.to_string();
     }
     let (name, digest) = match image.split_once('@') {
         Some((name, digest)) => (name, Some(digest)),
@@ -716,6 +783,234 @@ fn normalize_image_ref(image: &str) -> String {
     }
     let tag = tag.unwrap_or("latest");
     format!("{base}:{tag}")
+}
+
+struct NormalizedImageRef {
+    reference: String,
+    digest: Option<String>,
+}
+
+fn normalize_image_ref_for_updates(image: &str) -> Option<NormalizedImageRef> {
+    if is_digest_only_image(image) {
+        return None;
+    }
+    let normalized = normalize_image_ref(image);
+    if normalized.is_empty() {
+        return None;
+    }
+    let digest = normalized.split_once('@').map(|(_, d)| d.to_string());
+    Some(NormalizedImageRef {
+        reference: normalized,
+        digest,
+    })
+}
+
+fn resolve_image_ref_for_updates(app: &App, image: &str) -> Option<String> {
+    if image.trim().is_empty() {
+        return None;
+    }
+    if is_digest_only_image(image) {
+        let needle = normalize_image_id(image);
+        for img in &app.images {
+            if normalize_image_id(&img.id) == needle {
+                if let Some(reference) = App::image_row_ref(img) {
+                    return Some(reference);
+                }
+            }
+        }
+        return None;
+    }
+    Some(normalize_image_ref(image))
+}
+
+fn image_repo_name(image_ref: &str) -> String {
+    let name = image_ref.split_once('@').map(|(n, _)| n).unwrap_or(image_ref);
+    match name.rsplit_once(':') {
+        Some((base, tag)) if !tag.contains('/') => base.to_string(),
+        _ => name.to_string(),
+    }
+}
+
+fn local_repo_digest(repo_digests: &[String], repo: &str) -> Option<String> {
+    for entry in repo_digests {
+        let (name, digest) = entry.split_once('@')?;
+        if name == repo {
+            return Some(digest.to_string());
+        }
+    }
+    None
+}
+
+enum ImageUpdateView {
+    Unknown,
+    Checking,
+    UpToDate,
+    UpdateAvailable,
+    Error,
+}
+
+fn image_update_view_for_ref(app: &App, image: &str) -> (Option<String>, ImageUpdateView) {
+    let normalized = match resolve_image_ref_for_updates(app, image) {
+        Some(n) => n,
+        None => return (None, ImageUpdateView::Unknown),
+    };
+    let key = normalized.clone();
+    if app.image_updates_inflight.contains(&key) {
+        return (Some(key), ImageUpdateView::Checking);
+    }
+    let Some(entry) = app.image_update_entry(&key) else {
+        return (Some(key), ImageUpdateView::Unknown);
+    };
+    let view = match entry.status {
+        ImageUpdateKind::UpToDate => ImageUpdateView::UpToDate,
+        ImageUpdateKind::UpdateAvailable => ImageUpdateView::UpdateAvailable,
+        ImageUpdateKind::Error => ImageUpdateView::Error,
+    };
+    (Some(key), view)
+}
+
+fn image_update_view_for_stack(app: &App, stack_name: &str) -> ImageUpdateView {
+    let mut has_update = false;
+    let mut has_error = false;
+    let mut has_unknown = false;
+    let mut has_checking = false;
+    let mut seen = false;
+    for c in app
+        .containers
+        .iter()
+        .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(stack_name))
+    {
+        seen = true;
+        let (_, view) = image_update_view_for_ref(app, &c.image);
+        match view {
+            ImageUpdateView::UpdateAvailable => has_update = true,
+            ImageUpdateView::Error => has_error = true,
+            ImageUpdateView::Unknown => has_unknown = true,
+            ImageUpdateView::Checking => has_checking = true,
+            ImageUpdateView::UpToDate => {}
+        }
+    }
+    if !seen {
+        return ImageUpdateView::Unknown;
+    }
+    if has_update {
+        ImageUpdateView::UpdateAvailable
+    } else if has_checking {
+        ImageUpdateView::Checking
+    } else if has_error {
+        ImageUpdateView::Error
+    } else if has_unknown {
+        ImageUpdateView::Unknown
+    } else {
+        ImageUpdateView::UpToDate
+    }
+}
+
+fn image_update_indicator(app: &App, view: ImageUpdateView) -> (String, Style) {
+    let bg = app.theme.panel.to_style();
+    let (text, style) = match view {
+        ImageUpdateView::UpToDate => (
+            if app.ascii_only { "Y" } else { "●" },
+            bg.patch(app.theme.text_ok.to_style()),
+        ),
+        ImageUpdateView::UpdateAvailable => (
+            if app.ascii_only { "U" } else { "●" },
+            bg.patch(app.theme.text_warn.to_style()),
+        ),
+        ImageUpdateView::Error => (
+            if app.ascii_only { "!" } else { "●" },
+            bg.patch(app.theme.text_error.to_style()),
+        ),
+        ImageUpdateView::Checking => (
+            if app.ascii_only { "*" } else { "⟳" },
+            bg.patch(app.theme.text_warn.to_style()),
+        ),
+        ImageUpdateView::Unknown => (
+            if app.ascii_only { "?" } else { "·" },
+            bg.patch(app.theme.text_dim.to_style()),
+        ),
+    };
+    (text.to_string(), style)
+}
+
+fn manifest_descriptor_digest(raw: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(raw).ok()?;
+    v.pointer("/Descriptor/Digest")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            v.pointer("/descriptor/digest")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+}
+
+async fn check_image_update(
+    runner: &Runner,
+    docker: &DockerCfg,
+    image: &str,
+) -> anyhow::Result<String> {
+    if docker.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let normalized = normalize_image_ref_for_updates(image)
+        .ok_or_else(|| anyhow::anyhow!("invalid image reference"))?;
+    let repo = image_repo_name(&normalized.reference);
+
+    let inspect_raw = docker::fetch_image_inspect(runner, docker, &normalized.reference).await?;
+    let inspect: ImageInspect = serde_json::from_str(&inspect_raw)
+        .context("image inspect output was not JSON")?;
+    let local_digest = inspect
+        .repo_digests
+        .as_deref()
+        .and_then(|list| local_repo_digest(list, &repo));
+
+    let (status, remote_digest, error) = if let Some(digest) = normalized.digest.clone() {
+        (
+            ImageUpdateKind::UpToDate,
+            Some(digest),
+            None::<String>,
+        )
+    } else {
+        match docker::fetch_manifest_inspect(runner, docker, &normalized.reference).await {
+            Ok(raw) => {
+                let remote = manifest_descriptor_digest(&raw);
+                match (local_digest.clone(), remote.clone()) {
+                    (Some(local), Some(remote)) => {
+                        let status = if local == remote {
+                            ImageUpdateKind::UpToDate
+                        } else {
+                            ImageUpdateKind::UpdateAvailable
+                        };
+                        (status, Some(remote), None)
+                    }
+                    _ => (
+                        ImageUpdateKind::Error,
+                        remote,
+                        Some("missing local/remote digest".to_string()),
+                    ),
+                }
+            }
+            Err(e) => (
+                ImageUpdateKind::Error,
+                None,
+                Some(truncate_msg(&format!("{:#}", e), 200)),
+            ),
+        }
+    };
+
+    let entry = ImageUpdateEntry {
+        checked_at: now_unix(),
+        status,
+        local_digest,
+        remote_digest,
+        error,
+    };
+    let result = ImageUpdateResult {
+        image: normalized.reference.clone(),
+        entry,
+    };
+    Ok(serde_json::to_string(&result)?)
 }
 
 fn format_duration_ns(ns: i64) -> Option<String> {
@@ -2188,7 +2483,8 @@ fn shell_execute_cmdline(
 
     if cmd == "stack" || cmd == "stacks" || cmd == "stk" {
         let sub = it.next().unwrap_or("");
-        let name = it.next();
+        let args: Vec<&str> = it.collect();
+        let name = args.first().copied();
         if sub.is_empty() {
             shell_set_main_view(app, ShellView::Stacks);
             shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Stacks));
@@ -2221,6 +2517,53 @@ fn shell_execute_cmdline(
             "restart" => {
                 shell_exec_stack_action(app, ContainerAction::Restart, name, action_req_tx);
             }
+            "check" | "updates" => {
+                if args.iter().any(|v| *v == "--pull" || *v == "pull") {
+                    app.set_warn("usage: :stack check [name]");
+                    return;
+                }
+                let target = name
+                    .map(|s| s.to_string())
+                    .or_else(|| app.selected_stack_entry().map(|s| s.name.clone()));
+                let Some(target) = target else {
+                    app.set_warn("no stack selected");
+                    return;
+                };
+                let ids = app.stack_container_ids(&target);
+                if ids.is_empty() {
+                    app.set_warn("no containers in stack");
+                    return;
+                }
+                let mut images: HashSet<String> = HashSet::new();
+                for id in ids {
+                    if let Some(idx) = app.container_idx_by_id.get(&id).copied() {
+                        if let Some(c) = app.containers.get(idx) {
+                            images.insert(c.image.clone());
+                        }
+                    }
+                }
+                shell_check_image_updates(app, images.into_iter().collect(), action_req_tx);
+            }
+            "recreate" => {
+                let mut pull = false;
+                let mut target = None;
+                for arg in &args {
+                    if *arg == "--pull" || *arg == "pull" {
+                        pull = true;
+                    } else if target.is_none() {
+                        target = Some(arg.to_string());
+                    } else {
+                        app.set_warn("usage: :stack recreate [--pull] [name]");
+                        return;
+                    }
+                }
+                let target = target.or_else(|| app.selected_stack_entry().map(|s| s.name.clone()));
+                let Some(target) = target else {
+                    app.set_warn("no stack selected");
+                    return;
+                };
+                shell_recreate_stack_from_template(app, &target, pull, action_req_tx);
+            }
             "rm" | "del" | "delete" => {
                 let target = name
                     .map(|s| s.to_string())
@@ -2240,7 +2583,7 @@ fn shell_execute_cmdline(
                 shell_exec_stack_action(app, ContainerAction::Remove, Some(&target), action_req_tx);
             }
             _ => {
-                app.set_warn("usage: :stack [start|stop|restart|rm] [name] | :stacks running|all");
+                app.set_warn("usage: :stack [start|stop|restart|rm|check|recreate] [name] | :stacks running|all");
             }
         }
         return;
@@ -2408,6 +2751,31 @@ fn shell_exec_container_action(
             },
         );
         let _ = action_req_tx.send(ActionRequest::Container { action, id });
+    }
+}
+
+fn shell_check_image_updates(
+    app: &mut App,
+    images: Vec<String>,
+    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
+) {
+    let mut queued = 0usize;
+    for image in images {
+        let Some(normalized) = resolve_image_ref_for_updates(app, &image) else {
+            continue;
+        };
+        let key = normalized;
+        if app.image_updates_inflight.contains(&key) {
+            continue;
+        }
+        app.image_updates_inflight.insert(key.clone());
+        let _ = action_req_tx.send(ActionRequest::ImageUpdateCheck { image: key });
+        queued += 1;
+    }
+    if queued == 0 {
+        app.set_warn("no images to check");
+    } else {
+        app.set_info(format!("checking {queued} image(s)"));
     }
 }
 
@@ -2702,7 +3070,7 @@ fn shell_execute_action(
             match app.templates_state.kind {
                 TemplatesKind::Stacks => {
                     if let Some(name) = app.selected_template().map(|t| t.name.clone()) {
-                        shell_deploy_template(app, &name, action_req_tx);
+                        shell_deploy_template(app, &name, false, false, action_req_tx);
                     } else {
                         app.set_warn("no template selected");
                     }
@@ -2722,6 +3090,8 @@ fn shell_execute_action(
 fn shell_deploy_template(
     app: &mut App,
     name: &str,
+    pull: bool,
+    force_recreate: bool,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
     if app.templates_state.template_deploy_inflight.contains_key(name) {
@@ -2749,6 +3119,8 @@ fn shell_deploy_template(
         runner,
         docker,
         local_compose: tpl.compose_path.clone(),
+        pull,
+        force_recreate,
     });
     app.templates_state.template_deploy_inflight.insert(
         tpl.name.clone(),
@@ -2756,7 +3128,38 @@ fn shell_deploy_template(
             started: Instant::now(),
         },
     );
-    app.set_info(format!("deploying template {name}"));
+    let mut msg = format!("deploying template {name}");
+    if force_recreate {
+        msg.push_str(" (recreate)");
+    }
+    if pull {
+        msg.push_str(" [pull]");
+    }
+    app.set_info(msg);
+}
+
+fn shell_recreate_stack_from_template(
+    app: &mut App,
+    stack_name: &str,
+    pull: bool,
+    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
+) {
+    let stack_name = stack_name.trim();
+    if stack_name.is_empty() {
+        app.set_warn("no stack selected");
+        return;
+    }
+    app.refresh_templates();
+    let has_template = app
+        .templates_state
+        .templates
+        .iter()
+        .any(|t| t.name == stack_name);
+    if !has_template {
+        app.set_warn(format!("template not found: {stack_name}"));
+        return;
+    }
+    shell_deploy_template(app, stack_name, pull, true, action_req_tx);
 }
 
 fn shell_deploy_net_template(
@@ -4757,6 +5160,7 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
     let header = Row::new(vec![
         Cell::from("NAME"),
         Cell::from("IMAGE"),
+        Cell::from("UPD"),
         Cell::from("CPU"),
         Cell::from("MEM"),
         Cell::from("STATUS"),
@@ -4806,9 +5210,14 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
         };
 
         let name = format!("{name_prefix}{}", c.name);
+        let (upd_text, upd_style) = image_update_indicator(
+            app,
+            image_update_view_for_ref(app, &c.image).1,
+        );
         Row::new(vec![
             Cell::from(truncate_end(&name, 22)).style(row_style),
             Cell::from(truncate_end(&c.image, 40)).style(row_style),
+            Cell::from(upd_text).style(upd_style),
             Cell::from(cpu).style(row_style),
             Cell::from(mem).style(row_style),
             Cell::from(status).style(status_style),
@@ -4841,10 +5250,13 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
                             .add_modifier(Modifier::BOLD)
                     };
                     let glyph = if *expanded { "▾" } else { "▸" };
+                    let (upd_text, upd_style) =
+                        image_update_indicator(app, image_update_view_for_stack(app, name));
                     rows.push(
                         Row::new(vec![
                             Cell::from(format!("{glyph} {name}")).style(st),
                             Cell::from(format!("{running}/{total}")).style(st),
+                            Cell::from(upd_text).style(upd_style),
                             Cell::from(""),
                             Cell::from(""),
                             Cell::from(""),
@@ -4859,6 +5271,7 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
                         Row::new(vec![
                             Cell::from("Ungrouped").style(st),
                             Cell::from(format!("{running}/{total}")).style(st),
+                            Cell::from(""),
                             Cell::from(""),
                             Cell::from(""),
                             Cell::from(""),
@@ -4887,6 +5300,7 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
     let widths = [
         Constraint::Length(22),
         Constraint::Min(20),
+        Constraint::Length(3),
         Constraint::Length(6),
         Constraint::Length(6),
         Constraint::Length(22),
@@ -5999,6 +6413,10 @@ fn draw_shell_stacks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
             } else {
                 Style::default()
             };
+            let (upd_text, upd_style) = image_update_indicator(
+                app,
+                image_update_view_for_stack(app, &s.name),
+            );
             let mut state = String::new();
             let mut state_style = row_style;
             for c in app
@@ -6031,6 +6449,7 @@ fn draw_shell_stacks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
             };
             let row = Row::new(vec![
                 name_cell,
+                Cell::from(upd_text).style(upd_style),
                 Cell::from(s.total.to_string()),
                 Cell::from(s.running.to_string()),
             ]);
@@ -6046,12 +6465,18 @@ fn draw_shell_stacks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
         rows,
         [
             Constraint::Min(26),
+            Constraint::Length(3),
             Constraint::Length(7),
             Constraint::Length(8),
         ],
     )
     .header(
-        Row::new(vec![Cell::from("NAME"), Cell::from("TOTAL"), Cell::from("RUN")])
+        Row::new(vec![
+            Cell::from("NAME"),
+            Cell::from("UPD"),
+            Cell::from("TOTAL"),
+            Cell::from("RUN"),
+        ])
         .style(shell_header_style(app)),
     )
     .style(bg)
@@ -6126,6 +6551,15 @@ fn draw_shell_container_details(
         DetailRow {
             key: "Image",
             value: c.image.clone(),
+            style: val,
+        },
+        DetailRow {
+            key: "Update",
+            value: {
+                let (text, _) =
+                    image_update_indicator(app, image_update_view_for_ref(app, &c.image).1);
+                text
+            },
             style: val,
         },
         DetailRow {
@@ -7833,8 +8267,18 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(h("Stacks"));
     out.push(item(
         "Stacks",
-        ":stack/:stk (start|stop|restart|rm) [name]",
+        ":stack/:stk (start|stop|restart|rm|check|recreate) [name]",
         "Run action for selected stack (or by name)",
+    ));
+    out.push(item(
+        "Stacks",
+        ":stack/:stk check [name]",
+        "Check image updates for stack containers (manual)",
+    ));
+    out.push(item(
+        "Stacks",
+        ":stack/:stk recreate [--pull] [name]",
+        "Recreate stack from template (optional pull)",
     ));
     out.push(item(
         "Stacks",
@@ -7846,8 +8290,18 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(h("Containers"));
     out.push(item(
         "Containers",
-        ":container/:ctr (start|stop|restart|rm)",
+        ":container/:ctr (start|stop|restart|rm|check|recreate)",
         "Run action for selection/marks/stack",
+    ));
+    out.push(item(
+        "Containers",
+        ":container/:ctr check",
+        "Check image updates for selected containers (manual)",
+    ));
+    out.push(item(
+        "Containers",
+        ":container/:ctr recreate [--pull]",
+        "Recreate stack(s) for selected containers (template required)",
     ));
     out.push(item(
         "Containers",
