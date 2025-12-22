@@ -4455,6 +4455,29 @@ pub async fn run_tui(
                             app.image_updates_inflight.remove(image);
                             match serde_json::from_str::<ImageUpdateResult>(&out) {
                                 Ok(result) => {
+                                    let status = match result.entry.status {
+                                        ImageUpdateKind::UpToDate => "up-to-date",
+                                        ImageUpdateKind::UpdateAvailable => "update",
+                                        ImageUpdateKind::Error => "error",
+                                    };
+                                    let local = result
+                                        .entry
+                                        .local_digest
+                                        .as_deref()
+                                        .unwrap_or("-");
+                                    let remote = result
+                                        .entry
+                                        .remote_digest
+                                        .as_deref()
+                                        .unwrap_or("-");
+                                    let mut msg = format!(
+                                        "image update result: {} status={} local={} remote={}",
+                                        result.image, status, local, remote
+                                    );
+                                    if let Some(err) = result.entry.error.as_deref() {
+                                        msg.push_str(&format!(" error={err}"));
+                                    }
+                                    app.log_msg(MsgLevel::Info, msg);
                                     app.image_updates
                                         .insert(result.image.clone(), result.entry);
                                     app.prune_image_updates();

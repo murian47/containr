@@ -393,6 +393,27 @@ impl App {
         }
         Some(entry)
     }
+
+    fn messages_save(&mut self, path: &str) {
+        if self.session_msgs.is_empty() {
+            self.set_warn("no messages");
+            return;
+        }
+        let mut out = String::new();
+        for m in &self.session_msgs {
+            let lvl = match m.level {
+                MsgLevel::Info => "INFO",
+                MsgLevel::Warn => "WARN",
+                MsgLevel::Error => "ERROR",
+            };
+            let ts = format_session_ts(m.at);
+            out.push_str(&format!("{ts} {lvl} {}\n", m.text));
+        }
+        match write_text_file(path, &out) {
+            Ok(p) => self.set_info(format!("saved messages to {}", p.display())),
+            Err(e) => self.set_error(format!("{e:#}")),
+        }
+    }
 }
 
 fn find_server_by_name(servers: &[ServerEntry], name: &str) -> Option<usize> {
@@ -562,6 +583,10 @@ struct NetworkInspectIpamConfig {
 struct ImageInspect {
     #[serde(rename = "RepoDigests")]
     repo_digests: Option<Vec<String>>,
+    #[serde(rename = "Architecture")]
+    architecture: Option<String>,
+    #[serde(rename = "Os")]
+    os: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -831,10 +856,26 @@ fn image_repo_name(image_ref: &str) -> String {
     }
 }
 
+fn normalize_docker_hub_repo(name: &str) -> String {
+    let mut name = name.trim().to_string();
+    if let Some(rest) = name.strip_prefix("docker.io/") {
+        name = rest.to_string();
+    }
+    if !name.contains('/') {
+        name = format!("library/{name}");
+    }
+    name
+}
+
 fn local_repo_digest(repo_digests: &[String], repo: &str) -> Option<String> {
+    let repo_docker_hub = normalize_docker_hub_repo(repo);
     for entry in repo_digests {
         let (name, digest) = entry.split_once('@')?;
-        if name == repo {
+        if name == repo || name == repo_docker_hub {
+            return Some(digest.to_string());
+        }
+        let name_docker_hub = normalize_docker_hub_repo(name);
+        if name_docker_hub == repo_docker_hub {
             return Some(digest.to_string());
         }
     }
@@ -933,16 +974,120 @@ fn image_update_indicator(app: &App, view: ImageUpdateView) -> (String, Style) {
     (text.to_string(), style)
 }
 
-fn manifest_descriptor_digest(raw: &str) -> Option<String> {
-    let v: Value = serde_json::from_str(raw).ok()?;
-    v.pointer("/Descriptor/Digest")
+fn manifest_entries(raw: &str) -> Vec<Value> {
+    let v: Value = match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    if let Some(arr) = v.as_array() {
+        return arr.to_vec();
+    }
+    if let Some(obj) = v.as_object() {
+        for key in ["manifests", "Manifests"] {
+            if let Some(Value::Array(arr)) = obj.get(key) {
+                return arr.to_vec();
+            }
+        }
+        if get_ci(obj, "descriptor").is_some() || get_ci(obj, "ref").is_some() {
+            return vec![v];
+        }
+    }
+    Vec::new()
+}
+
+fn get_ci<'a>(obj: &'a serde_json::Map<String, Value>, key: &str) -> Option<&'a Value> {
+    obj.get(key).or_else(|| {
+        obj.iter()
+            .find_map(|(k, v)| if k.eq_ignore_ascii_case(key) { Some(v) } else { None })
+    })
+}
+
+fn entry_descriptor(entry: &Value) -> Option<&serde_json::Map<String, Value>> {
+    let obj = entry.as_object()?;
+    let desc = get_ci(obj, "descriptor")?;
+    desc.as_object()
+}
+
+fn entry_descriptor_digest(entry: &Value) -> Option<String> {
+    if let Some(desc) = entry_descriptor(entry) {
+        if let Some(digest) = get_ci(desc, "digest").and_then(|v| v.as_str()) {
+            return Some(digest.to_string());
+        }
+    }
+    let obj = entry.as_object()?;
+    if let Some(reference) = get_ci(obj, "ref").and_then(|v| v.as_str()) {
+        if let Some((_, digest)) = reference.split_once('@') {
+            return Some(digest.to_string());
+        }
+    }
+    get_ci(obj, "digest")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .or_else(|| {
-            v.pointer("/descriptor/digest")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        })
+}
+
+fn entry_platform(entry: &Value) -> (Option<String>, Option<String>) {
+    let obj = match entry.as_object() {
+        Some(obj) => obj,
+        None => return (None, None),
+    };
+    let platform = entry_descriptor(entry)
+        .and_then(|desc| get_ci(desc, "platform").and_then(|v| v.as_object()))
+        .or_else(|| get_ci(obj, "platform").and_then(|v| v.as_object()));
+    let Some(platform) = platform else {
+        return (None, None);
+    };
+    let arch = get_ci(platform, "architecture")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let os = get_ci(platform, "os")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    (arch, os)
+}
+
+fn manifest_descriptor_digest(raw: &str) -> Option<String> {
+    let entries = manifest_entries(raw);
+    entries
+        .iter()
+        .find_map(|entry| entry_descriptor_digest(entry))
+}
+
+fn manifest_digest_for_platform(raw: &str, arch: &str, os: &str) -> Option<String> {
+    let entries = manifest_entries(raw);
+    let mut fallback: Option<String> = None;
+    for entry in entries {
+        let digest = entry_descriptor_digest(&entry);
+        let (p_arch, p_os) = entry_platform(&entry);
+        if let (Some(p_arch), Some(p_os), Some(digest)) = (p_arch, p_os, digest) {
+            if p_arch == arch && p_os == os {
+                return Some(digest);
+            }
+            if fallback.is_none()
+                && p_arch != "unknown"
+                && p_os != "unknown"
+                && !p_arch.is_empty()
+                && !p_os.is_empty()
+            {
+                fallback = Some(digest);
+            }
+        }
+    }
+    fallback
+}
+
+fn manifest_platform_summary(raw: &str) -> String {
+    let entries = manifest_entries(raw);
+    if entries.is_empty() {
+        return "none".to_string();
+    }
+    let mut parts: Vec<String> = Vec::new();
+    for entry in entries {
+        let (arch, os) = entry_platform(&entry);
+        let arch = arch.as_deref().unwrap_or("?");
+        let os = os.as_deref().unwrap_or("?");
+        parts.push(format!("{arch}/{os}"));
+    }
+    parts.join(",")
 }
 
 async fn check_image_update(
@@ -960,6 +1105,21 @@ async fn check_image_update(
     let inspect_raw = docker::fetch_image_inspect(runner, docker, &normalized.reference).await?;
     let inspect: ImageInspect = serde_json::from_str(&inspect_raw)
         .context("image inspect output was not JSON")?;
+    let repo_digests_len = inspect.repo_digests.as_ref().map(|v| v.len()).unwrap_or(0);
+    let repo_digests_preview = inspect
+        .repo_digests
+        .as_ref()
+        .map(|list| {
+            let mut parts: Vec<String> = Vec::new();
+            for item in list.iter().take(3) {
+                parts.push(item.clone());
+            }
+            if list.len() > 3 {
+                parts.push("...".to_string());
+            }
+            format!("[{}]", parts.join(", "))
+        })
+        .unwrap_or_else(|| "none".to_string());
     let local_digest = inspect
         .repo_digests
         .as_deref()
@@ -974,22 +1134,37 @@ async fn check_image_update(
     } else {
         match docker::fetch_manifest_inspect(runner, docker, &normalized.reference).await {
             Ok(raw) => {
-                let remote = manifest_descriptor_digest(&raw);
-                match (local_digest.clone(), remote.clone()) {
+                let remote = if let (Some(arch), Some(os)) =
+                    (inspect.architecture.as_deref(), inspect.os.as_deref())
+                {
+                    manifest_digest_for_platform(&raw, arch, os)
+                        .or_else(|| manifest_descriptor_digest(&raw))
+                } else {
+                    manifest_descriptor_digest(&raw)
+                };
+                let (status, error) = match (local_digest.clone(), remote.clone()) {
                     (Some(local), Some(remote)) => {
-                        let status = if local == remote {
-                            ImageUpdateKind::UpToDate
+                        if local == remote {
+                            (ImageUpdateKind::UpToDate, None)
                         } else {
-                            ImageUpdateKind::UpdateAvailable
-                        };
-                        (status, Some(remote), None)
+                            (ImageUpdateKind::UpdateAvailable, None)
+                        }
                     }
-                    _ => (
+                    (None, _) => (
                         ImageUpdateKind::Error,
-                        remote,
-                        Some("missing local/remote digest".to_string()),
+                        Some(format!(
+                            "missing local digest (repo={repo}, repo_digests={repo_digests_len} {repo_digests_preview})"
+                        )),
                     ),
-                }
+                    (_, None) => (
+                        ImageUpdateKind::Error,
+                        Some(format!(
+                            "missing remote digest (platforms={})",
+                            manifest_platform_summary(&raw)
+                        )),
+                    ),
+                };
+                (status, remote, error)
             }
             Err(e) => (
                 ImageUpdateKind::Error,
@@ -2249,6 +2424,16 @@ fn shell_execute_cmdline(
                 app.messages_copy_selected();
                 return;
             }
+            if sub == "save" {
+                let rest: Vec<&str> = it.collect();
+                let path = rest.join(" ").trim().to_string();
+                if path.is_empty() {
+                    app.set_warn("usage: :messages save <file>");
+                } else {
+                    app.messages_save(&path);
+                }
+                return;
+            }
             // Messages is a full-screen view; leaving cmdline mode avoids confusing key handling.
             app.shell_cmdline.mode = false;
             app.shell_cmdline.confirm = None;
@@ -2762,6 +2947,10 @@ fn shell_check_image_updates(
     let mut queued = 0usize;
     for image in images {
         let Some(normalized) = resolve_image_ref_for_updates(app, &image) else {
+            app.log_msg(
+                MsgLevel::Warn,
+                format!("image update skipped (unresolved ref): {image}"),
+            );
             continue;
         };
         let key = normalized;
@@ -2769,7 +2958,11 @@ fn shell_check_image_updates(
             continue;
         }
         app.image_updates_inflight.insert(key.clone());
-        let _ = action_req_tx.send(ActionRequest::ImageUpdateCheck { image: key });
+        let _ = action_req_tx.send(ActionRequest::ImageUpdateCheck { image: key.clone() });
+        app.log_msg(
+            MsgLevel::Info,
+            format!("image update queued: {key}"),
+        );
         queued += 1;
     }
     if queued == 0 {
@@ -8078,6 +8271,11 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Global", ":?", "Open help"));
     out.push(item("Global", ":help", "Open help"));
     out.push(item("Global", ":messages", "Toggle messages view (session log)"));
+    out.push(item(
+        "Global",
+        ":messages save <file>",
+        "Save session messages to a file",
+    ));
     out.push(item("Global", ":ack [all]", "Clear per-item action error markers"));
     out.push(item("Global", ":refresh", "Trigger immediate refresh"));
     out.push(item(
