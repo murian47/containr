@@ -21,6 +21,7 @@ reports `xterm-256color` (e.g. iTerm2 via Profile → Terminal → Report Termin
    - Check local images against remote registries (opt-in or cached)
    - Show updates in UI (per container + per stack)
    - Recreate container/stack (with optional pull) via compose or docker
+   - Registry auth via keyring (primary) + optional age fallback for headless/WSL
 
 3. Command placeholders
    - Implement placeholder expansion for command line + keybindings
@@ -29,6 +30,9 @@ reports `xterm-256color` (e.g. iTerm2 via Profile → Terminal → Report Termin
 4. Theme selection UI + theme regeneration
    - Add :theme select UI with sidebar list + main preview
    - Regenerate Ghostty themes only after schema is stable
+
+5. Deployment metadata
+   - Show last deploy target per template in the Templates list
 
 ## Rationale
 
