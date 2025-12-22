@@ -41,7 +41,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::io::{self, Stdout};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -1018,6 +1018,7 @@ struct App {
     editor_cmd: String,
     image_update_concurrency: usize,
     image_update_debug: bool,
+    image_update_autocheck: bool,
 
     session_msgs: Vec<SessionMsg>,
     messages_seen_len: usize,
@@ -1288,6 +1289,7 @@ impl App {
         editor_cmd: String,
         image_update_concurrency: usize,
         image_update_debug: bool,
+        image_update_autocheck: bool,
     ) -> Self {
         let mut server_selected = 0usize;
         if let Some(name) = &active_server {
@@ -1460,6 +1462,7 @@ impl App {
             editor_cmd,
             image_update_concurrency: image_update_concurrency.max(1),
             image_update_debug,
+            image_update_autocheck,
 
             session_msgs: Vec::new(),
             messages_seen_len: 0,
@@ -3471,6 +3474,7 @@ pub async fn run_tui(
     editor_cmd: String,
     image_update_concurrency: usize,
     image_update_debug: bool,
+    image_update_autocheck: bool,
 ) -> anyhow::Result<()> {
     let mut terminal = setup_terminal().context("failed to setup terminal")?;
     let (theme_spec, theme_err) = match theme::load_theme(&config_path, &active_theme) {
@@ -3490,6 +3494,7 @@ pub async fn run_tui(
         editor_cmd,
         image_update_concurrency,
         image_update_debug,
+        image_update_autocheck,
     );
     if let Some(e) = theme_err {
         app.log_msg(MsgLevel::Warn, format!("failed to load theme: {:#}", e));
@@ -4487,10 +4492,21 @@ pub async fn run_tui(
                         ActionRequest::Container { id, .. } => {
                             app.container_action_error.remove(id);
                         }
-                        ActionRequest::TemplateDeploy { name, .. } => {
+                        ActionRequest::TemplateDeploy {
+                            name,
+                            local_compose,
+                            pull,
+                            ..
+                        } => {
                             app.templates_state.template_deploy_inflight.remove(name);
                             app.template_action_error.remove(name);
                             app.set_info(format!("deployed template {name}"));
+                            if app.image_update_autocheck && *pull {
+                                let images = images_from_compose(local_compose);
+                                if !images.is_empty() {
+                                    shell_check_image_updates(&mut app, images, &action_req_tx);
+                                }
+                            }
                         }
                         ActionRequest::NetTemplateDeploy { name, .. } => {
                             app.templates_state

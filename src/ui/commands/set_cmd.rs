@@ -150,9 +150,23 @@ pub fn handle_set(
             }
             true
         }
+        "image_update_autocheck" => {
+            let Some(v) = rest.first().copied() else {
+                app.set_warn("usage: :set image_update_autocheck <on|off>");
+                return true;
+            };
+            match parse_toggle(v) {
+                Some(flag) => {
+                    app.image_update_autocheck = flag;
+                    app.persist_config();
+                }
+                None => app.set_warn("image_update_autocheck must be on/off"),
+            }
+            true
+        }
         _ => {
             app.set_warn(
-                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries> | :set editor <command> | :set git_autocommit <on|off> | :set git_autocommit_confirm <on|off> | :set image_update_concurrency <n> | :set image_update_debug <on|off>",
+                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries> | :set editor <command> | :set git_autocommit <on|off> | :set git_autocommit_confirm <on|off> | :set image_update_concurrency <n> | :set image_update_debug <on|off> | :set image_update_autocheck <on|off>",
             );
             true
         }

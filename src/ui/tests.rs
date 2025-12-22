@@ -41,6 +41,7 @@ fn mk_test_app() -> App {
         String::new(),
         4,
         false,
+        false,
     )
 }
 
@@ -168,6 +169,7 @@ fn dashboard_shows_no_server_message() {
         false,
         String::new(),
         4,
+        false,
         false,
     );
     app.loading = false;

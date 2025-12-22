@@ -349,6 +349,7 @@ impl App {
             git_autocommit_confirm: self.git_autocommit_confirm,
             image_update_concurrency: self.image_update_concurrency,
             image_update_debug: self.image_update_debug,
+            image_update_autocheck: self.image_update_autocheck,
         };
         if let Err(e) = config::save(&self.config_path, &cfg) {
             self.set_error(format!("failed to save config: {:#}", e));
@@ -1193,6 +1194,33 @@ fn manifest_platform_summary(raw: &str) -> String {
         parts.push(format!("{arch}/{os}"));
     }
     parts.join(",")
+}
+
+fn images_from_compose(path: &Path) -> Vec<String> {
+    let raw = match fs::read_to_string(path) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let mut out: Vec<String> = Vec::new();
+    for line in raw.lines() {
+        let (code, _) = split_yaml_comment(line);
+        let trimmed = code.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("image:") {
+            let mut val = rest.trim().to_string();
+            if (val.starts_with('"') && val.ends_with('"'))
+                || (val.starts_with('\'') && val.ends_with('\''))
+            {
+                val = val[1..val.len().saturating_sub(1)].to_string();
+            }
+            if !val.is_empty() {
+                out.push(val);
+            }
+        }
+    }
+    out
 }
 
 fn manifest_remote_digests(raw: &str) -> Vec<(String, Option<String>, Option<String>)> {
@@ -8601,6 +8629,11 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Global",
         ":set image_update_debug <on|off>",
         "Log extra image update debug details",
+    ));
+    out.push(item(
+        "Global",
+        ":set image_update_autocheck <on|off>",
+        "Auto-check updates after template deploy (only with --pull)",
     ));
     out.push(Line::from(""));
 
