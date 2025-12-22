@@ -147,40 +147,6 @@ Beispiel-Labels (finaler Satz ist konfigurierbar und wird spaeter festgezurrt):
 - Track the last deployment target (server name) per template.
 - Surface it in the Templates list (e.g. "Last deploy: rpi5").
 
-## Image-Update-Pruefung (M4)
-
-- Ziel: lokale Images gegen Registry vergleichen und Updates im UI markieren.
-- Scope: Container- und Stack-Ansichten, plus Templates-Details.
-- Vorschlag:
-  - Nur qualified Images pruefen (Registry erkennbar).
-  - Unqualified Images (z.B. `nextcloud`) als `docker.io/library/...:latest` behandeln.
-  - Abfragen asynchron mit Cache + TTL (z.B. 6h) um Rate-Limits zu vermeiden.
-
-### Ablauf (Kurz)
-
-1. Normalisiere Image-Referenz (Registry + Tag/Digest).
-2. Cache-Lookup; falls frisch: Status anzeigen.
-3. Falls veraltet: Registry-Manifest abrufen (digest).
-4. Lokales Image-Digest vergleichen.
-5. UI markieren: `up-to-date` / `update available` / `unknown`.
-
-## Recreate-Workflow (M4)
-
-- Ziel: einzelner Container oder ganzer Stack neu anlegen.
-- Optional: vorher Image pullen.
-
-### Ablauf (Container)
-
-1. Optional: `docker/podman pull` fuer das Image.
-2. `compose up -d --force-recreate` wenn Stack-Template verfuegbar,
-   sonst `docker/podman rm -f` + `docker/podman run` ist out-of-scope.
-
-### Ablauf (Stack)
-
-1. Optional: `compose pull` (alle Services im Stack).
-2. `compose up -d --force-recreate`
-3. UI: In-flight Marker + Status/History aktualisieren.
-
 ## Git-Integration
 
 Git bleibt "as-is"; das Tool ruft nur Kommandos auf und zeigt Ausgaben an:
@@ -206,10 +172,8 @@ Wichtig: Dry-run, klare Prompts und Sicherheitschecks.
 
 ## Milestones (Vorschlag)
 
-- M1: Templates-View + Git-Aktionen + `$EDITOR` Integration
-- M2: Stacks-View (Stacks erkennen, anzeigen, simple lifecycle actions)
-- M3: Deploy (render + copy + compose up) inkl. state/history
-- M4: Update/Rollback + image updates (check, pull, recreate, history UI)
+- M3: Deployment history (last deploy target)
+- M4: Update/Rollback + registry auth (history UI + keyring/age)
 - M5: AI support (assistant-driven template creation/editing)
 
 ## Offene Fragen
