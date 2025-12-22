@@ -5,6 +5,9 @@ Status: 2025-12-21
 This document captures the agreed sequencing for upcoming work so we avoid rework
 on themes and UI previews.
 
+Note: For reliable key mappings (function keys, Ctrl+Shift), ensure your terminal
+reports `xterm-256color` (e.g. iTerm2 via Profile → Terminal → Report Terminal Type).
+
 ## Priority Order
 
 1. Stacks/Templates core functionality (M1–M3)
