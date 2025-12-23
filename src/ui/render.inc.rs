@@ -438,9 +438,10 @@ impl App {
         }
         self.prune_rate_limits();
         let state = LocalState {
-            version: 1,
+            version: 4,
             image_updates: self.image_updates.clone(),
             rate_limits: self.rate_limits.clone(),
+            template_deploys: self.template_deploys.clone(),
         };
         match serde_json::to_string_pretty(&state) {
             Ok(raw) => {
@@ -451,6 +452,98 @@ impl App {
             Err(e) => {
                 self.log_msg(MsgLevel::Warn, format!("state serialize failed: {:#}", e));
             }
+        }
+    }
+
+    fn remove_template_deploys_for_server(&mut self, template_id: &str, server: &str) -> bool {
+        if template_id.trim().is_empty() || server.trim().is_empty() {
+            return false;
+        }
+        let mut changed = false;
+        let mut empty = false;
+        if let Some(list) = self.template_deploys.get_mut(template_id) {
+            let before = list.len();
+            list.retain(|entry| entry.server_name != server);
+            if list.len() != before {
+                changed = true;
+            }
+            if list.is_empty() {
+                empty = true;
+            }
+        }
+        if empty {
+            self.template_deploys.remove(template_id);
+        }
+        changed || empty
+    }
+
+    fn prune_template_deploys_for_active_server(&mut self) {
+        let Some(server) = self.active_server.clone() else {
+            return;
+        };
+        if server.trim().is_empty() {
+            return;
+        }
+        let mut present_ids: HashSet<String> = HashSet::new();
+        for c in &self.containers {
+            if let Some(id) = template_id_from_labels(&c.labels) {
+                present_ids.insert(id);
+            }
+        }
+        let known_ids: HashSet<String> = self
+            .templates_state
+            .templates
+            .iter()
+            .filter_map(|t| t.template_id.clone())
+            .collect();
+        for id in present_ids.iter() {
+            if known_ids.contains(id) {
+                continue;
+            }
+            if self.unknown_template_ids_warned.insert(id.clone()) {
+                self.log_msg(
+                    MsgLevel::Info,
+                    format!("template id found on server but missing locally: {id}"),
+                );
+            }
+        }
+        let mut next: HashMap<String, Vec<TemplateDeployEntry>> = HashMap::new();
+        let mut changed = false;
+        for (template_id, list) in &self.template_deploys {
+            let mut out: Vec<TemplateDeployEntry> = Vec::new();
+            for entry in list {
+                if entry.server_name == server && !present_ids.contains(template_id) {
+                    changed = true;
+                    continue;
+                }
+                out.push(entry.clone());
+            }
+            if out.is_empty() {
+                changed = true;
+                continue;
+            }
+            next.insert(template_id.clone(), out);
+        }
+        for id in present_ids.iter() {
+            if !known_ids.contains(id) {
+                continue;
+            }
+            let entry = next.entry(id.clone()).or_default();
+            if !entry.iter().any(|e| e.server_name == server) {
+                entry.push(TemplateDeployEntry {
+                    server_name: server.clone(),
+                    timestamp: now_unix(),
+                });
+                self.log_msg(
+                    MsgLevel::Info,
+                    format!("template id matched on server {server}: {id}"),
+                );
+                changed = true;
+            }
+        }
+        if changed {
+            self.template_deploys = next;
+            self.save_local_state();
         }
     }
 
@@ -2348,6 +2441,11 @@ fn delete_template(app: &mut App, name: &str) -> anyhow::Result<()> {
     );
 
     fs::remove_dir_all(&target)?;
+    if let Some(info) = extract_template_id(&dir.join("compose.yaml")) {
+        if app.template_deploys.remove(&info).is_some() {
+            app.save_local_state();
+        }
+    }
     Ok(())
 }
 
@@ -2509,6 +2607,43 @@ fn extract_template_description(path: &PathBuf) -> Option<String> {
         }
     }
     None
+}
+
+fn extract_template_id(path: &PathBuf) -> Option<String> {
+    // Heuristic: find a "# containr_template_id: ..." line near the top of compose.yaml.
+    let data = fs::read_to_string(path).ok()?;
+    for line in data.lines().take(40) {
+        let l = line.trim_start();
+        if !l.starts_with('#') {
+            if !l.is_empty() {
+                break;
+            }
+            continue;
+        }
+        let body = l.trim_start_matches('#').trim_start();
+        let low = body.to_ascii_lowercase();
+        if !low.starts_with("containr_template_id:") {
+            continue;
+        }
+        let value = body["containr_template_id:".len()..].trim();
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn ensure_template_id(path: &PathBuf) -> anyhow::Result<String> {
+    if let Some(existing) = extract_template_id(path) {
+        return Ok(existing);
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let data = fs::read_to_string(path).unwrap_or_default();
+    let mut out = String::new();
+    out.push_str(&format!("# containr_template_id: {id}\n"));
+    out.push_str(&data);
+    fs::write(path, out)?;
+    Ok(id)
 }
 
 fn extract_net_template_description(path: &PathBuf) -> Option<String> {
@@ -3255,6 +3390,24 @@ fn shell_exec_stack_action(
         return;
     }
     let remove_networks = matches!(action, ContainerAction::Remove);
+    if remove_networks {
+        let server = app.active_server.clone().unwrap_or_default();
+        let ids: HashSet<String> = app
+            .containers
+            .iter()
+            .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(stack_name.as_str()))
+            .filter_map(|c| template_id_from_labels(&c.labels))
+            .collect();
+        let mut changed = false;
+        for id in ids {
+            if app.remove_template_deploys_for_server(&id, &server) {
+                changed = true;
+            }
+        }
+        if changed {
+            app.save_local_state();
+        }
+    }
     let network_ids = if remove_networks {
         app.stack_network_ids(&stack_name)
     } else {
@@ -3555,10 +3708,21 @@ fn shell_deploy_template(
         app.set_warn("template has no compose.yaml");
         return;
     }
+    let template_id = match ensure_template_id(&tpl.compose_path) {
+        Ok(id) => id,
+        Err(e) => {
+            app.set_error(format!("template id create failed: {e:#}"));
+            return;
+        }
+    };
+    if tpl.template_id.as_deref() != Some(&template_id) {
+        app.refresh_templates();
+    }
     if app.active_server.is_none() {
         app.set_warn("no active server selected");
         return;
     }
+    let server_name = app.active_server.clone().unwrap_or_default();
     let runner = current_runner_from_app(app);
     let docker = DockerCfg {
         docker_cmd: current_docker_cmd_from_app(app),
@@ -3570,6 +3734,8 @@ fn shell_deploy_template(
         local_compose: tpl.compose_path.clone(),
         pull,
         force_recreate,
+        server_name,
+        template_id,
     });
     app.templates_state.template_deploy_inflight.insert(
         tpl.name.clone(),
@@ -6731,6 +6897,16 @@ fn draw_shell_stack_templates_table(
                     ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
                 };
                 (action_error_label(err).to_string(), st)
+            } else if let Some(id) = t.template_id.as_ref() {
+                if let Some(list) = app.template_deploys.get(id) {
+                    if list.is_empty() {
+                        (String::new(), Style::default())
+                    } else {
+                        ("deployed".to_string(), Style::default())
+                    }
+                } else {
+                    (String::new(), Style::default())
+                }
             } else {
                 (String::new(), Style::default())
             };
@@ -6752,7 +6928,7 @@ fn draw_shell_stack_templates_table(
         [
             Constraint::Length(24),
             Constraint::Length(7),
-            Constraint::Length(10),
+            Constraint::Length(16),
             Constraint::Min(10),
         ],
     )
@@ -7611,7 +7787,7 @@ fn draw_shell_stack_template_details(
     });
     let parts = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(1)])
+        .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(inner);
     let status_area = parts[0];
     let content_area = parts[1];
@@ -7668,7 +7844,7 @@ fn draw_shell_stack_template_details(
         out.push(Line::from(Span::styled(format!("{:>lnw$} ", 1), ln_style)));
     }
 
-    let (status_text, status_style) = if let Some(m) =
+    let (mut status_text, status_style) = if let Some(m) =
         app.templates_state.template_deploy_inflight.get(&t.name)
     {
         let secs = m.started.elapsed().as_secs();
@@ -7685,10 +7861,30 @@ fn draw_shell_stack_template_details(
     } else {
         ("Status: -".to_string(), bg.patch(app.theme.text_dim.to_style()))
     };
+    let deploy_list = t
+        .template_id
+        .as_ref()
+        .and_then(|id| app.template_deploys.get(id));
+    let mut servers: Vec<String> = deploy_list
+        .map(|list| list.iter().map(|info| info.server_name.clone()).collect())
+        .unwrap_or_default();
+    servers.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    servers.dedup();
+    let servers_text = if servers.is_empty() {
+        "-".to_string()
+    } else {
+        servers.join(", ")
+    };
+    if status_text == "Status: -" && servers_text != "-" {
+        status_text = "Status: deployed".to_string();
+    }
+    let info_style = bg.patch(app.theme.text_dim.to_style());
+    let status_lines = Text::from(vec![
+        Line::from(Span::styled(status_text, status_style)),
+        Line::from(Span::styled(format!("Servers: {servers_text}"), info_style)),
+    ]);
     f.render_widget(
-        Paragraph::new(status_text)
-            .style(status_style)
-            .wrap(Wrap { trim: true }),
+        Paragraph::new(status_lines).wrap(Wrap { trim: true }),
         status_area,
     );
     f.render_widget(

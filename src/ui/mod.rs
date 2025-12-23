@@ -39,6 +39,7 @@ use ratatui::{
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_yaml::{Mapping as YamlMapping, Value as YamlValue};
 use std::fs;
 use std::io::{self, Stdout};
 use std::path::{Path, PathBuf};
@@ -708,6 +709,7 @@ struct TemplateEntry {
     compose_path: PathBuf,
     has_compose: bool,
     desc: String,
+    template_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -772,6 +774,12 @@ struct ImageUpdateEntry {
     error: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TemplateDeployEntry {
+    server_name: String,
+    timestamp: i64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct RateLimitEntry {
     hits: Vec<i64>,
@@ -781,8 +789,12 @@ struct RateLimitEntry {
 #[derive(Default, Serialize, Deserialize)]
 struct LocalState {
     version: u32,
+    #[serde(default)]
     image_updates: HashMap<String, ImageUpdateEntry>,
+    #[serde(default)]
     rate_limits: HashMap<String, RateLimitEntry>,
+    #[serde(default)]
+    template_deploys: HashMap<String, Vec<TemplateDeployEntry>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -852,14 +864,67 @@ fn image_updates_path() -> PathBuf {
     PathBuf::from("state.json")
 }
 
-fn load_local_state() -> (PathBuf, HashMap<String, ImageUpdateEntry>, HashMap<String, RateLimitEntry>) {
+fn load_local_state(
+) -> (
+    PathBuf,
+    HashMap<String, ImageUpdateEntry>,
+    HashMap<String, RateLimitEntry>,
+    HashMap<String, Vec<TemplateDeployEntry>>,
+) {
     let path = image_updates_path();
     let data = fs::read_to_string(&path).ok();
-    let state = data
+    let value = data
         .as_deref()
-        .and_then(|raw| serde_json::from_str::<LocalState>(raw).ok())
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok());
+    let image_updates = value
+        .as_ref()
+        .and_then(|v| v.get("image_updates"))
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    (path, state.image_updates, state.rate_limits)
+    let rate_limits = value
+        .as_ref()
+        .and_then(|v| v.get("rate_limits"))
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    let mut template_deploys: HashMap<String, Vec<TemplateDeployEntry>> = HashMap::new();
+    if let Some(v) = value.as_ref().and_then(|v| v.get("template_deploys")) {
+        if let Some(obj) = v.as_object() {
+            for (key, entry) in obj {
+                if entry.is_array() {
+                    if let Ok(list) = serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
+                    {
+                        if !list.is_empty() {
+                            template_deploys.insert(key.clone(), list);
+                        }
+                    }
+                    continue;
+                }
+                if let Ok(single) = serde_json::from_value::<TemplateDeployEntry>(entry.clone()) {
+                    template_deploys.insert(key.clone(), vec![single]);
+                    continue;
+                }
+                let server_name = entry
+                    .get("server_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let timestamp = entry
+                    .get("timestamp")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                if !server_name.trim().is_empty() && timestamp > 0 {
+                    template_deploys.insert(
+                        key.clone(),
+                        vec![TemplateDeployEntry {
+                            server_name,
+                            timestamp,
+                        }],
+                    );
+                }
+            }
+        }
+    }
+    (path, image_updates, rate_limits, template_deploys)
 }
 
 fn truncate_msg(s: &str, max: usize) -> String {
@@ -890,6 +955,8 @@ enum ActionRequest {
         local_compose: PathBuf,
         pull: bool,
         force_recreate: bool,
+        server_name: String,
+        template_id: String,
     },
     NetTemplateDeploy {
         name: String,
@@ -1033,6 +1100,8 @@ struct App {
     image_updates_inflight: HashSet<String>,
     image_updates_path: PathBuf,
     rate_limits: HashMap<String, RateLimitEntry>,
+    template_deploys: HashMap<String, Vec<TemplateDeployEntry>>,
+    unknown_template_ids_warned: HashSet<String>,
 
     theme_refresh_after_edit: Option<String>,
 
@@ -1302,7 +1371,8 @@ impl App {
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_nanos() as u64
             ^ (std::process::id() as u64);
-        let (image_updates_path, mut image_updates, mut rate_limits) = load_local_state();
+        let (image_updates_path, mut image_updates, mut rate_limits, template_deploys) =
+            load_local_state();
         let now = now_unix();
         image_updates.retain(|_, v| now.saturating_sub(v.checked_at) <= IMAGE_UPDATE_TTL_SECS);
         rate_limits.retain(|_, v| {
@@ -1505,6 +1575,8 @@ impl App {
             image_updates_inflight: HashSet::new(),
             image_updates_path,
             rate_limits,
+            template_deploys,
+            unknown_template_ids_warned: HashSet::new(),
 
             container_details_scroll: 0,
             image_details_scroll: 0,
@@ -1565,12 +1637,18 @@ impl App {
             } else {
                 "-".to_string()
             };
+            let template_id = if has_compose {
+                extract_template_id(&compose_path)
+            } else {
+                None
+            };
             out.push(TemplateEntry {
                 name,
                 dir: path,
                 compose_path,
                 has_compose,
                 desc,
+                template_id,
             });
         }
         out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -1579,6 +1657,24 @@ impl App {
             self.templates_state.templates_selected =
                 self.templates_state.templates.len().saturating_sub(1);
         }
+        for t in &self.templates_state.templates {
+            let Some(id) = t.template_id.as_ref() else {
+                continue;
+            };
+            if self.template_deploys.contains_key(id) {
+                continue;
+            }
+            if let Some(list) = self.template_deploys.remove(&t.name) {
+                self.template_deploys.insert(id.clone(), list);
+            }
+        }
+        let known: HashSet<String> = self
+            .templates_state
+            .templates
+            .iter()
+            .filter_map(|t| t.template_id.clone())
+            .collect();
+        self.template_deploys.retain(|id, _| known.contains(id));
     }
 
     fn selected_template(&self) -> Option<&TemplateEntry> {
@@ -2225,6 +2321,7 @@ impl App {
             self.container_idx_by_id.insert(c.id.clone(), i);
         }
         self.rebuild_stacks();
+        self.prune_template_deploys_for_active_server();
         self.loading = false;
         self.loading_since = None;
         self.ip_refresh_needed = true;
@@ -3454,6 +3551,95 @@ fn normalize_image_id(id: &str) -> String {
     format!("sha256:{}", s)
 }
 
+fn template_id_from_labels(labels: &str) -> Option<String> {
+    for part in labels.split(',') {
+        let Some((k, v)) = part.split_once('=') else {
+            continue;
+        };
+        if k.trim() == "app.containr.template_id" {
+            let value = v.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn add_label_mapping(map: &mut YamlMapping, key: &str, value: &str) {
+    let k = YamlValue::String(key.to_string());
+    let v = YamlValue::String(value.to_string());
+    map.insert(k, v);
+}
+
+fn add_label_sequence(seq: &mut Vec<YamlValue>, key: &str, value: &str) {
+    let needle = format!("{key}={value}");
+    if seq
+        .iter()
+        .any(|v| v.as_str().map(|s| s == needle).unwrap_or(false))
+    {
+        return;
+    }
+    seq.push(YamlValue::String(needle));
+}
+
+fn inject_template_labels(value: &mut YamlValue, template_id: &str) -> anyhow::Result<()> {
+    let obj = value
+        .as_mapping_mut()
+        .ok_or_else(|| anyhow::anyhow!("compose root is not a mapping"))?;
+    for key in ["services", "networks", "volumes"] {
+        let Some(section) = obj.get_mut(&YamlValue::String(key.to_string())) else {
+            continue;
+        };
+        let Some(items) = section.as_mapping_mut() else {
+            continue;
+        };
+        for (_, item) in items.iter_mut() {
+            let Some(item_map) = item.as_mapping_mut() else {
+                continue;
+            };
+            let label_key = YamlValue::String("labels".to_string());
+            if let Some(labels) = item_map.get_mut(&label_key) {
+                match labels {
+                    YamlValue::Mapping(m) => {
+                        add_label_mapping(m, "app.containr.template_id", template_id);
+                    }
+                    YamlValue::Sequence(seq) => {
+                        add_label_sequence(seq, "app.containr.template_id", template_id);
+                    }
+                    _ => {
+                        let mut m = YamlMapping::new();
+                        add_label_mapping(&mut m, "app.containr.template_id", template_id);
+                        *labels = YamlValue::Mapping(m);
+                    }
+                }
+            } else {
+                let mut m = YamlMapping::new();
+                add_label_mapping(&mut m, "app.containr.template_id", template_id);
+                item_map.insert(label_key, YamlValue::Mapping(m));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn render_compose_with_template_id(
+    path: &Path,
+    template_id: &str,
+) -> anyhow::Result<PathBuf> {
+        let data = fs::read_to_string(path)?;
+        let mut yaml: YamlValue = serde_yaml::from_str(&data)
+            .map_err(|e| anyhow::anyhow!("compose parse failed: {}", e))?;
+        inject_template_labels(&mut yaml, template_id)?;
+        let rendered = serde_yaml::to_string(&yaml)
+            .map_err(|e| anyhow::anyhow!("compose render failed: {}", e))?;
+    let mut out = std::env::temp_dir();
+    let stamp = OffsetDateTime::now_utc().unix_timestamp();
+    out.push(format!("containr-compose-{stamp}-{}.yaml", std::process::id()));
+    fs::write(&out, rendered)?;
+    Ok(out)
+}
+
 pub async fn run_tui(
     runner: Runner,
     cfg: DockerCfg,
@@ -3787,6 +3973,7 @@ pub async fn run_tui(
                     local_compose,
                     pull,
                     force_recreate,
+                    ..
                 } => perform_template_deploy(
                     runner,
                     docker,
@@ -4344,11 +4531,24 @@ pub async fn run_tui(
                             name,
                             local_compose,
                             pull,
+                            server_name,
+                            template_id,
                             ..
                         } => {
                             app.templates_state.template_deploy_inflight.remove(name);
                             app.template_action_error.remove(name);
                             app.set_info(format!("deployed template {name}"));
+                            if !server_name.trim().is_empty() && !template_id.trim().is_empty() {
+                                let entry = TemplateDeployEntry {
+                                    server_name: server_name.clone(),
+                                    timestamp: now_unix(),
+                                };
+                                app.template_deploys
+                                    .entry(template_id.clone())
+                                    .or_default()
+                                    .push(entry);
+                                app.save_local_state();
+                            }
                             if app.image_update_autocheck && *pull {
                                 let images = images_from_compose(local_compose);
                                 if !images.is_empty() {
@@ -4816,15 +5016,20 @@ async fn perform_template_deploy(
         }
         Runner::Ssh(_) => deploy_remote_dir_for(name),
     };
-    let remote_compose = format!("{remote_dir}/compose.yaml");
+    let template_id = ensure_template_id(&local_compose.to_path_buf())?;
+    let rendered_path = render_compose_with_template_id(local_compose, &template_id)?;
+    let remote_compose = format!("{remote_dir}/compose.rendered.yaml");
     let remote_dir_q = shell_single_quote(&remote_dir);
     let docker_cmd = docker.docker_cmd.to_shell();
     let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
     let pull_cmd = format!("cd {remote_dir_q} && {docker_cmd} compose pull");
     let recreate_flag = if force_recreate { " --force-recreate" } else { "" };
-    let up_cmd = format!("cd {remote_dir_q} && {docker_cmd} compose up -d{recreate_flag}");
+    let up_cmd = format!(
+        "cd {remote_dir_q} && {docker_cmd} compose -f compose.rendered.yaml up -d{recreate_flag}"
+    );
     runner.run(&mkdir_cmd).await?;
-    runner.copy_file_to(local_compose, &remote_compose).await?;
+    runner.copy_file_to(&rendered_path, &remote_compose).await?;
+    let _ = fs::remove_file(&rendered_path);
     if pull {
         let _ = runner.run(&pull_cmd).await?;
     }
