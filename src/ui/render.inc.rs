@@ -40,6 +40,7 @@ fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
     items.push(ShellSidebarItem::Module(ShellView::Logs));
     items.push(ShellSidebarItem::Gap);
     items.push(ShellSidebarItem::Module(ShellView::Templates));
+    items.push(ShellSidebarItem::Module(ShellView::Registries));
     // Help is accessible via :? / :help (not a module entry).
 
     let actions: Vec<ShellAction> = match app.shell_view {
@@ -66,6 +67,7 @@ fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
             ShellAction::TemplateDelete,
             ShellAction::TemplateDeploy,
         ],
+        ShellView::Registries => vec![ShellAction::RegistryTest],
         ShellView::Inspect | ShellView::Logs | ShellView::Help => vec![],
         ShellView::Messages => vec![],
     };
@@ -145,6 +147,7 @@ fn shell_set_main_view(app: &mut App, view: ShellView) {
         ShellView::Volumes => ActiveView::Volumes,
         ShellView::Networks => ActiveView::Networks,
         ShellView::Templates => app.active_view,
+        ShellView::Registries => app.active_view,
         ShellView::Inspect | ShellView::Logs | ShellView::Help | ShellView::Messages => {
             app.active_view
         }
@@ -307,10 +310,17 @@ fn shell_refresh(
     app: &mut App,
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
+    refresh_pause_tx: &watch::Sender<bool>,
 ) {
     if app.servers.is_empty() && app.current_target.trim().is_empty() {
         app.set_warn("no server configured");
         return;
+    }
+    if app.refresh_paused {
+        app.refresh_paused = false;
+        app.refresh_pause_reason = None;
+        app.refresh_error_streak = 0;
+        let _ = refresh_pause_tx.send(false);
     }
     app.start_loading(true);
     app.dashboard.loading = true;
@@ -356,6 +366,15 @@ impl App {
         }
     }
 
+    fn persist_registries(&mut self) {
+        let path = config::registries_path(&self.config_path);
+        if let Err(e) = config::save_registries(&path, &self.registries_cfg) {
+            self.set_error(format!("failed to save registries: {:#}", e));
+            return;
+        }
+        self.resolve_registry_auths();
+    }
+
     fn prune_image_updates(&mut self) {
         let now = now_unix();
         self.image_updates
@@ -390,6 +409,18 @@ impl App {
         let registry = image_registry_for_ref(image_ref);
         let entry = self.rate_limits.entry(registry).or_default();
         entry.limited_until = Some(now + RATE_LIMIT_WINDOW_SECS);
+    }
+
+    fn status_banner(&mut self) -> Option<String> {
+        if self.refresh_paused {
+            let reason = self
+                .refresh_pause_reason
+                .as_deref()
+                .unwrap_or("paused")
+                .to_string();
+            return Some(format!("Refresh paused ({reason}). Press r to retry."));
+        }
+        self.rate_limit_banner()
     }
 
     fn rate_limit_banner(&mut self) -> Option<String> {
@@ -438,9 +469,11 @@ impl App {
         }
         self.prune_rate_limits();
         let state = LocalState {
-            version: 1,
+            version: 5,
             image_updates: self.image_updates.clone(),
             rate_limits: self.rate_limits.clone(),
+            template_deploys: self.template_deploys.clone(),
+            registry_tests: self.registry_tests.clone(),
         };
         match serde_json::to_string_pretty(&state) {
             Ok(raw) => {
@@ -451,6 +484,98 @@ impl App {
             Err(e) => {
                 self.log_msg(MsgLevel::Warn, format!("state serialize failed: {:#}", e));
             }
+        }
+    }
+
+    fn remove_template_deploys_for_server(&mut self, template_id: &str, server: &str) -> bool {
+        if template_id.trim().is_empty() || server.trim().is_empty() {
+            return false;
+        }
+        let mut changed = false;
+        let mut empty = false;
+        if let Some(list) = self.template_deploys.get_mut(template_id) {
+            let before = list.len();
+            list.retain(|entry| entry.server_name != server);
+            if list.len() != before {
+                changed = true;
+            }
+            if list.is_empty() {
+                empty = true;
+            }
+        }
+        if empty {
+            self.template_deploys.remove(template_id);
+        }
+        changed || empty
+    }
+
+    fn prune_template_deploys_for_active_server(&mut self) {
+        let Some(server) = self.active_server.clone() else {
+            return;
+        };
+        if server.trim().is_empty() {
+            return;
+        }
+        let mut present_ids: HashSet<String> = HashSet::new();
+        for c in &self.containers {
+            if let Some(id) = template_id_from_labels(&c.labels) {
+                present_ids.insert(id);
+            }
+        }
+        let known_ids: HashSet<String> = self
+            .templates_state
+            .templates
+            .iter()
+            .filter_map(|t| t.template_id.clone())
+            .collect();
+        for id in present_ids.iter() {
+            if known_ids.contains(id) {
+                continue;
+            }
+            if self.unknown_template_ids_warned.insert(id.clone()) {
+                self.log_msg(
+                    MsgLevel::Info,
+                    format!("template id found on server but missing locally: {id}"),
+                );
+            }
+        }
+        let mut next: HashMap<String, Vec<TemplateDeployEntry>> = HashMap::new();
+        let mut changed = false;
+        for (template_id, list) in &self.template_deploys {
+            let mut out: Vec<TemplateDeployEntry> = Vec::new();
+            for entry in list {
+                if entry.server_name == server && !present_ids.contains(template_id) {
+                    changed = true;
+                    continue;
+                }
+                out.push(entry.clone());
+            }
+            if out.is_empty() {
+                changed = true;
+                continue;
+            }
+            next.insert(template_id.clone(), out);
+        }
+        for id in present_ids.iter() {
+            if !known_ids.contains(id) {
+                continue;
+            }
+            let entry = next.entry(id.clone()).or_default();
+            if !entry.iter().any(|e| e.server_name == server) {
+                entry.push(TemplateDeployEntry {
+                    server_name: server.clone(),
+                    timestamp: now_unix(),
+                });
+                self.log_msg(
+                    MsgLevel::Info,
+                    format!("template id matched on server {server}: {id}"),
+                );
+                changed = true;
+            }
+        }
+        if changed {
+            self.template_deploys = next;
+            self.save_local_state();
         }
     }
 
@@ -2348,6 +2473,11 @@ fn delete_template(app: &mut App, name: &str) -> anyhow::Result<()> {
     );
 
     fs::remove_dir_all(&target)?;
+    if let Some(info) = extract_template_id(&dir.join("compose.yaml")) {
+        if app.template_deploys.remove(&info).is_some() {
+            app.save_local_state();
+        }
+    }
     Ok(())
 }
 
@@ -2511,6 +2641,43 @@ fn extract_template_description(path: &PathBuf) -> Option<String> {
     None
 }
 
+fn extract_template_id(path: &PathBuf) -> Option<String> {
+    // Heuristic: find a "# containr_template_id: ..." line near the top of compose.yaml.
+    let data = fs::read_to_string(path).ok()?;
+    for line in data.lines().take(40) {
+        let l = line.trim_start();
+        if !l.starts_with('#') {
+            if !l.is_empty() {
+                break;
+            }
+            continue;
+        }
+        let body = l.trim_start_matches('#').trim_start();
+        let low = body.to_ascii_lowercase();
+        if !low.starts_with("containr_template_id:") {
+            continue;
+        }
+        let value = body["containr_template_id:".len()..].trim();
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn ensure_template_id(path: &PathBuf) -> anyhow::Result<String> {
+    if let Some(existing) = extract_template_id(path) {
+        return Ok(existing);
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let data = fs::read_to_string(path).unwrap_or_default();
+    let mut out = String::new();
+    out.push_str(&format!("# containr_template_id: {id}\n"));
+    out.push_str(&data);
+    fs::write(path, out)?;
+    Ok(id)
+}
+
 fn extract_net_template_description(path: &PathBuf) -> Option<String> {
     let data = fs::read_to_string(path).ok()?;
     let v: Value = serde_json::from_str(&data).ok()?;
@@ -2611,6 +2778,7 @@ fn shell_execute_cmdline(
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
     refresh_interval_tx: &watch::Sender<Duration>,
+    refresh_pause_tx: &watch::Sender<bool>,
     image_update_limit_tx: &watch::Sender<usize>,
     logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
@@ -2789,7 +2957,11 @@ fn shell_execute_cmdline(
                         }
                     }
                 },
-                ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages => {}
+                ShellView::Logs
+                | ShellView::Inspect
+                | ShellView::Help
+                | ShellView::Messages
+                | ShellView::Registries => {}
             }
             app.set_info("cleared action error marker(s) for selection");
             return;
@@ -2801,7 +2973,7 @@ fn shell_execute_cmdline(
                     TemplatesKind::Networks => app.refresh_net_templates(),
                 }
             } else {
-                shell_refresh(app, refresh_tx, dash_refresh_tx);
+                shell_refresh(app, refresh_tx, dash_refresh_tx, refresh_pause_tx);
             }
             return;
         }
@@ -3117,6 +3289,12 @@ fn shell_execute_cmdline(
         return;
     }
 
+    if cmd == "registries" {
+        let args: Vec<&str> = it.collect();
+        let _ = commands::registry_cmd::handle_registries(app, &args);
+        return;
+    }
+
     if cmd == "template" || cmd == "tpl" {
         let args: Vec<&str> = it.collect();
         let _ = commands::templates_cmd::handle_template(
@@ -3126,6 +3304,12 @@ fn shell_execute_cmdline(
             &args,
             action_req_tx,
         );
+        return;
+    }
+
+    if cmd == "registry" || cmd == "reg" {
+        let args: Vec<&str> = it.collect();
+        let _ = commands::registry_cmd::handle_registry(app, force, &args, action_req_tx);
         return;
     }
 
@@ -3255,6 +3439,24 @@ fn shell_exec_stack_action(
         return;
     }
     let remove_networks = matches!(action, ContainerAction::Remove);
+    if remove_networks {
+        let server = app.active_server.clone().unwrap_or_default();
+        let ids: HashSet<String> = app
+            .containers
+            .iter()
+            .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(stack_name.as_str()))
+            .filter_map(|c| template_id_from_labels(&c.labels))
+            .collect();
+        let mut changed = false;
+        for id in ids {
+            if app.remove_template_deploys_for_server(&id, &server) {
+                changed = true;
+            }
+        }
+        if changed {
+            app.save_local_state();
+        }
+    }
     let network_ids = if remove_networks {
         app.stack_network_ids(&stack_name)
     } else {
@@ -3414,6 +3616,31 @@ fn shell_exec_network_remove(app: &mut App, action_req_tx: &mpsc::UnboundedSende
     }
 }
 
+fn shell_registry_test_selected(
+    app: &mut App,
+    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
+) {
+    let Some(entry) = app.registries_cfg.registries.get(app.registries_selected) else {
+        app.set_warn("no registry selected");
+        return;
+    };
+    let host = entry.host.clone();
+    let test_repo = entry.test_repo.clone();
+    let auth = match app.registry_auth_for_host(&host) {
+        Ok(v) => v,
+        Err(e) => {
+            app.set_warn(format!("{e:#}"));
+            return;
+        }
+    };
+    app.set_info(format!("testing registry {host}"));
+    let _ = action_req_tx.send(ActionRequest::RegistryTest {
+        host,
+        auth,
+        test_repo,
+    });
+}
+
 fn shell_execute_action(
     app: &mut App,
     a: ShellAction,
@@ -3533,6 +3760,9 @@ fn shell_execute_action(
                 }
             }
         }
+        ShellAction::RegistryTest => {
+            shell_registry_test_selected(app, action_req_tx);
+        }
     }
 }
 
@@ -3555,10 +3785,21 @@ fn shell_deploy_template(
         app.set_warn("template has no compose.yaml");
         return;
     }
+    let template_id = match ensure_template_id(&tpl.compose_path) {
+        Ok(id) => id,
+        Err(e) => {
+            app.set_error(format!("template id create failed: {e:#}"));
+            return;
+        }
+    };
+    if tpl.template_id.as_deref() != Some(&template_id) {
+        app.refresh_templates();
+    }
     if app.active_server.is_none() {
         app.set_warn("no active server selected");
         return;
     }
+    let server_name = app.active_server.clone().unwrap_or_default();
     let runner = current_runner_from_app(app);
     let docker = DockerCfg {
         docker_cmd: current_docker_cmd_from_app(app),
@@ -3570,6 +3811,8 @@ fn shell_deploy_template(
         local_compose: tpl.compose_path.clone(),
         pull,
         force_recreate,
+        server_name,
+        template_id,
     });
     app.templates_state.template_deploy_inflight.insert(
         tpl.name.clone(),
@@ -3687,6 +3930,7 @@ fn handle_shell_key(
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
     refresh_interval_tx: &watch::Sender<Duration>,
+    refresh_pause_tx: &watch::Sender<bool>,
     image_update_limit_tx: &watch::Sender<usize>,
     inspect_req_tx: &mpsc::UnboundedSender<InspectTarget>,
     logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
@@ -3705,6 +3949,7 @@ fn handle_shell_key(
                         refresh_tx,
                         dash_refresh_tx,
                         refresh_interval_tx,
+                        refresh_pause_tx,
                         image_update_limit_tx,
                         logs_req_tx,
                         action_req_tx,
@@ -3713,6 +3958,14 @@ fn handle_shell_key(
                 }
             }
         }
+    }
+
+    if app.refresh_paused
+        && key.modifiers.is_empty()
+        && matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R'))
+    {
+        shell_refresh(app, refresh_tx, dash_refresh_tx, refresh_pause_tx);
+        return;
     }
 
     if app.shell_cmdline.mode {
@@ -3733,6 +3986,7 @@ fn handle_shell_key(
                         refresh_tx,
                         dash_refresh_tx,
                         refresh_interval_tx,
+                        refresh_pause_tx,
                         image_update_limit_tx,
                         logs_req_tx,
                         action_req_tx,
@@ -3766,6 +4020,7 @@ fn handle_shell_key(
                     refresh_tx,
                     dash_refresh_tx,
                     refresh_interval_tx,
+                    refresh_pause_tx,
                     image_update_limit_tx,
                     logs_req_tx,
                     action_req_tx,
@@ -4170,6 +4425,7 @@ fn handle_shell_key(
                             refresh_tx,
                             dash_refresh_tx,
                             refresh_interval_tx,
+                            refresh_pause_tx,
                             image_update_limit_tx,
                             logs_req_tx,
                             action_req_tx,
@@ -4241,6 +4497,7 @@ fn handle_shell_key(
                     ShellView::Volumes,
                     ShellView::Networks,
                     ShellView::Templates,
+                    ShellView::Registries,
                     ShellView::Inspect,
                     ShellView::Logs,
                 ] {
@@ -4566,6 +4823,60 @@ fn handle_shell_key(
                             app.templates_state.net_templates_details_scroll = 0;
                         }
                     }
+                }
+            }
+        }
+        ShellView::Registries => {
+            if app.shell_focus == ShellFocus::Details {
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.registries_details_scroll =
+                            app.registries_details_scroll.saturating_sub(1)
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => app.registries_details_scroll += 1,
+                    KeyCode::PageUp => {
+                        app.registries_details_scroll =
+                            app.registries_details_scroll.saturating_sub(10)
+                    }
+                    KeyCode::PageDown => app.registries_details_scroll += 10,
+                    KeyCode::Home => app.registries_details_scroll = 0,
+                    KeyCode::End => app.registries_details_scroll = usize::MAX,
+                    _ => {}
+                }
+            } else {
+                let before = app.registries_selected;
+                let total = app.registries_cfg.registries.len();
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.registries_selected = app.registries_selected.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if total > 0 {
+                            app.registries_selected =
+                                (app.registries_selected + 1).min(total - 1);
+                        } else {
+                            app.registries_selected = 0;
+                        }
+                    }
+                    KeyCode::PageUp => {
+                        app.registries_selected = app.registries_selected.saturating_sub(10);
+                    }
+                    KeyCode::PageDown => {
+                        if total > 0 {
+                            app.registries_selected =
+                                (app.registries_selected + 10).min(total - 1);
+                        } else {
+                            app.registries_selected = 0;
+                        }
+                    }
+                    KeyCode::Home => app.registries_selected = 0,
+                    KeyCode::End => {
+                        app.registries_selected = total.saturating_sub(1);
+                    }
+                    _ => {}
+                }
+                if app.registries_selected != before {
+                    app.registries_details_scroll = 0;
                 }
             }
         }
@@ -4996,6 +5307,12 @@ fn shell_breadcrumbs(app: &App) -> String {
                 .map(|t| format!("/{}", t.name))
                 .unwrap_or_default(),
         },
+        ShellView::Registries => app
+            .registries_cfg
+            .registries
+            .get(app.registries_selected)
+            .map(|r| format!("/{}", r.host))
+            .unwrap_or_default(),
         ShellView::Inspect => app
             .inspect.target
             .as_ref()
@@ -5202,6 +5519,7 @@ fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout:
             | ShellView::Volumes
             | ShellView::Networks
             | ShellView::Templates
+            | ShellView::Registries
     );
 
     if is_split_view && app.shell_split_mode == ShellSplitMode::Vertical {
@@ -5311,7 +5629,7 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     ) {
         None
     } else {
-        app.rate_limit_banner()
+        app.status_banner()
     };
     let (title_area, banner_area, content_area) = if banner.is_some() {
         let chunks = Layout::default()
@@ -5390,6 +5708,19 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             }
             draw_shell_templates_table(f, app, content_area);
         }
+        ShellView::Registries => {
+            draw_shell_title(
+                f,
+                app,
+                "Registries",
+                app.registries_cfg.registries.len(),
+                title_area,
+            );
+            if let Some(area) = banner_area {
+                draw_rate_limit_banner(f, app, banner, area);
+            }
+            draw_shell_registries_table(f, app, content_area);
+        }
         ShellView::Logs => {
             draw_shell_title(f, app, "Logs", app.logs_total_lines(), title_area);
             draw_shell_logs_view(f, app, content_area);
@@ -5439,6 +5770,7 @@ fn draw_shell_main_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
         ShellView::Volumes => draw_shell_volume_details(f, app, area),
         ShellView::Networks => draw_shell_network_details(f, app, area),
         ShellView::Templates => draw_shell_template_details(f, app, area),
+        ShellView::Registries => draw_shell_registry_details(f, app, area),
         ShellView::Logs => draw_shell_logs_meta(f, app, area),
         ShellView::Inspect => draw_shell_inspect_meta(f, app, area),
         ShellView::Help => draw_shell_help_meta(f, app, area),
@@ -5466,6 +5798,9 @@ fn draw_shell_footer(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::R
         }
         ShellView::Templates => {
             " F1 help  b sidebar  ^p layout  :q quit"
+        }
+        ShellView::Registries => {
+            " F1 help  b sidebar  ^p layout  ^y test  :q quit"
         }
         ShellView::Logs => {
             " F1 help  / search  : cmd  n/N match  m regex  l numbers  q back  :q quit"
@@ -6731,6 +7066,16 @@ fn draw_shell_stack_templates_table(
                     ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
                 };
                 (action_error_label(err).to_string(), st)
+            } else if let Some(id) = t.template_id.as_ref() {
+                if let Some(list) = app.template_deploys.get(id) {
+                    if list.is_empty() {
+                        (String::new(), Style::default())
+                    } else {
+                        ("deployed".to_string(), Style::default())
+                    }
+                } else {
+                    (String::new(), Style::default())
+                }
             } else {
                 (String::new(), Style::default())
             };
@@ -6752,7 +7097,7 @@ fn draw_shell_stack_templates_table(
         [
             Constraint::Length(24),
             Constraint::Length(7),
-            Constraint::Length(10),
+            Constraint::Length(16),
             Constraint::Min(10),
         ],
     )
@@ -6777,6 +7122,89 @@ fn draw_shell_templates_table(f: &mut ratatui::Frame, app: &mut App, area: ratat
         TemplatesKind::Stacks => draw_shell_stack_templates_table(f, app, area),
         TemplatesKind::Networks => draw_shell_net_templates_table(f, app, area),
     }
+}
+
+fn registry_auth_label(auth: &config::RegistryAuth) -> &'static str {
+    match auth {
+        config::RegistryAuth::Anonymous => "anonymous",
+        config::RegistryAuth::Basic => "basic",
+        config::RegistryAuth::BearerToken => "bearer",
+        config::RegistryAuth::GithubPat => "github",
+    }
+}
+
+fn draw_shell_registries_table(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
+    let bg = app.theme.panel.to_style();
+    f.render_widget(Block::default().style(bg), area);
+    let inner = area.inner(ratatui::layout::Margin {
+        vertical: 0,
+        horizontal: 1,
+    });
+
+    if app.registries_cfg.registries.is_empty() {
+        let msg = "No registries configured (edit via :registry add).".to_string();
+        f.render_widget(
+            Paragraph::new(msg)
+                .style(bg.patch(app.theme.text_dim.to_style()))
+                .wrap(Wrap { trim: true }),
+            inner,
+        );
+        return;
+    }
+
+    let rows: Vec<Row> = app
+        .registries_cfg
+        .registries
+        .iter()
+        .map(|r| {
+            let host = r.host.clone();
+            let auth = registry_auth_label(&r.auth).to_string();
+            let user = r.username.clone().unwrap_or_else(|| "-".to_string());
+            let secret = if r.secret.as_ref().map(|s| s.trim()).unwrap_or("").is_empty() {
+                "-"
+            } else {
+                "yes"
+            };
+            Row::new(vec![
+                Cell::from(host),
+                Cell::from(auth),
+                Cell::from(user),
+                Cell::from(secret),
+            ])
+        })
+        .collect();
+
+    let mut state = TableState::default();
+    state.select(Some(
+        app.registries_selected.min(rows.len().saturating_sub(1)),
+    ));
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(22),
+            Constraint::Length(10),
+            Constraint::Length(16),
+            Constraint::Length(7),
+        ],
+    )
+    .header(
+        Row::new(vec![
+            Cell::from("HOST"),
+            Cell::from("AUTH"),
+            Cell::from("USER"),
+            Cell::from("SECRET"),
+        ])
+        .style(shell_header_style(app)),
+    )
+    .style(bg)
+    .column_spacing(1)
+    .row_highlight_style(shell_row_highlight(app))
+    .highlight_symbol("");
+    f.render_stateful_widget(table, inner, &mut state);
 }
 
 fn draw_shell_net_templates_table(
@@ -7611,7 +8039,7 @@ fn draw_shell_stack_template_details(
     });
     let parts = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(1)])
+        .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(inner);
     let status_area = parts[0];
     let content_area = parts[1];
@@ -7668,7 +8096,7 @@ fn draw_shell_stack_template_details(
         out.push(Line::from(Span::styled(format!("{:>lnw$} ", 1), ln_style)));
     }
 
-    let (status_text, status_style) = if let Some(m) =
+    let (mut status_text, status_style) = if let Some(m) =
         app.templates_state.template_deploy_inflight.get(&t.name)
     {
         let secs = m.started.elapsed().as_secs();
@@ -7685,10 +8113,30 @@ fn draw_shell_stack_template_details(
     } else {
         ("Status: -".to_string(), bg.patch(app.theme.text_dim.to_style()))
     };
+    let deploy_list = t
+        .template_id
+        .as_ref()
+        .and_then(|id| app.template_deploys.get(id));
+    let mut servers: Vec<String> = deploy_list
+        .map(|list| list.iter().map(|info| info.server_name.clone()).collect())
+        .unwrap_or_default();
+    servers.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    servers.dedup();
+    let servers_text = if servers.is_empty() {
+        "-".to_string()
+    } else {
+        servers.join(", ")
+    };
+    if status_text == "Status: -" && servers_text != "-" {
+        status_text = "Status: deployed".to_string();
+    }
+    let info_style = bg.patch(app.theme.text_dim.to_style());
+    let status_lines = Text::from(vec![
+        Line::from(Span::styled(status_text, status_style)),
+        Line::from(Span::styled(format!("Servers: {servers_text}"), info_style)),
+    ]);
     f.render_widget(
-        Paragraph::new(status_text)
-            .style(status_style)
-            .wrap(Wrap { trim: true }),
+        Paragraph::new(status_lines).wrap(Wrap { trim: true }),
         status_area,
     );
     f.render_widget(
@@ -7705,6 +8153,93 @@ fn draw_shell_template_details(f: &mut ratatui::Frame, app: &mut App, area: rata
         TemplatesKind::Stacks => draw_shell_stack_template_details(f, app, area),
         TemplatesKind::Networks => draw_shell_net_template_details(f, app, area),
     }
+}
+
+fn draw_shell_registry_details(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
+    let bg = if app.shell_focus == ShellFocus::Details {
+        app.theme.panel_focused.to_style()
+    } else {
+        app.theme.panel.to_style()
+    };
+    f.render_widget(Block::default().style(bg), area);
+    let Some(r) = app.registries_cfg.registries.get(app.registries_selected).cloned() else {
+        return;
+    };
+    let mut scroll = app.registries_details_scroll;
+    let host = r.host.trim().to_ascii_lowercase();
+    let resolved = app.registry_auths.get(&host);
+    let secret_status = if r.secret.as_ref().map(|s| s.trim()).unwrap_or("").is_empty() {
+        "missing"
+    } else if resolved.and_then(|a| a.secret.as_ref()).is_some() {
+        "loaded"
+    } else {
+        "unavailable"
+    };
+    let username = r.username.clone().unwrap_or_else(|| "-".to_string());
+    let test_repo = r.test_repo.clone().unwrap_or_else(|| "-".to_string());
+    let (test_time, test_result) = if let Some(entry) = app.registry_tests.get(&host) {
+        let ts = OffsetDateTime::from_unix_timestamp(entry.checked_at)
+            .map(format_action_ts)
+            .unwrap_or_else(|_| entry.checked_at.to_string());
+        let status = if entry.ok { "ok" } else { "error" };
+        let result = if entry.message.trim().is_empty() {
+            status.to_string()
+        } else {
+            format!("{status}: {}", entry.message)
+        };
+        (ts, truncate_end(&result, 120))
+    } else {
+        ("-".to_string(), "-".to_string())
+    };
+    let val = bg;
+    let rows = vec![
+        DetailRow {
+            key: "Host",
+            value: r.host,
+            style: val,
+        },
+        DetailRow {
+            key: "Auth",
+            value: registry_auth_label(&r.auth).to_string(),
+            style: val,
+        },
+        DetailRow {
+            key: "Username",
+            value: username,
+            style: val,
+        },
+        DetailRow {
+            key: "Secret",
+            value: secret_status.to_string(),
+            style: val,
+        },
+        DetailRow {
+            key: "Test repo",
+            value: test_repo,
+            style: val,
+        },
+        DetailRow {
+            key: "Last test",
+            value: test_time,
+            style: val,
+        },
+        DetailRow {
+            key: "Test result",
+            value: test_result,
+            style: val,
+        },
+        DetailRow {
+            key: "Identity",
+            value: app.registries_cfg.age_identity.clone(),
+            style: val,
+        },
+    ];
+    scroll = render_detail_table(f, app, area, rows, scroll);
+    app.registries_details_scroll = scroll;
 }
 
 fn draw_shell_net_template_details(
@@ -8772,6 +9307,48 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":nettemplate/:nt deploy[!] [name]",
         "Create network on active server (! = recreate if already exists)",
     ));
+    out.push(Line::from(""));
+
+    out.push(h("Registries"));
+    out.push(item("Registries", ":registries [view|list]", "Open view or list entries"));
+    out.push(item(
+        "Registries",
+        ":registries identity <path>",
+        "Set age identity path for encrypted secrets",
+    ));
+    out.push(item("Registries", ":registry add <host>", "Add registry entry"));
+    out.push(item(
+        "Registries",
+        ":registry set <host> auth <anonymous|basic|bearer|github>",
+        "Set auth mode",
+    ));
+    out.push(item(
+        "Registries",
+        ":registry set <host> username <value>",
+        "Set username (use clear to remove)",
+    ));
+    out.push(item(
+        "Registries",
+        ":registry set <host> secret <value>",
+        "Store secret (age encrypted)",
+    ));
+    out.push(item(
+        "Registries",
+        ":registry set <host> secret-file <path>",
+        "Store secret from file (age encrypted)",
+    ));
+    out.push(item(
+        "Registries",
+        ":registry set <host> test-repo <owner/name>",
+        "Set repository used for auth tests",
+    ));
+    out.push(item(
+        "Registries",
+        ":registry test [host]",
+        "Test registry credentials (uses selected if omitted)",
+    ));
+    out.push(item("Registries", "^y", "Test selected registry (default binding)"));
+    out.push(item("Registries", ":registry rm[!] <host>", "Remove registry entry"));
     out.push(Line::from(""));
 
     out.push(h("Stacks"));

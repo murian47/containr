@@ -205,6 +205,56 @@ pub struct ContainrConfig {
     pub image_update_autocheck: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RegistryAuth {
+    Anonymous,
+    Basic,
+    BearerToken,
+    GithubPat,
+}
+
+fn default_registry_auth() -> RegistryAuth {
+    RegistryAuth::Anonymous
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistryEntry {
+    pub host: String,
+    #[serde(default = "default_registry_auth")]
+    pub auth: RegistryAuth,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub secret: Option<String>,
+    #[serde(default)]
+    pub test_repo: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistriesConfig {
+    #[serde(default = "default_registries_version")]
+    pub version: u32,
+    #[serde(default)]
+    pub age_identity: String,
+    #[serde(default)]
+    pub registries: Vec<RegistryEntry>,
+}
+
+fn default_registries_version() -> u32 {
+    1
+}
+
+impl Default for RegistriesConfig {
+    fn default() -> Self {
+        Self {
+            version: default_registries_version(),
+            age_identity: String::new(),
+            registries: Vec::new(),
+        }
+    }
+}
+
 fn default_version() -> u32 {
     10
 }
@@ -282,6 +332,47 @@ pub fn config_path() -> anyhow::Result<PathBuf> {
         .join(".config")
         .join("containr")
         .join("config.json"))
+}
+
+pub fn registries_path(config_path: &Path) -> PathBuf {
+    config_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("registries.json")
+}
+
+pub fn load_registries(config_path: &Path) -> anyhow::Result<RegistriesConfig> {
+    let path = registries_path(config_path);
+    if !path.exists() {
+        let mut cfg = RegistriesConfig::default();
+        cfg.age_identity = "~/.config/containr/age.key".to_string();
+        cfg.registries.push(RegistryEntry {
+            host: "docker.io".to_string(),
+            auth: RegistryAuth::Anonymous,
+            username: None,
+            secret: None,
+            test_repo: None,
+        });
+        let _ = save_registries(&path, &cfg);
+        return Ok(cfg);
+    }
+    let bytes =
+        fs::read(&path).with_context(|| format!("failed to read registries: {}", path.display()))?;
+    let cfg: RegistriesConfig = serde_json::from_slice(&bytes)
+        .with_context(|| format!("failed to parse registries: {}", path.display()))?;
+    Ok(cfg)
+}
+
+pub fn save_registries(path: &Path, cfg: &RegistriesConfig) -> anyhow::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create registries dir: {}", parent.display()))?;
+    }
+    let bytes =
+        serde_json::to_vec_pretty(cfg).context("failed to serialize registries config")?;
+    fs::write(path, bytes)
+        .with_context(|| format!("failed to write registries: {}", path.display()))?;
+    Ok(())
 }
 
 fn legacy_config_paths() -> anyhow::Result<Vec<PathBuf>> {

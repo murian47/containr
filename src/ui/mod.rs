@@ -36,13 +36,17 @@ use ratatui::{
         ScrollbarState, Table, TableState, Wrap,
     },
 };
+use reqwest::{Client, StatusCode, Url};
+use reqwest::header::WWW_AUTHENTICATE;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_yaml::{Mapping as YamlMapping, Value as YamlValue};
 use std::fs;
-use std::io::{self, Stdout};
+use std::io::{self, Read, Stdout, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{
@@ -53,6 +57,11 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::sync::Semaphore;
 use tokio::sync::watch;
+use age::Decryptor;
+use age::Encryptor;
+use age::armor::{ArmoredWriter, Format};
+use age::secrecy::ExposeSecret;
+use age::x25519;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct KeySpec {
@@ -421,6 +430,7 @@ enum ShellView {
     Volumes,
     Networks,
     Templates,
+    Registries,
     Inspect,
     Logs,
     Help,
@@ -437,6 +447,7 @@ impl ShellView {
             ShellView::Volumes => "volumes",
             ShellView::Networks => "networks",
             ShellView::Templates => "templates",
+            ShellView::Registries => "registries",
             ShellView::Inspect => "inspect",
             ShellView::Logs => "logs",
             ShellView::Help => "help",
@@ -453,6 +464,7 @@ impl ShellView {
             ShellView::Volumes => "Volumes",
             ShellView::Networks => "Networks",
             ShellView::Templates => "Templates",
+            ShellView::Registries => "Registries",
             ShellView::Inspect => "Inspect",
             ShellView::Logs => "Logs",
             ShellView::Help => "Help",
@@ -514,6 +526,7 @@ enum ShellAction {
     ImageForceRemove,
     VolumeRemove,
     NetworkRemove,
+    RegistryTest,
     TemplateEdit,
     TemplateNew,
     TemplateDelete,
@@ -532,6 +545,7 @@ impl ShellAction {
             ShellAction::ImageForceRemove => "Remove",
             ShellAction::VolumeRemove => "Remove",
             ShellAction::NetworkRemove => "Remove",
+            ShellAction::RegistryTest => "Test",
             ShellAction::TemplateEdit => "Edit",
             ShellAction::TemplateNew => "New",
             ShellAction::TemplateDelete => "Delete",
@@ -552,6 +566,7 @@ impl ShellAction {
             ShellAction::ImageForceRemove => "^d",
             ShellAction::VolumeRemove => "^d",
             ShellAction::NetworkRemove => "^d",
+            ShellAction::RegistryTest => "^y",
             ShellAction::TemplateEdit => "^e",
             ShellAction::TemplateNew => "^n",
             ShellAction::TemplateDelete => "^d",
@@ -569,6 +584,7 @@ fn shell_module_shortcut(view: ShellView) -> char {
         ShellView::Volumes => 'v',
         ShellView::Networks => 'n',
         ShellView::Templates => 't',
+        ShellView::Registries => 'r',
         ShellView::Inspect => 'i',
         ShellView::Logs => 'l',
         ShellView::Help => '?',
@@ -708,6 +724,7 @@ struct TemplateEntry {
     compose_path: PathBuf,
     has_compose: bool,
     desc: String,
+    template_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -772,6 +789,26 @@ struct ImageUpdateEntry {
     error: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TemplateDeployEntry {
+    server_name: String,
+    timestamp: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RegistryTestEntry {
+    checked_at: i64,
+    ok: bool,
+    message: String,
+}
+
+#[derive(Clone, Debug)]
+struct RegistryAuthResolved {
+    auth: config::RegistryAuth,
+    username: Option<String>,
+    secret: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct RateLimitEntry {
     hits: Vec<i64>,
@@ -781,8 +818,14 @@ struct RateLimitEntry {
 #[derive(Default, Serialize, Deserialize)]
 struct LocalState {
     version: u32,
+    #[serde(default)]
     image_updates: HashMap<String, ImageUpdateEntry>,
+    #[serde(default)]
     rate_limits: HashMap<String, RateLimitEntry>,
+    #[serde(default)]
+    template_deploys: HashMap<String, Vec<TemplateDeployEntry>>,
+    #[serde(default)]
+    registry_tests: HashMap<String, RegistryTestEntry>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -852,14 +895,73 @@ fn image_updates_path() -> PathBuf {
     PathBuf::from("state.json")
 }
 
-fn load_local_state() -> (PathBuf, HashMap<String, ImageUpdateEntry>, HashMap<String, RateLimitEntry>) {
+fn load_local_state(
+) -> (
+    PathBuf,
+    HashMap<String, ImageUpdateEntry>,
+    HashMap<String, RateLimitEntry>,
+    HashMap<String, Vec<TemplateDeployEntry>>,
+    HashMap<String, RegistryTestEntry>,
+) {
     let path = image_updates_path();
     let data = fs::read_to_string(&path).ok();
-    let state = data
+    let value = data
         .as_deref()
-        .and_then(|raw| serde_json::from_str::<LocalState>(raw).ok())
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok());
+    let image_updates = value
+        .as_ref()
+        .and_then(|v| v.get("image_updates"))
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    (path, state.image_updates, state.rate_limits)
+    let rate_limits = value
+        .as_ref()
+        .and_then(|v| v.get("rate_limits"))
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    let mut template_deploys: HashMap<String, Vec<TemplateDeployEntry>> = HashMap::new();
+    if let Some(v) = value.as_ref().and_then(|v| v.get("template_deploys")) {
+        if let Some(obj) = v.as_object() {
+            for (key, entry) in obj {
+                if entry.is_array() {
+                    if let Ok(list) = serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
+                    {
+                        if !list.is_empty() {
+                            template_deploys.insert(key.clone(), list);
+                        }
+                    }
+                    continue;
+                }
+                if let Ok(single) = serde_json::from_value::<TemplateDeployEntry>(entry.clone()) {
+                    template_deploys.insert(key.clone(), vec![single]);
+                    continue;
+                }
+                let server_name = entry
+                    .get("server_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let timestamp = entry
+                    .get("timestamp")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                if !server_name.trim().is_empty() && timestamp > 0 {
+                    template_deploys.insert(
+                        key.clone(),
+                        vec![TemplateDeployEntry {
+                            server_name,
+                            timestamp,
+                        }],
+                    );
+                }
+            }
+        }
+    }
+    let registry_tests = value
+        .as_ref()
+        .and_then(|v| v.get("registry_tests"))
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    (path, image_updates, rate_limits, template_deploys, registry_tests)
 }
 
 fn truncate_msg(s: &str, max: usize) -> String {
@@ -883,6 +985,11 @@ enum ActionRequest {
         action: ContainerAction,
         id: String,
     },
+    RegistryTest {
+        host: String,
+        auth: RegistryAuthResolved,
+        test_repo: Option<String>,
+    },
     TemplateDeploy {
         name: String,
         runner: Runner,
@@ -890,6 +997,8 @@ enum ActionRequest {
         local_compose: PathBuf,
         pull: bool,
         force_recreate: bool,
+        server_name: String,
+        template_id: String,
     },
     NetTemplateDeploy {
         name: String,
@@ -965,6 +1074,8 @@ struct App {
     volumes_selected: usize,
     networks_selected: usize,
     last_refresh: Option<Instant>,
+    last_loop_at: Option<Instant>,
+    reset_screen: bool,
     conn_error: Option<String>,
     last_error: Option<String>,
     loading: bool,
@@ -1012,6 +1123,9 @@ struct App {
     shell_cmdline: ShellCmdlineState,
     shell_help: ShellHelpState,
     refresh_secs: u64,
+    refresh_paused: bool,
+    refresh_pause_reason: Option<String>,
+    refresh_error_streak: u32,
     cmd_history_max: usize,
     git_autocommit: bool,
     git_autocommit_confirm: bool,
@@ -1033,6 +1147,11 @@ struct App {
     image_updates_inflight: HashSet<String>,
     image_updates_path: PathBuf,
     rate_limits: HashMap<String, RateLimitEntry>,
+    template_deploys: HashMap<String, Vec<TemplateDeployEntry>>,
+    unknown_template_ids_warned: HashSet<String>,
+    registries_cfg: config::RegistriesConfig,
+    registry_auths: HashMap<String, RegistryAuthResolved>,
+    registry_tests: HashMap<String, RegistryTestEntry>,
 
     theme_refresh_after_edit: Option<String>,
 
@@ -1042,6 +1161,9 @@ struct App {
     stacks_networks_scroll: usize,
     stack_details_focus: StackDetailsFocus,
     stacks_only_running: bool,
+
+    registries_selected: usize,
+    registries_details_scroll: usize,
 
     container_details_scroll: usize,
     image_details_scroll: usize,
@@ -1064,6 +1186,135 @@ impl App {
         let text = text.into();
         let at = now_local();
         self.session_msgs.push(SessionMsg { at, level, text });
+    }
+
+    fn resolve_registry_auths(&mut self) {
+        let mut identities: Vec<Box<dyn age::Identity>> = Vec::new();
+        let identity_path = self.registries_cfg.age_identity.trim();
+        if !identity_path.is_empty() {
+            let path = expand_user_path(identity_path);
+            match load_age_identities(&path) {
+                Ok(ids) => {
+                    identities = ids;
+                }
+                Err(e) => {
+                    self.log_msg(
+                        MsgLevel::Warn,
+                        format!("registry identities load failed: {:#}", e),
+                    );
+                }
+            }
+        }
+
+        let mut out: HashMap<String, RegistryAuthResolved> = HashMap::new();
+        let entries = self.registries_cfg.registries.clone();
+        for entry in entries {
+            let host = entry.host.trim().to_ascii_lowercase();
+            if host.is_empty() {
+                continue;
+            }
+            let mut secret_plain: Option<String> = None;
+            if !matches!(entry.auth, config::RegistryAuth::Anonymous) {
+                if let Some(secret) = entry.secret.as_ref().map(|s| s.trim().to_string()) {
+                    if identities.is_empty() {
+                        self.log_msg(
+                            MsgLevel::Warn,
+                            format!("registry secret ignored (no identity): {host}"),
+                        );
+                    } else {
+                        match decrypt_age_secret(&secret, &identities) {
+                            Ok(text) => secret_plain = Some(text),
+                            Err(e) => self.log_msg(
+                                MsgLevel::Warn,
+                                format!("registry secret decrypt failed for {host}: {:#}", e),
+                            ),
+                        }
+                    }
+                } else {
+                    self.log_msg(
+                        MsgLevel::Warn,
+                        format!("registry secret missing for {host}"),
+                    );
+                }
+            }
+
+            out.insert(
+                host.clone(),
+                RegistryAuthResolved {
+                    auth: entry.auth.clone(),
+                    username: entry.username.clone(),
+                    secret: secret_plain,
+                },
+            );
+        }
+        if !out.is_empty() {
+            let mut anonymous = 0usize;
+            let mut basic = 0usize;
+            let mut bearer = 0usize;
+            let mut ghcr = 0usize;
+            let mut with_secret = 0usize;
+            let mut with_username = 0usize;
+            for v in out.values() {
+                match v.auth {
+                    config::RegistryAuth::Anonymous => anonymous += 1,
+                    config::RegistryAuth::Basic => basic += 1,
+                    config::RegistryAuth::BearerToken => bearer += 1,
+                    config::RegistryAuth::GithubPat => ghcr += 1,
+                }
+                if v.secret.is_some() {
+                    with_secret += 1;
+                }
+                if v.username.is_some() {
+                    with_username += 1;
+                }
+            }
+            self.log_msg(
+                MsgLevel::Info,
+                format!(
+                    "registries loaded: {} (anon={anonymous} basic={basic} bearer={bearer} ghcr={ghcr} secrets={with_secret} users={with_username})",
+                    out.len()
+                ),
+            );
+        }
+        self.registry_auths = out;
+    }
+
+    fn registry_auth_for_host(&self, host: &str) -> anyhow::Result<RegistryAuthResolved> {
+        let host = host.trim().to_ascii_lowercase();
+        let entry = self
+            .registries_cfg
+            .registries
+            .iter()
+            .find(|r| r.host.trim().eq_ignore_ascii_case(&host))
+            .ok_or_else(|| anyhow::anyhow!("registry not found: {host}"))?;
+        let mut auth = RegistryAuthResolved {
+            auth: entry.auth.clone(),
+            username: entry.username.clone(),
+            secret: None,
+        };
+        if !matches!(auth.auth, config::RegistryAuth::Anonymous) {
+            if let Some(resolved) = self.registry_auths.get(&host) {
+                auth.secret = resolved.secret.clone();
+            }
+        }
+        match auth.auth {
+            config::RegistryAuth::Anonymous => Ok(auth),
+            config::RegistryAuth::Basic | config::RegistryAuth::GithubPat => {
+                if auth.username.as_deref().unwrap_or("").is_empty() {
+                    anyhow::bail!("registry username missing for {host}");
+                }
+                if auth.secret.as_deref().unwrap_or("").is_empty() {
+                    anyhow::bail!("registry secret missing for {host}");
+                }
+                Ok(auth)
+            }
+            config::RegistryAuth::BearerToken => {
+                if auth.secret.as_deref().unwrap_or("").is_empty() {
+                    anyhow::bail!("registry token missing for {host}");
+                }
+                Ok(auth)
+            }
+        }
     }
 
     fn mark_messages_seen(&mut self) {
@@ -1290,6 +1541,7 @@ impl App {
         image_update_concurrency: usize,
         image_update_debug: bool,
         image_update_autocheck: bool,
+        registries_cfg: config::RegistriesConfig,
     ) -> Self {
         let mut server_selected = 0usize;
         if let Some(name) = &active_server {
@@ -1302,7 +1554,8 @@ impl App {
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_nanos() as u64
             ^ (std::process::id() as u64);
-        let (image_updates_path, mut image_updates, mut rate_limits) = load_local_state();
+        let (image_updates_path, mut image_updates, mut rate_limits, template_deploys, registry_tests) =
+            load_local_state();
         let now = now_unix();
         image_updates.retain(|_, v| now.saturating_sub(v.checked_at) <= IMAGE_UPDATE_TTL_SECS);
         rate_limits.retain(|_, v| {
@@ -1348,6 +1601,8 @@ impl App {
             volumes_selected: 0,
             networks_selected: 0,
             last_refresh: None,
+            last_loop_at: Some(Instant::now()),
+            reset_screen: false,
             conn_error: None,
             last_error: None,
             loading: true,
@@ -1456,6 +1711,9 @@ impl App {
                 return_view: ShellView::Dashboard,
             },
             refresh_secs: 5,
+            refresh_paused: false,
+            refresh_pause_reason: None,
+            refresh_error_streak: 0,
             cmd_history_max: 200,
             git_autocommit,
             git_autocommit_confirm,
@@ -1501,10 +1759,17 @@ impl App {
             stacks_networks_scroll: 0,
             stack_details_focus: StackDetailsFocus::Containers,
             stacks_only_running: false,
+            registries_selected: 0,
+            registries_details_scroll: 0,
             image_updates,
             image_updates_inflight: HashSet::new(),
             image_updates_path,
             rate_limits,
+            template_deploys,
+            unknown_template_ids_warned: HashSet::new(),
+            registries_cfg,
+            registry_auths: HashMap::new(),
+            registry_tests,
 
             container_details_scroll: 0,
             image_details_scroll: 0,
@@ -1520,6 +1785,7 @@ impl App {
         if let Some(mode) = app.get_view_split_mode(app.shell_view) {
             app.shell_split_mode = mode;
         }
+        app.resolve_registry_auths();
         app
     }
 
@@ -1565,12 +1831,18 @@ impl App {
             } else {
                 "-".to_string()
             };
+            let template_id = if has_compose {
+                extract_template_id(&compose_path)
+            } else {
+                None
+            };
             out.push(TemplateEntry {
                 name,
                 dir: path,
                 compose_path,
                 has_compose,
                 desc,
+                template_id,
             });
         }
         out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -1579,6 +1851,24 @@ impl App {
             self.templates_state.templates_selected =
                 self.templates_state.templates.len().saturating_sub(1);
         }
+        for t in &self.templates_state.templates {
+            let Some(id) = t.template_id.as_ref() else {
+                continue;
+            };
+            if self.template_deploys.contains_key(id) {
+                continue;
+            }
+            if let Some(list) = self.template_deploys.remove(&t.name) {
+                self.template_deploys.insert(id.clone(), list);
+            }
+        }
+        let known: HashSet<String> = self
+            .templates_state
+            .templates
+            .iter()
+            .filter_map(|t| t.template_id.clone())
+            .collect();
+        self.template_deploys.retain(|id, _| known.contains(id));
     }
 
     fn selected_template(&self) -> Option<&TemplateEntry> {
@@ -2225,6 +2515,7 @@ impl App {
             self.container_idx_by_id.insert(c.id.clone(), i);
         }
         self.rebuild_stacks();
+        self.prune_template_deploys_for_active_server();
         self.loading = false;
         self.loading_since = None;
         self.ip_refresh_needed = true;
@@ -3454,6 +3745,469 @@ fn normalize_image_id(id: &str) -> String {
     format!("sha256:{}", s)
 }
 
+fn template_id_from_labels(labels: &str) -> Option<String> {
+    for part in labels.split(',') {
+        let Some((k, v)) = part.split_once('=') else {
+            continue;
+        };
+        if k.trim() == "app.containr.template_id" {
+            let value = v.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn add_label_mapping(map: &mut YamlMapping, key: &str, value: &str) {
+    let k = YamlValue::String(key.to_string());
+    let v = YamlValue::String(value.to_string());
+    map.insert(k, v);
+}
+
+fn add_label_sequence(seq: &mut Vec<YamlValue>, key: &str, value: &str) {
+    let needle = format!("{key}={value}");
+    if seq
+        .iter()
+        .any(|v| v.as_str().map(|s| s == needle).unwrap_or(false))
+    {
+        return;
+    }
+    seq.push(YamlValue::String(needle));
+}
+
+fn inject_template_labels(value: &mut YamlValue, template_id: &str) -> anyhow::Result<()> {
+    let obj = value
+        .as_mapping_mut()
+        .ok_or_else(|| anyhow::anyhow!("compose root is not a mapping"))?;
+    for key in ["services", "networks", "volumes"] {
+        let Some(section) = obj.get_mut(&YamlValue::String(key.to_string())) else {
+            continue;
+        };
+        let Some(items) = section.as_mapping_mut() else {
+            continue;
+        };
+        for (_, item) in items.iter_mut() {
+            let Some(item_map) = item.as_mapping_mut() else {
+                continue;
+            };
+            let label_key = YamlValue::String("labels".to_string());
+            if let Some(labels) = item_map.get_mut(&label_key) {
+                match labels {
+                    YamlValue::Mapping(m) => {
+                        add_label_mapping(m, "app.containr.template_id", template_id);
+                    }
+                    YamlValue::Sequence(seq) => {
+                        add_label_sequence(seq, "app.containr.template_id", template_id);
+                    }
+                    _ => {
+                        let mut m = YamlMapping::new();
+                        add_label_mapping(&mut m, "app.containr.template_id", template_id);
+                        *labels = YamlValue::Mapping(m);
+                    }
+                }
+            } else {
+                let mut m = YamlMapping::new();
+                add_label_mapping(&mut m, "app.containr.template_id", template_id);
+                item_map.insert(label_key, YamlValue::Mapping(m));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn load_age_identities(path: &Path) -> anyhow::Result<Vec<Box<dyn age::Identity>>> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("failed to read age identity: {}", path.display()))?;
+    let mut ids: Vec<Box<dyn age::Identity>> = Vec::new();
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if !line.starts_with("AGE-SECRET-KEY-") {
+            continue;
+        }
+        let id = x25519::Identity::from_str(line)
+            .map_err(|_| anyhow::anyhow!("invalid age identity"))?;
+        ids.push(Box::new(id));
+    }
+    anyhow::ensure!(!ids.is_empty(), "no age identities found");
+    Ok(ids)
+}
+
+fn ensure_age_identity(path: &Path) -> anyhow::Result<x25519::Identity> {
+    if path.exists() {
+        let raw = fs::read_to_string(path)
+            .with_context(|| format!("failed to read age identity: {}", path.display()))?;
+        for line in raw.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if !line.starts_with("AGE-SECRET-KEY-") {
+                continue;
+            }
+            let id = x25519::Identity::from_str(line)
+                .map_err(|_| anyhow::anyhow!("invalid age identity"))?;
+            return Ok(id);
+        }
+        anyhow::bail!("no age identities found");
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create identity dir: {}", parent.display()))?;
+    }
+    let id = x25519::Identity::generate();
+    let id_line = id.to_string();
+    let content = format!("# containr age identity\n{}\n", id_line.expose_secret());
+    fs::write(path, content)
+        .with_context(|| format!("failed to write age identity: {}", path.display()))?;
+    Ok(id)
+}
+
+fn encrypt_age_secret(secret: &str, identity: &x25519::Identity) -> anyhow::Result<String> {
+    let recipient = identity.to_public();
+    let encryptor =
+        Encryptor::with_recipients(std::iter::once(&recipient as &dyn age::Recipient))
+            .map_err(|_| anyhow::anyhow!("failed to configure age recipient"))?;
+    let mut out = Vec::new();
+    let armor = ArmoredWriter::wrap_output(&mut out, Format::AsciiArmor)?;
+    let mut writer = encryptor.wrap_output(armor)?;
+    writer.write_all(secret.as_bytes())?;
+    let armor = writer.finish()?;
+    let _ = armor.finish()?;
+    let encoded = String::from_utf8(out).context("encrypted secret is not valid utf-8")?;
+    Ok(encoded)
+}
+
+fn decrypt_age_secret(secret: &str, identities: &[Box<dyn age::Identity>]) -> anyhow::Result<String> {
+    let data = secret.as_bytes();
+    let reader: Box<dyn std::io::Read> = if secret.contains("BEGIN AGE ENCRYPTED FILE") {
+        Box::new(age::armor::ArmoredReader::new(std::io::Cursor::new(data)))
+    } else {
+        Box::new(std::io::Cursor::new(data))
+    };
+    let decryptor = Decryptor::new(reader)?;
+    let mut out = String::new();
+    let mut r = decryptor.decrypt(identities.iter().map(|id| id.as_ref() as &dyn age::Identity))?;
+    r.read_to_string(&mut out)?;
+    Ok(out.trim().to_string())
+}
+
+fn is_local_registry_host(host: &str) -> bool {
+    let host = host.trim().to_ascii_lowercase();
+    host == "localhost"
+        || host.starts_with("localhost:")
+        || host == "127.0.0.1"
+        || host.starts_with("127.0.0.1:")
+        || host == "::1"
+        || host.starts_with("[::1]")
+}
+
+fn registry_api_base_url(host: &str) -> anyhow::Result<String> {
+    let host = host.trim();
+    anyhow::ensure!(!host.is_empty(), "registry host is empty");
+    if host.starts_with("http://") || host.starts_with("https://") {
+        let url = Url::parse(host).context("invalid registry url")?;
+        let scheme = url.scheme();
+        let host_str = url
+            .host_str()
+            .ok_or_else(|| anyhow::anyhow!("registry url missing host"))?;
+        let host_str = if host_str.eq_ignore_ascii_case("docker.io")
+            || host_str.eq_ignore_ascii_case("index.docker.io")
+        {
+            "registry-1.docker.io"
+        } else {
+            host_str
+        };
+        let mut base = format!("{scheme}://{host_str}");
+        if let Some(port) = url.port() {
+            base.push_str(&format!(":{port}"));
+        }
+        return Ok(base);
+    }
+    let host_norm = if host.eq_ignore_ascii_case("docker.io")
+        || host.eq_ignore_ascii_case("index.docker.io")
+    {
+        "registry-1.docker.io".to_string()
+    } else {
+        host.to_string()
+    };
+    let scheme = if is_local_registry_host(host) {
+        "http"
+    } else {
+        "https"
+    };
+    Ok(format!("{scheme}://{host_norm}"))
+}
+
+fn parse_www_authenticate_params(value: &str, scheme: &str) -> Option<HashMap<String, String>> {
+    let value_trim = value.trim();
+    let scheme_lc = scheme.to_ascii_lowercase();
+    let value_lc = value_trim.to_ascii_lowercase();
+    let prefix = format!("{scheme_lc} ");
+    let pos = value_lc.find(&prefix)?;
+    let params_str = &value_trim[pos + prefix.len()..];
+    let mut params: HashMap<String, String> = HashMap::new();
+    for part in params_str.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let mut it = part.splitn(2, '=');
+        let key = it.next()?.trim();
+        let val = it.next().unwrap_or("").trim().trim_matches('"');
+        if !key.is_empty() {
+            params.insert(key.to_string(), val.to_string());
+        }
+    }
+    if params.is_empty() {
+        None
+    } else {
+        Some(params)
+    }
+}
+
+async fn registry_fetch_token(
+    client: &Client,
+    realm: &str,
+    service: Option<&str>,
+    scope: Option<&str>,
+    basic: Option<(&str, &str)>,
+) -> anyhow::Result<String> {
+    let mut url = Url::parse(realm).context("invalid token realm url")?;
+    {
+        let mut pairs = url.query_pairs_mut();
+        if let Some(service) = service {
+            if !service.trim().is_empty() {
+                pairs.append_pair("service", service);
+            }
+        }
+        if let Some(scope) = scope {
+            if !scope.trim().is_empty() {
+                pairs.append_pair("scope", scope);
+            }
+        }
+    }
+    let mut req = client.get(url);
+    if let Some((user, pass)) = basic {
+        req = req.basic_auth(user, Some(pass));
+    }
+    let resp = req.send().await.context("token request failed")?;
+    if !resp.status().is_success() {
+        anyhow::bail!("token request failed: http {}", resp.status());
+    }
+    let body = resp.text().await.context("invalid token response")?;
+    let value: Value = serde_json::from_str(&body).context("invalid token response")?;
+    if let Some(token) = value
+        .get("token")
+        .and_then(|v| v.as_str())
+        .or_else(|| value.get("access_token").and_then(|v| v.as_str()))
+    {
+        return Ok(token.to_string());
+    }
+    anyhow::bail!("token response missing token");
+}
+
+fn token_context(realm: &str, service: Option<&str>, scope: Option<&str>) -> String {
+    let service = service.unwrap_or("-");
+    let scope = scope.unwrap_or("-");
+    format!("realm={realm} service={service} scope={scope}")
+}
+
+fn normalize_test_repo(raw: &str) -> String {
+    let raw = raw.trim().trim_start_matches('/');
+    let raw = raw.split('@').next().unwrap_or(raw);
+    let raw = raw.split(':').next().unwrap_or(raw);
+    raw.to_string()
+}
+
+async fn registry_test(
+    host: &str,
+    auth: &RegistryAuthResolved,
+    test_repo: Option<&str>,
+) -> anyhow::Result<String> {
+    let base = registry_api_base_url(host)?;
+    let repo = test_repo
+        .map(normalize_test_repo)
+        .filter(|v| !v.is_empty());
+    let url = format!("{base}/v2/");
+    let client = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .context("failed to build http client")?;
+    let host_lc = host.trim().to_ascii_lowercase();
+    if host_lc == "ghcr.io" && matches!(auth.auth, config::RegistryAuth::Anonymous) && repo.is_none()
+    {
+        anyhow::bail!("ghcr.io anonymous test requires test-repo");
+    }
+
+    let mut request = client.get(&url);
+    match auth.auth {
+        config::RegistryAuth::BearerToken => {
+            if let Some(token) = auth.secret.as_deref() {
+                request = request.bearer_auth(token);
+            }
+        }
+        _ => {}
+    }
+    let resp = request
+        .send()
+        .await
+        .context("registry request failed")?;
+    if resp.status().is_success() {
+        return Ok(format!("ok ({})", resp.status()));
+    }
+    if resp.status() != StatusCode::UNAUTHORIZED {
+        anyhow::bail!("registry request failed: http {}", resp.status());
+    }
+
+    let auth_header = resp
+        .headers()
+        .get(WWW_AUTHENTICATE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    if parse_www_authenticate_params(&auth_header, "basic").is_some() {
+        let (user, pass) = match auth.auth {
+            config::RegistryAuth::Basic | config::RegistryAuth::GithubPat => {
+                let user = auth.username.as_deref().unwrap_or("");
+                let pass = auth.secret.as_deref().unwrap_or("");
+                if user.is_empty() || pass.is_empty() {
+                    anyhow::bail!("registry credentials missing for {host}");
+                }
+                (user, pass)
+            }
+            _ => anyhow::bail!("registry requires basic auth"),
+        };
+        let resp = client
+            .get(&url)
+            .basic_auth(user, Some(pass))
+            .send()
+            .await
+            .context("registry basic auth request failed")?;
+        if resp.status().is_success() {
+            return Ok(format!("ok ({})", resp.status()));
+        }
+        anyhow::bail!("registry basic auth failed: http {}", resp.status());
+    }
+
+    let params = parse_www_authenticate_params(&auth_header, "bearer")
+        .ok_or_else(|| anyhow::anyhow!("registry auth challenge missing bearer details"))?;
+    let realm = params
+        .get("realm")
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("registry auth challenge missing realm"))?;
+    let service = params.get("service").cloned();
+    let mut scope = params.get("scope").cloned();
+    if let Some(repo) = repo.as_deref() {
+        scope = Some(format!("repository:{repo}:pull"));
+    }
+    let service = service.as_deref();
+    let scope = scope.as_deref();
+    let basic = match auth.auth {
+        config::RegistryAuth::Anonymous => None,
+        config::RegistryAuth::Basic | config::RegistryAuth::GithubPat => {
+            let user = auth.username.as_deref().unwrap_or("");
+            let pass = auth.secret.as_deref().unwrap_or("");
+            if user.is_empty() || pass.is_empty() {
+                anyhow::bail!("registry credentials missing for {host}");
+            }
+            Some((user, pass))
+        }
+        config::RegistryAuth::BearerToken => None,
+    };
+    let mut used_ghcr = false;
+    let token = match auth.auth {
+        config::RegistryAuth::BearerToken => auth
+            .secret
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("registry token missing for {host}"))?,
+        _ => match registry_fetch_token(&client, &realm, service, scope, basic).await {
+            Ok(token) => token,
+            Err(e) => {
+                if host_lc == "lscr.io" {
+                    let repo = repo
+                        .as_deref()
+                        .ok_or_else(|| anyhow::anyhow!("lscr.io test requires test-repo"))?;
+                    let ghcr_realm = "https://ghcr.io/token";
+                    let ghcr_scope = format!("repository:{repo}:pull");
+                    let ghcr_service = "ghcr.io";
+                    match registry_fetch_token(
+                        &client,
+                        ghcr_realm,
+                        Some(ghcr_service),
+                        Some(&ghcr_scope),
+                        basic,
+                    )
+                    .await
+                    {
+                        Ok(token) => {
+                            used_ghcr = true;
+                            token
+                        }
+                        Err(e2) => {
+                            let ctx = token_context(
+                                ghcr_realm,
+                                Some(ghcr_service),
+                                Some(&ghcr_scope),
+                            );
+                            anyhow::bail!("token request failed: {:#} ({ctx})", e2);
+                        }
+                    }
+                } else {
+                    let ctx = token_context(&realm, service, scope);
+                    anyhow::bail!("token request failed: {:#} ({ctx})", e);
+                }
+            }
+        },
+    };
+    let test_base = if used_ghcr {
+        "https://ghcr.io".to_string()
+    } else {
+        base
+    };
+    let test_url = if let Some(repo) = repo.as_deref() {
+        format!("{test_base}/v2/{repo}/tags/list")
+    } else {
+        url.clone()
+    };
+    let resp = client
+        .get(&test_url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .context("registry bearer auth request failed")?;
+    if resp.status().is_success() {
+        let hint = if used_ghcr { " via ghcr.io" } else { "" };
+        return Ok(format!("ok ({}){hint}", resp.status()));
+    }
+    if resp.status() == StatusCode::NOT_FOUND && repo.is_some() {
+        anyhow::bail!("registry repository not found (check test-repo)");
+    }
+    anyhow::bail!("registry bearer auth failed: http {}", resp.status());
+}
+
+fn render_compose_with_template_id(
+    path: &Path,
+    template_id: &str,
+) -> anyhow::Result<PathBuf> {
+        let data = fs::read_to_string(path)?;
+        let mut yaml: YamlValue = serde_yaml::from_str(&data)
+            .map_err(|e| anyhow::anyhow!("compose parse failed: {}", e))?;
+        inject_template_labels(&mut yaml, template_id)?;
+        let rendered = serde_yaml::to_string(&yaml)
+            .map_err(|e| anyhow::anyhow!("compose render failed: {}", e))?;
+    let mut out = std::env::temp_dir();
+    let stamp = OffsetDateTime::now_utc().unix_timestamp();
+    out.push(format!("containr-compose-{stamp}-{}.yaml", std::process::id()));
+    fs::write(&out, rendered)?;
+    Ok(out)
+}
+
 pub async fn run_tui(
     runner: Runner,
     cfg: DockerCfg,
@@ -3476,10 +4230,20 @@ pub async fn run_tui(
     image_update_debug: bool,
     image_update_autocheck: bool,
 ) -> anyhow::Result<()> {
+    const SLEEP_GAP_SECS: u64 = 120;
+    const ERROR_PAUSE_THRESHOLD: u32 = 3;
     let mut terminal = setup_terminal().context("failed to setup terminal")?;
     let (theme_spec, theme_err) = match theme::load_theme(&config_path, &active_theme) {
         Ok(t) => (t, None),
         Err(e) => (theme::default_theme_spec(), Some(e)),
+    };
+    let mut registries_err: Option<anyhow::Error> = None;
+    let registries_cfg = match config::load_registries(&config_path) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            registries_err = Some(e);
+            config::RegistriesConfig::default()
+        }
     };
     let mut app = App::new(
         servers,
@@ -3495,9 +4259,13 @@ pub async fn run_tui(
         image_update_concurrency,
         image_update_debug,
         image_update_autocheck,
+        registries_cfg,
     );
     if let Some(e) = theme_err {
         app.log_msg(MsgLevel::Warn, format!("failed to load theme: {:#}", e));
+    }
+    if let Some(e) = registries_err {
+        app.log_msg(MsgLevel::Warn, format!("failed to load registries: {:#}", e));
     }
     app.current_target = runner.key();
     if cfg.docker_cmd.is_empty() {
@@ -3560,10 +4328,12 @@ pub async fn run_tui(
 
     let (refresh_interval_tx, refresh_interval_rx) =
         watch::channel(Duration::from_secs(app.refresh_secs.max(1)));
+    let (refresh_pause_tx, refresh_pause_rx) = watch::channel(false);
     let (image_update_limit_tx, image_update_limit_rx) =
         watch::channel(app.image_update_concurrency.max(1));
     let fetch_task = tokio::spawn(async move {
         let mut refresh_interval_rx = refresh_interval_rx;
+        let mut pause_rx = refresh_pause_rx;
         let mut interval = tokio::time::interval(*refresh_interval_rx.borrow());
         let conn_rx = conn_rx;
         let mut conn_rx = conn_rx;
@@ -3581,11 +4351,20 @@ pub async fn run_tui(
                 }
                 interval = tokio::time::interval(*refresh_interval_rx.borrow());
               }
+              changed = pause_rx.changed() => {
+                if changed.is_err() {
+                  break;
+                }
+              }
               changed = conn_rx.changed() => {
                 if changed.is_err() {
                   break;
                 }
               }
+            }
+
+            if *pause_rx.borrow() {
+                continue;
             }
 
             let conn = conn_rx.borrow().clone();
@@ -3654,8 +4433,10 @@ pub async fn run_tui(
 
     let dash_conn_rx = conn_tx.subscribe();
     let dash_refresh_interval_rx = refresh_interval_tx.subscribe();
+    let dash_pause_rx = refresh_pause_tx.subscribe();
     let dash_task = tokio::spawn(async move {
         let mut dash_refresh_interval_rx = dash_refresh_interval_rx;
+        let mut pause_rx = dash_pause_rx;
         let mut interval = tokio::time::interval(*dash_refresh_interval_rx.borrow());
         let mut conn_rx = dash_conn_rx;
         loop {
@@ -3672,11 +4453,20 @@ pub async fn run_tui(
                 }
                 interval = tokio::time::interval(*dash_refresh_interval_rx.borrow());
               }
+              changed = pause_rx.changed() => {
+                if changed.is_err() {
+                  break;
+                }
+              }
               changed = conn_rx.changed() => {
                 if changed.is_err() {
                   break;
                 }
               }
+            }
+
+            if *pause_rx.borrow() {
+                continue;
             }
 
             let conn = conn_rx.borrow().clone();
@@ -3780,6 +4570,13 @@ pub async fn run_tui(
                 ActionRequest::Container { action, id } => {
                     docker::container_action(&conn.runner, &conn.docker, *action, id).await
                 }
+                ActionRequest::RegistryTest {
+                    host,
+                    auth,
+                    test_repo,
+                } => {
+                    registry_test(host, auth, test_repo.as_deref()).await
+                }
                 ActionRequest::TemplateDeploy {
                     name,
                     runner,
@@ -3787,6 +4584,7 @@ pub async fn run_tui(
                     local_compose,
                     pull,
                     force_recreate,
+                    ..
                 } => perform_template_deploy(
                     runner,
                     docker,
@@ -4086,6 +4884,22 @@ pub async fn run_tui(
         }
         // Avoid stale "in-progress" markers if the background action result gets lost.
         let now = Instant::now();
+        if let Some(last) = app.last_loop_at {
+            if now.duration_since(last) > Duration::from_secs(SLEEP_GAP_SECS) {
+                if !app.refresh_paused {
+                    app.refresh_paused = true;
+                    app.refresh_pause_reason = Some("sleep".to_string());
+                    app.refresh_error_streak = 0;
+                    let _ = refresh_pause_tx.send(true);
+                    app.log_msg(
+                        MsgLevel::Info,
+                        "refresh paused after sleep (press r to retry)",
+                    );
+                }
+                app.reset_screen = true;
+            }
+        }
+        app.last_loop_at = Some(now);
         app.action_inflight.retain(|_, m| now < m.until);
         app.image_action_inflight.retain(|_, m| now < m.until);
         app.volume_action_inflight.retain(|_, m| now < m.until);
@@ -4117,12 +4931,28 @@ pub async fn run_tui(
                     app.usage_refresh_needed = true;
                     app.reconcile_noncontainer_action_markers();
                     app.last_refresh = Some(Instant::now());
+                    app.refresh_error_streak = 0;
                     app.clear_conn_error();
                     app.clear_last_error();
                 }
                 Err(e) => {
                     app.loading = false;
                     app.loading_since = None;
+                    if app.refresh_paused {
+                        continue;
+                    }
+                    app.refresh_error_streak = app.refresh_error_streak.saturating_add(1);
+                    if app.refresh_error_streak >= ERROR_PAUSE_THRESHOLD {
+                        app.refresh_paused = true;
+                        app.refresh_pause_reason = Some("connection".to_string());
+                        let _ = refresh_pause_tx.send(true);
+                        app.reset_screen = true;
+                        app.log_msg(
+                            MsgLevel::Info,
+                            "refresh paused after connection errors (press r to retry)",
+                        );
+                        continue;
+                    }
                     app.set_conn_error(format!("{:#}", e));
                 }
             }
@@ -4340,15 +5170,44 @@ pub async fn run_tui(
                         ActionRequest::Container { id, .. } => {
                             app.container_action_error.remove(id);
                         }
+                        ActionRequest::RegistryTest { host, .. } => {
+                            let key = host.to_ascii_lowercase();
+                            app.registry_tests.insert(
+                                key,
+                                RegistryTestEntry {
+                                    checked_at: now_unix(),
+                                    ok: true,
+                                    message: truncate_msg(&out, 200),
+                                },
+                            );
+                            app.save_local_state();
+                            app.log_msg(
+                                MsgLevel::Info,
+                                format!("registry test ok for {host}: {out}"),
+                            );
+                        }
                         ActionRequest::TemplateDeploy {
                             name,
                             local_compose,
                             pull,
+                            server_name,
+                            template_id,
                             ..
                         } => {
                             app.templates_state.template_deploy_inflight.remove(name);
                             app.template_action_error.remove(name);
                             app.set_info(format!("deployed template {name}"));
+                            if !server_name.trim().is_empty() && !template_id.trim().is_empty() {
+                                let entry = TemplateDeployEntry {
+                                    server_name: server_name.clone(),
+                                    timestamp: now_unix(),
+                                };
+                                app.template_deploys
+                                    .entry(template_id.clone())
+                                    .or_default()
+                                    .push(entry);
+                                app.save_local_state();
+                            }
                             if app.image_update_autocheck && *pull {
                                 let images = images_from_compose(local_compose);
                                 if !images.is_empty() {
@@ -4482,6 +5341,23 @@ pub async fn run_tui(
                                     message: truncate_msg(&format!("{:#}", e), 240),
                                 },
                             );
+                        }
+                        ActionRequest::RegistryTest { host, .. } => {
+                            let key = host.to_ascii_lowercase();
+                            app.registry_tests.insert(
+                                key,
+                                RegistryTestEntry {
+                                    checked_at: now_unix(),
+                                    ok: false,
+                                    message: truncate_msg(&format!("{:#}", e), 200),
+                                },
+                            );
+                            app.save_local_state();
+                            app.log_msg(
+                                MsgLevel::Warn,
+                                format!("registry test failed for {host}: {:#}", e),
+                            );
+                            continue;
                         }
                         ActionRequest::TemplateDeploy { name, .. } => {
                             app.templates_state.template_deploy_inflight.remove(name);
@@ -4625,6 +5501,10 @@ pub async fn run_tui(
             }
         }
 
+        if app.reset_screen {
+            terminal.clear()?;
+            app.reset_screen = false;
+        }
         let refresh_display = Duration::from_secs(app.refresh_secs.max(1));
         terminal.draw(|f| draw(f, &mut app, refresh_display))?;
 
@@ -4642,6 +5522,7 @@ pub async fn run_tui(
                         &refresh_tx,
                         &dash_refresh_tx,
                         &refresh_interval_tx,
+                        &refresh_pause_tx,
                         &image_update_limit_tx,
                         &inspect_req_tx,
                         &logs_req_tx,
@@ -4816,15 +5697,20 @@ async fn perform_template_deploy(
         }
         Runner::Ssh(_) => deploy_remote_dir_for(name),
     };
-    let remote_compose = format!("{remote_dir}/compose.yaml");
+    let template_id = ensure_template_id(&local_compose.to_path_buf())?;
+    let rendered_path = render_compose_with_template_id(local_compose, &template_id)?;
+    let remote_compose = format!("{remote_dir}/compose.rendered.yaml");
     let remote_dir_q = shell_single_quote(&remote_dir);
     let docker_cmd = docker.docker_cmd.to_shell();
     let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
     let pull_cmd = format!("cd {remote_dir_q} && {docker_cmd} compose pull");
     let recreate_flag = if force_recreate { " --force-recreate" } else { "" };
-    let up_cmd = format!("cd {remote_dir_q} && {docker_cmd} compose up -d{recreate_flag}");
+    let up_cmd = format!(
+        "cd {remote_dir_q} && {docker_cmd} compose -f compose.rendered.yaml up -d{recreate_flag}"
+    );
     runner.run(&mkdir_cmd).await?;
-    runner.copy_file_to(local_compose, &remote_compose).await?;
+    runner.copy_file_to(&rendered_path, &remote_compose).await?;
+    let _ = fs::remove_file(&rendered_path);
     if pull {
         let _ = runner.run(&pull_cmd).await?;
     }

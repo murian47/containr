@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::DockerCmd;
+use crate::config::{DockerCmd, RegistriesConfig};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use serde_json::json;
@@ -42,6 +42,7 @@ fn mk_test_app() -> App {
         4,
         false,
         false,
+        RegistriesConfig::default(),
     )
 }
 
@@ -171,6 +172,7 @@ fn dashboard_shows_no_server_message() {
         4,
         false,
         false,
+        RegistriesConfig::default(),
     );
     app.loading = false;
     app.current_target.clear();

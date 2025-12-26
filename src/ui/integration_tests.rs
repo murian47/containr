@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::{DockerCmd, ServerEntry};
+use crate::config::{DockerCmd, RegistriesConfig, ServerEntry};
 use crate::docker::{self, ContainerAction, DockerCfg};
 use crate::runner::Runner;
 use crate::ssh::Ssh;
@@ -57,6 +57,7 @@ fn mk_integration_app(templates_dir: PathBuf) -> App {
         4,
         false,
         false,
+        RegistriesConfig::default(),
     );
     app.templates_state.dir = templates_dir;
     app
