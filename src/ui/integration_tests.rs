@@ -298,7 +298,7 @@ fn integration_messages_save() -> anyhow::Result<()> {
     let mut app = mk_integration_app(templates_dir);
     app.log_msg(MsgLevel::Info, "integration test message");
     let log_path = mk_temp_path("messages").join("messages.txt");
-    app.messages_save(log_path.to_string_lossy().as_ref());
+    app.messages_save(log_path.to_string_lossy().as_ref(), false);
     let meta = fs::metadata(&log_path)?;
     anyhow::ensure!(meta.len() > 0, "messages file is empty");
     Ok(())

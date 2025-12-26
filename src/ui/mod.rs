@@ -4194,18 +4194,19 @@ async fn registry_test(
 fn render_compose_with_template_id(
     path: &Path,
     template_id: &str,
-) -> anyhow::Result<PathBuf> {
-        let data = fs::read_to_string(path)?;
-        let mut yaml: YamlValue = serde_yaml::from_str(&data)
-            .map_err(|e| anyhow::anyhow!("compose parse failed: {}", e))?;
-        inject_template_labels(&mut yaml, template_id)?;
-        let rendered = serde_yaml::to_string(&yaml)
-            .map_err(|e| anyhow::anyhow!("compose render failed: {}", e))?;
-    let mut out = std::env::temp_dir();
-    let stamp = OffsetDateTime::now_utc().unix_timestamp();
-    out.push(format!("containr-compose-{stamp}-{}.yaml", std::process::id()));
-    fs::write(&out, rendered)?;
-    Ok(out)
+) -> anyhow::Result<tempfile::TempPath> {
+    let data = fs::read_to_string(path)?;
+    let mut yaml: YamlValue =
+        serde_yaml::from_str(&data).map_err(|e| anyhow::anyhow!("compose parse failed: {}", e))?;
+    inject_template_labels(&mut yaml, template_id)?;
+    let rendered =
+        serde_yaml::to_string(&yaml).map_err(|e| anyhow::anyhow!("compose render failed: {}", e))?;
+    let mut tmp = tempfile::Builder::new()
+        .prefix("containr-compose-")
+        .suffix(".yaml")
+        .tempfile()?;
+    tmp.write_all(rendered.as_bytes())?;
+    Ok(tmp.into_temp_path())
 }
 
 pub async fn run_tui(
@@ -5709,8 +5710,7 @@ async fn perform_template_deploy(
         "cd {remote_dir_q} && {docker_cmd} compose -f compose.rendered.yaml up -d{recreate_flag}"
     );
     runner.run(&mkdir_cmd).await?;
-    runner.copy_file_to(&rendered_path, &remote_compose).await?;
-    let _ = fs::remove_file(&rendered_path);
+    runner.copy_file_to(rendered_path.as_ref(), &remote_compose).await?;
     if pull {
         let _ = runner.run(&pull_cmd).await?;
     }

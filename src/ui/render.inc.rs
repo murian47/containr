@@ -588,7 +588,7 @@ impl App {
         Some(entry)
     }
 
-    fn messages_save(&mut self, path: &str) {
+    fn messages_save(&mut self, path: &str, force: bool) {
         if self.session_msgs.is_empty() {
             self.set_warn("no messages");
             return;
@@ -603,7 +603,7 @@ impl App {
             let ts = format_session_ts(m.at);
             out.push_str(&format!("{ts} {lvl} {}\n", m.text));
         }
-        match write_text_file(path, &out) {
+        match write_text_file(path, &out, force) {
             Ok(p) => self.set_info(format!("saved messages to {}", p.display())),
             Err(e) => self.set_error(format!("{e:#}")),
         }
@@ -2853,13 +2853,20 @@ fn shell_execute_cmdline(
                 app.messages_copy_selected();
                 return;
             }
-            if sub == "save" {
+            let (force, wants_save) = if sub == "save!" {
+                (true, true)
+            } else if sub == "save" {
+                (false, true)
+            } else {
+                (false, false)
+            };
+            if wants_save {
                 let rest: Vec<&str> = it.collect();
                 let path = rest.join(" ").trim().to_string();
                 if path.is_empty() {
                     app.set_warn("usage: :messages save <file>");
                 } else {
-                    app.messages_save(&path);
+                    app.messages_save(&path, force);
                 }
                 return;
             }
@@ -4124,13 +4131,20 @@ fn handle_shell_key(
                     // Minimal command mode for now.
                     let cmdline = app.logs.command.trim().to_string();
                     app.push_cmd_history(&cmdline);
-                    if let Some(path) = cmdline.strip_prefix("save").map(str::trim) {
+                    let (force, path) = if let Some(rest) = cmdline.strip_prefix("save!") {
+                        (true, rest.trim())
+                    } else if let Some(rest) = cmdline.strip_prefix("save") {
+                        (false, rest.trim())
+                    } else {
+                        (false, "")
+                    };
+                    if cmdline.starts_with("save") {
                         if path.is_empty() {
                             app.set_warn("usage: save <file>");
                         } else {
                             match app.logs.text.as_deref() {
                                 None => app.set_warn("no logs loaded"),
-                                Some(text) => match write_text_file(path, text) {
+                                Some(text) => match write_text_file(path, text, force) {
                                     Ok(p) => app.set_info(format!("saved logs to {}", p.display())),
                                     Err(e) => app.set_error(format!("save failed: {e:#}")),
                                 },
@@ -4304,7 +4318,14 @@ fn handle_shell_key(
                 KeyCode::Enter => {
                     let cmd = app.inspect.input.trim().to_string();
                     app.push_cmd_history(&cmd);
-                    if let Some(path) = cmd.strip_prefix("save").map(str::trim) {
+                    let (force, path) = if let Some(rest) = cmd.strip_prefix("save!") {
+                        (true, rest.trim())
+                    } else if let Some(rest) = cmd.strip_prefix("save") {
+                        (false, rest.trim())
+                    } else {
+                        (false, "")
+                    };
+                    if cmd.starts_with("save") {
                         if path.is_empty() {
                             app.inspect.error = Some("usage: save <file>".to_string());
                         } else {
@@ -4313,7 +4334,7 @@ fn handle_shell_key(
                                     app.inspect.error = Some("no inspect data loaded".to_string())
                                 }
                                 Some(v) => match serde_json::to_string_pretty(v) {
-                                    Ok(s) => match write_text_file(path, &s) {
+                                    Ok(s) => match write_text_file(path, &s, force) {
                                         Ok(p) => app
                                             .set_info(format!("saved inspect to {}", p.display())),
                                         Err(e) => {
@@ -9108,6 +9129,11 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":messages save <file>",
         "Save session messages to a file",
     ));
+    out.push(item(
+        "Global",
+        ":messages save! <file>",
+        "Overwrite when the file exists",
+    ));
     out.push(item("Global", ":ack [all]", "Clear per-item action error markers"));
     out.push(item("Global", ":refresh", "Trigger immediate refresh"));
     out.push(item(
@@ -9420,6 +9446,7 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Logs", "j/k", "Down/up"));
     out.push(item("Logs", "j <n>", "Jump to line n (1-based)"));
     out.push(item("Logs", "save <file>", "Save full logs to a file"));
+    out.push(item("Logs", "save! <file>", "Overwrite when the file exists"));
     out.push(item("Logs", "set number", "Enable line numbers"));
     out.push(item("Logs", "set nonumber", "Disable line numbers"));
     out.push(item("Logs", "set regex", "Enable regex search"));
@@ -9434,16 +9461,20 @@ fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Inspect", "expand", "Expand all"));
     out.push(item("Inspect", "collapse", "Collapse all"));
     out.push(item("Inspect", "save <file>", "Save full inspect JSON to a file"));
+    out.push(item("Inspect", "save! <file>", "Overwrite when the file exists"));
     out.push(item("Inspect", "y", "Copy selected value (pretty)"));
     out.push(item("Inspect", "p", "Copy selected JSON pointer path"));
     out
 }
 
-fn write_text_file(path: &str, text: &str) -> anyhow::Result<PathBuf> {
+fn write_text_file(path: &str, text: &str, force: bool) -> anyhow::Result<PathBuf> {
     let path = path.trim();
     anyhow::ensure!(!path.is_empty(), "missing file path");
 
     let path = expand_user_path(path);
+    if path.exists() && !force {
+        anyhow::bail!("file exists (use save! to overwrite)");
+    }
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent)?;

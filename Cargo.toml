@@ -1,6 +1,6 @@
 [package]
 name = "containr"
-version = "0.4.32"
+version = "0.4.33"
 edition = "2024"
 
 [dependencies]
@@ -14,6 +14,7 @@ reqwest = { version = "0.11.27", default-features = false, features = ["rustls-t
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.135"
 serde_yaml = "0.9.34"
+tempfile = "3.10.1"
 time = { version = "0.3.37", features = ["formatting", "local-offset"] }
 tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "time", "process", "sync"] }
 uuid = { version = "1.12.1", features = ["v4"] }
