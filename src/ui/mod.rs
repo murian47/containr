@@ -14,8 +14,11 @@ mod commands;
 mod render;
 pub mod theme;
 
-pub(crate) use render::help::shell_help_lines;
-pub(crate) use render::utils::{expand_user_path, write_text_file};
+use render::help::shell_help_lines;
+use render::sidebar::{
+    draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
+};
+use render::utils::{expand_user_path, shell_row_highlight, truncate_end, write_text_file};
 
 use crate::config::{self, ContainrConfig, DockerCmd, KeyBinding, ServerEntry};
 use crate::docker::{
