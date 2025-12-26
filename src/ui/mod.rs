@@ -16,6 +16,7 @@ pub mod theme;
 
 use render::help::shell_help_lines;
 use render::layout::{draw_shell_body, draw_shell_hr};
+use render::details::draw_shell_main_details;
 use render::sidebar::{
     draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
@@ -38,7 +39,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{
         Block, Cell, List, ListItem, ListState, Paragraph, Row, Scrollbar, ScrollbarOrientation,
         ScrollbarState, Table, TableState, Wrap,
