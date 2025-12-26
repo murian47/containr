@@ -11,7 +11,11 @@
 //! - UI code should use semantic theme roles (`theme::ThemeSpec`) instead of hard-coded colors.
 
 mod commands;
+mod render;
 pub mod theme;
+
+pub(crate) use render::help::shell_help_lines;
+pub(crate) use render::utils::{expand_user_path, write_text_file};
 
 use crate::config::{self, ContainrConfig, DockerCmd, KeyBinding, ServerEntry};
 use crate::docker::{
