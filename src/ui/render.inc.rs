@@ -5257,145 +5257,11 @@ fn shell_breadcrumbs(app: &App) -> String {
     }
 }
 
-fn draw_shell_body(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    if app.shell_sidebar_hidden {
-        draw_shell_main(f, app, area);
-        return;
-    }
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Length(if app.shell_sidebar_collapsed { 18 } else { 28 }),
-            Constraint::Min(1),
-        ])
-        .split(area);
-    draw_shell_sidebar(f, app, cols[0]);
-    draw_shell_main(f, app, cols[1]);
-}
-
-fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
-    let bg = app.theme.panel.to_style();
-    f.render_widget(Block::default().style(bg), area);
-
-    // Dashboard is a single-pane view (no details section).
-    if app.shell_view == ShellView::Dashboard {
-        draw_shell_main_list(f, app, area);
-        return;
-    }
-
-    let is_full = matches!(app.shell_view, ShellView::Logs | ShellView::Inspect);
-    let is_split_view = matches!(
-        app.shell_view,
-        ShellView::Stacks
-            | ShellView::Containers
-            | ShellView::Images
-            | ShellView::Volumes
-            | ShellView::Networks
-            | ShellView::Templates
-            | ShellView::Registries
-    );
-
-    if is_split_view && app.shell_split_mode == ShellSplitMode::Vertical {
-        let parts = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Length(1),
-                Constraint::Percentage(50),
-            ])
-            .split(area);
-        draw_shell_main_list(f, app, parts[0]);
-        draw_shell_vr(f, app, parts[1]);
-        draw_shell_main_details(f, app, parts[2]);
-        return;
-    }
-
-    let parts = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(
-            if matches!(
-                app.shell_view,
-                ShellView::Logs | ShellView::Inspect | ShellView::Messages | ShellView::Help
-            ) {
-                // Keep the meta area compact (3 lines) and centered.
-                [
-                    Constraint::Min(1),
-                    Constraint::Length(1),
-                    Constraint::Length(3),
-                ]
-            } else if is_full {
-                [
-                    Constraint::Percentage(85),
-                    Constraint::Length(1),
-                    Constraint::Percentage(15),
-                ]
-            } else {
-                [
-                    Constraint::Percentage(62),
-                    Constraint::Length(1),
-                    Constraint::Percentage(38),
-                ]
-            },
-        )
-        .split(area);
-
-    draw_shell_main_list(f, app, parts[0]);
-    draw_shell_hr(f, app, parts[1]);
-    draw_shell_main_details(f, app, parts[2]);
-}
-
-fn draw_shell_hr(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
-    let st = app.theme.divider.to_style();
-    let line = "─".repeat(area.width.max(1) as usize);
-    f.render_widget(
-        Paragraph::new(line).style(st).wrap(Wrap { trim: false }),
-        area,
-    );
-}
-
-fn draw_shell_vr(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
-    let st = app.theme.divider.to_style();
-    let line = "│".repeat(area.height.max(1) as usize);
-    f.render_widget(
-        Paragraph::new(line).style(st).wrap(Wrap { trim: false }),
-        area,
-    );
-}
-
-fn draw_shell_title(
+pub(in crate::ui) fn draw_shell_main_list(
     f: &mut ratatui::Frame,
-    app: &App,
-    title: &str,
-    count: usize,
+    app: &mut App,
     area: ratatui::layout::Rect,
 ) {
-    // Subtle focus indication: highlight the list title when list has focus.
-    let bg = if app.shell_focus == ShellFocus::List {
-        app.theme.panel_focused.to_style()
-    } else {
-        app.theme.panel.to_style()
-    };
-    f.render_widget(Block::default().style(bg), area);
-    let left = if count == usize::MAX {
-        format!(" {title}")
-    } else {
-        format!(" {title} ({count})")
-    };
-    let shown = truncate_end(&left, area.width.max(1) as usize);
-    let fg = if app.shell_focus == ShellFocus::List {
-        theme::parse_color(&app.theme.panel_focused.fg)
-    } else {
-        theme::parse_color(&app.theme.syntax_text.fg)
-    };
-    f.render_widget(
-        Paragraph::new(shown)
-            .style(bg.fg(fg))
-            .wrap(Wrap { trim: false }),
-        area,
-    );
-}
-
-fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
     let banner = if matches!(
         app.shell_view,
         ShellView::Logs | ShellView::Inspect | ShellView::Messages | ShellView::Help
@@ -5461,26 +5327,34 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             }
             draw_shell_networks_table(f, app, content_area);
         }
-        ShellView::Templates => {
-            match app.templates_state.kind {
-                TemplatesKind::Stacks => {
-                    draw_shell_title(f, app, "Templates: Stacks", app.templates_state.templates.len(), title_area);
+        ShellView::Templates => match app.templates_state.kind {
+            TemplatesKind::Stacks => {
+                draw_shell_title(
+                    f,
+                    app,
+                    "Templates: Stacks",
+                    app.templates_state.templates.len(),
+                    title_area,
+                );
+                if let Some(area) = banner_area {
+                    draw_rate_limit_banner(f, app, banner, area);
                 }
-                TemplatesKind::Networks => {
-                    draw_shell_title(
-                        f,
-                        app,
-                        "Templates: Networks",
-                        app.templates_state.net_templates.len(),
-                        title_area,
-                    );
+                draw_shell_templates_table(f, app, content_area);
+            }
+            TemplatesKind::Networks => {
+                draw_shell_title(
+                    f,
+                    app,
+                    "Templates: Networks",
+                    app.templates_state.net_templates.len(),
+                    title_area,
+                );
+                if let Some(area) = banner_area {
+                    draw_rate_limit_banner(f, app, banner, area);
                 }
+                draw_shell_templates_table(f, app, content_area);
             }
-            if let Some(area) = banner_area {
-                draw_rate_limit_banner(f, app, banner, area);
-            }
-            draw_shell_templates_table(f, app, content_area);
-        }
+        },
         ShellView::Registries => {
             draw_shell_title(
                 f,
@@ -5513,6 +5387,39 @@ fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     }
 }
 
+fn draw_shell_title(
+    f: &mut ratatui::Frame,
+    app: &App,
+    title: &str,
+    count: usize,
+    area: ratatui::layout::Rect,
+) {
+    // Subtle focus indication: highlight the list title when list has focus.
+    let bg = if app.shell_focus == ShellFocus::List {
+        app.theme.panel_focused.to_style()
+    } else {
+        app.theme.panel.to_style()
+    };
+    f.render_widget(Block::default().style(bg), area);
+    let left = if count == usize::MAX {
+        format!(" {title}")
+    } else {
+        format!(" {title} ({count})")
+    };
+    let shown = truncate_end(&left, area.width.max(1) as usize);
+    let fg = if app.shell_focus == ShellFocus::List {
+        theme::parse_color(&app.theme.panel_focused.fg)
+    } else {
+        theme::parse_color(&app.theme.syntax_text.fg)
+    };
+    f.render_widget(
+        Paragraph::new(shown)
+            .style(bg.fg(fg))
+            .wrap(Wrap { trim: false }),
+        area,
+    );
+}
+
 fn draw_rate_limit_banner(
     f: &mut ratatui::Frame,
     app: &App,
@@ -5534,7 +5441,11 @@ fn draw_rate_limit_banner(
     );
 }
 
-fn draw_shell_main_details(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_main_details(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     match app.shell_view {
         ShellView::Dashboard => {}
         ShellView::Stacks => draw_shell_stack_details(f, app, area),

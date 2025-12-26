@@ -15,6 +15,7 @@ mod render;
 pub mod theme;
 
 use render::help::shell_help_lines;
+use render::layout::{draw_shell_body, draw_shell_hr};
 use render::sidebar::{
     draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
