@@ -423,12 +423,22 @@ impl App {
         if server.trim().is_empty() {
             return;
         }
-        let mut present_ids: HashSet<String> = HashSet::new();
+        let mut present: HashMap<String, Option<String>> = HashMap::new();
         for c in &self.containers {
-            if let Some(id) = template_id_from_labels(&c.labels) {
-                present_ids.insert(id);
-            }
+            let Some(id) = template_id_from_labels(&c.labels) else {
+                continue;
+            };
+            let commit = template_commit_from_labels(&c.labels);
+            present
+                .entry(id)
+                .and_modify(|slot| {
+                    if slot.is_none() && commit.is_some() {
+                        *slot = commit.clone();
+                    }
+                })
+                .or_insert(commit);
         }
+        let present_ids: HashSet<String> = present.keys().cloned().collect();
         let known_ids: HashSet<String> = self
             .templates_state
             .templates
@@ -468,10 +478,19 @@ impl App {
                 continue;
             }
             let entry = next.entry(id.clone()).or_default();
+            if let Some(existing) = entry.iter_mut().find(|e| e.server_name == server) {
+                let commit = present.get(id).and_then(|c| c.clone());
+                if existing.commit != commit {
+                    existing.commit = commit;
+                    changed = true;
+                }
+                continue;
+            }
             if !entry.iter().any(|e| e.server_name == server) {
                 entry.push(TemplateDeployEntry {
                     server_name: server.clone(),
                     timestamp: now_unix(),
+                    commit: present.get(id).and_then(|c| c.clone()),
                 });
                 self.log_msg(
                     MsgLevel::Info,
@@ -3714,6 +3733,7 @@ fn shell_deploy_template(
         return;
     }
     let server_name = app.active_server.clone().unwrap_or_default();
+    let template_commit = commands::git_cmd::git_head(&tpl.dir);
     let runner = current_runner_from_app(app);
     let docker = DockerCfg {
         docker_cmd: current_docker_cmd_from_app(app),
@@ -3727,6 +3747,7 @@ fn shell_deploy_template(
         force_recreate,
         server_name,
         template_id,
+        template_commit,
     });
     app.templates_state.template_deploy_inflight.insert(
         tpl.name.clone(),
@@ -6703,6 +6724,8 @@ fn draw_shell_stack_templates_table(
     }
 
     let now = Instant::now();
+    let local_head = app.templates_state.git_head.as_deref();
+    let active_server = app.active_server.as_deref();
     let rows: Vec<Row> = app
         .templates_state
         .templates
@@ -6724,10 +6747,35 @@ fn draw_shell_stack_templates_table(
                 (action_error_label(err).to_string(), st)
             } else if let Some(id) = t.template_id.as_ref() {
                 if let Some(list) = app.template_deploys.get(id) {
-                    if list.is_empty() {
-                        (String::new(), Style::default())
+                    if let Some(entry) = active_server
+                        .and_then(|srv| list.iter().find(|e| e.server_name == srv))
+                        .or_else(|| list.first())
+                    {
+                        let deployed = entry
+                            .commit
+                            .as_deref()
+                            .map(short_commit)
+                            .unwrap_or_else(|| "deployed".to_string());
+                        if let Some(local) = local_head {
+                            if let Some(commit) = entry.commit.as_deref() {
+                                let local_short = short_commit(local);
+                                let deployed_short = short_commit(commit);
+                                if local_short != deployed_short {
+                                    (
+                                        format!("deployed {deployed_short} (local {local_short})"),
+                                        Style::default(),
+                                    )
+                                } else {
+                                    (format!("deployed {deployed_short}"), Style::default())
+                                }
+                            } else {
+                                (deployed, Style::default())
+                            }
+                        } else {
+                            (deployed, Style::default())
+                        }
                     } else {
-                        ("deployed".to_string(), Style::default())
+                        (String::new(), Style::default())
                     }
                 } else {
                     (String::new(), Style::default())

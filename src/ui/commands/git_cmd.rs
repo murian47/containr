@@ -162,6 +162,20 @@ pub(crate) fn run_git(dir: &Path, args: &[&str]) -> anyhow::Result<String> {
     }
 }
 
+pub(crate) fn git_head(dir: &Path) -> Option<String> {
+    if !is_git_repo(dir) {
+        return None;
+    }
+    run_git(dir, &["rev-parse", "HEAD"]).ok()
+}
+
+pub(crate) fn git_head_short(dir: &Path) -> Option<String> {
+    if !is_git_repo(dir) {
+        return None;
+    }
+    run_git(dir, &["rev-parse", "--short", "HEAD"]).ok()
+}
+
 fn show_git_output(app: &mut App, title: &str, output: &str) {
     app.set_info(title.to_string());
     if output.trim().is_empty() {

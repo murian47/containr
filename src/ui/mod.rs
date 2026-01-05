@@ -20,7 +20,9 @@ use render::details::draw_shell_main_details;
 use render::sidebar::{
     draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
-use render::utils::{expand_user_path, shell_row_highlight, truncate_end, write_text_file};
+use render::utils::{
+    expand_user_path, shell_row_highlight, short_commit, truncate_end, write_text_file,
+};
 
 use crate::config::{self, ContainrConfig, DockerCmd, KeyBinding, ServerEntry};
 use crate::docker::{
@@ -256,6 +258,7 @@ struct TemplatesState {
     templates_details_scroll: usize,
     templates_refresh_after_edit: Option<String>,
     template_deploy_inflight: HashMap<String, DeployMarker>,
+    git_head: Option<String>,
 
     net_templates: Vec<NetTemplateEntry>,
     net_templates_selected: usize,
@@ -802,6 +805,8 @@ struct ImageUpdateEntry {
 struct TemplateDeployEntry {
     server_name: String,
     timestamp: i64,
+    #[serde(default)]
+    commit: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -959,6 +964,7 @@ fn load_local_state(
                         vec![TemplateDeployEntry {
                             server_name,
                             timestamp,
+                            commit: None,
                         }],
                     );
                 }
@@ -1008,6 +1014,7 @@ enum ActionRequest {
         force_recreate: bool,
         server_name: String,
         template_id: String,
+        template_commit: Option<String>,
     },
     NetTemplateDeploy {
         name: String,
@@ -1752,6 +1759,7 @@ impl App {
                 templates_details_scroll: 0,
                 templates_refresh_after_edit: None,
                 template_deploy_inflight: HashMap::new(),
+                git_head: None,
                 net_templates: Vec::new(),
                 net_templates_selected: 0,
                 net_templates_error: None,
@@ -1802,6 +1810,8 @@ impl App {
         self.templates_state.templates_error = None;
         self.templates_state.templates.clear();
         self.templates_state.templates_details_scroll = 0;
+        self.templates_state.git_head =
+            commands::git_cmd::git_head_short(&self.templates_state.dir);
 
         self.migrate_templates_layout_if_needed();
 
@@ -3769,6 +3779,21 @@ fn template_id_from_labels(labels: &str) -> Option<String> {
     None
 }
 
+fn template_commit_from_labels(labels: &str) -> Option<String> {
+    for part in labels.split(',') {
+        let Some((k, v)) = part.split_once('=') else {
+            continue;
+        };
+        if k.trim() == "app.containr.commit" {
+            let value = v.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
 fn add_label_mapping(map: &mut YamlMapping, key: &str, value: &str) {
     let k = YamlValue::String(key.to_string());
     let v = YamlValue::String(value.to_string());
@@ -3786,7 +3811,11 @@ fn add_label_sequence(seq: &mut Vec<YamlValue>, key: &str, value: &str) {
     seq.push(YamlValue::String(needle));
 }
 
-fn inject_template_labels(value: &mut YamlValue, template_id: &str) -> anyhow::Result<()> {
+fn inject_template_labels(
+    value: &mut YamlValue,
+    template_id: &str,
+    template_commit: Option<&str>,
+) -> anyhow::Result<()> {
     let obj = value
         .as_mapping_mut()
         .ok_or_else(|| anyhow::anyhow!("compose root is not a mapping"))?;
@@ -3806,19 +3835,31 @@ fn inject_template_labels(value: &mut YamlValue, template_id: &str) -> anyhow::R
                 match labels {
                     YamlValue::Mapping(m) => {
                         add_label_mapping(m, "app.containr.template_id", template_id);
+                        if let Some(commit) = template_commit {
+                            add_label_mapping(m, "app.containr.commit", commit);
+                        }
                     }
                     YamlValue::Sequence(seq) => {
                         add_label_sequence(seq, "app.containr.template_id", template_id);
+                        if let Some(commit) = template_commit {
+                            add_label_sequence(seq, "app.containr.commit", commit);
+                        }
                     }
                     _ => {
                         let mut m = YamlMapping::new();
                         add_label_mapping(&mut m, "app.containr.template_id", template_id);
+                        if let Some(commit) = template_commit {
+                            add_label_mapping(&mut m, "app.containr.commit", commit);
+                        }
                         *labels = YamlValue::Mapping(m);
                     }
                 }
             } else {
                 let mut m = YamlMapping::new();
                 add_label_mapping(&mut m, "app.containr.template_id", template_id);
+                if let Some(commit) = template_commit {
+                    add_label_mapping(&mut m, "app.containr.commit", commit);
+                }
                 item_map.insert(label_key, YamlValue::Mapping(m));
             }
         }
@@ -4203,11 +4244,12 @@ async fn registry_test(
 fn render_compose_with_template_id(
     path: &Path,
     template_id: &str,
+    template_commit: Option<&str>,
 ) -> anyhow::Result<tempfile::TempPath> {
     let data = fs::read_to_string(path)?;
     let mut yaml: YamlValue =
         serde_yaml::from_str(&data).map_err(|e| anyhow::anyhow!("compose parse failed: {}", e))?;
-    inject_template_labels(&mut yaml, template_id)?;
+    inject_template_labels(&mut yaml, template_id, template_commit)?;
     let rendered =
         serde_yaml::to_string(&yaml).map_err(|e| anyhow::anyhow!("compose render failed: {}", e))?;
     let mut tmp = tempfile::Builder::new()
@@ -4594,6 +4636,7 @@ pub async fn run_tui(
                     local_compose,
                     pull,
                     force_recreate,
+                    template_commit,
                     ..
                 } => perform_template_deploy(
                     runner,
@@ -4602,6 +4645,7 @@ pub async fn run_tui(
                     local_compose,
                     *pull,
                     *force_recreate,
+                    template_commit.as_deref(),
                 )
                 .await,
                 ActionRequest::NetTemplateDeploy {
@@ -5202,6 +5246,7 @@ pub async fn run_tui(
                             pull,
                             server_name,
                             template_id,
+                            template_commit,
                             ..
                         } => {
                             app.templates_state.template_deploy_inflight.remove(name);
@@ -5211,6 +5256,7 @@ pub async fn run_tui(
                                 let entry = TemplateDeployEntry {
                                     server_name: server_name.clone(),
                                     timestamp: now_unix(),
+                                    commit: template_commit.clone(),
                                 };
                                 app.template_deploys
                                     .entry(template_id.clone())
@@ -5696,6 +5742,7 @@ async fn perform_template_deploy(
     local_compose: &Path,
     pull: bool,
     force_recreate: bool,
+    template_commit: Option<&str>,
 ) -> anyhow::Result<String> {
     if docker.docker_cmd.is_empty() {
         anyhow::bail!("no server configured");
@@ -5708,7 +5755,8 @@ async fn perform_template_deploy(
         Runner::Ssh(_) => deploy_remote_dir_for(name),
     };
     let template_id = ensure_template_id(&local_compose.to_path_buf())?;
-    let rendered_path = render_compose_with_template_id(local_compose, &template_id)?;
+    let rendered_path =
+        render_compose_with_template_id(local_compose, &template_id, template_commit)?;
     let remote_compose = format!("{remote_dir}/compose.rendered.yaml");
     let remote_dir_q = shell_single_quote(&remote_dir);
     let docker_cmd = docker.docker_cmd.to_shell();

@@ -5,7 +5,7 @@ use crate::ui::{
     action_error_details, action_error_label, action_status_prefix, current_match_pos,
     draw_shell_hr, format_action_ts, image_update_indicator, image_update_view_for_ref,
     json_highlight_line, registry_auth_label, render_detail_table, shell_header_style,
-    shell_row_highlight, stack_name_from_labels, truncate_end, yaml_highlight_line,
+    shell_row_highlight, short_commit, stack_name_from_labels, truncate_end, yaml_highlight_line,
     ActionErrorKind, App, DetailRow, ShellFocus, ShellView, StackDetailsFocus, TemplatesKind,
 };
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
@@ -752,6 +752,7 @@ fn draw_shell_stack_template_details(
         .template_id
         .as_ref()
         .and_then(|id| app.template_deploys.get(id));
+    let active_server = app.active_server.as_deref();
     let mut servers: Vec<String> = deploy_list
         .map(|list| list.iter().map(|info| info.server_name.clone()).collect())
         .unwrap_or_default();
@@ -765,10 +766,28 @@ fn draw_shell_stack_template_details(
     if status_text == "Status: -" && servers_text != "-" {
         status_text = "Status: deployed".to_string();
     }
+    let local_commit = app.templates_state.git_head.as_deref().map(short_commit);
+    let deployed_commit = deploy_list.and_then(|list| {
+        active_server
+            .and_then(|srv| list.iter().find(|e| e.server_name == srv))
+            .or_else(|| list.first())
+            .and_then(|e| e.commit.as_deref())
+            .map(short_commit)
+    });
+    let commit_text = match (local_commit, deployed_commit) {
+        (Some(local), Some(deployed)) if local != deployed => {
+            format!("Commit: local {local} | deployed {deployed}")
+        }
+        (Some(_local), Some(deployed)) => format!("Commit: {deployed} (local)"),
+        (None, Some(deployed)) => format!("Commit: {deployed}"),
+        (Some(local), None) => format!("Commit: local {local}"),
+        (None, None) => "Commit: -".to_string(),
+    };
     let info_style = bg.patch(app.theme.text_dim.to_style());
     let status_lines = Text::from(vec![
         Line::from(Span::styled(status_text, status_style)),
         Line::from(Span::styled(format!("Servers: {servers_text}"), info_style)),
+        Line::from(Span::styled(commit_text, info_style)),
     ]);
     f.render_widget(
         Paragraph::new(status_lines).wrap(Wrap { trim: true }),

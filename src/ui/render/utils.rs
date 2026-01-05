@@ -57,3 +57,7 @@ pub(in crate::ui) fn truncate_end(s: &str, max: usize) -> String {
     out.push_str("...");
     out
 }
+
+pub(in crate::ui) fn short_commit(s: &str) -> String {
+    s.chars().take(7).collect()
+}
