@@ -21,7 +21,8 @@ use render::sidebar::{
     draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
 use render::utils::{
-    expand_user_path, shell_row_highlight, short_commit, truncate_end, write_text_file,
+    draw_shell_scrollbar_h, draw_shell_scrollbar_v, expand_user_path, shell_row_highlight,
+    short_commit, slice_window, truncate_end, window_hscroll, write_text_file,
 };
 
 use crate::config::{self, ContainrConfig, DockerCmd, KeyBinding, ServerEntry};
@@ -43,8 +44,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Cell, List, ListItem, ListState, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Table, TableState, Wrap,
+        Block, Cell, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap,
     },
 };
 use reqwest::{Client, StatusCode, Url};
