@@ -20,3 +20,5 @@
 - Im Zweifel nachfragen, wenn Destruktives nötig wäre.
 - Bei refactors schrittweise vorgehen, App lauffähig halten.
 - Bei Codeänderungen vor dem Commit den Patch-Level der Version um 1 erhöhen, außer die Version wurde vorher explizit gesetzt.
+- Nach größeren Änderungen Tests ausführen (`cargo test`), bevor weitergearbeitet oder committed wird.
+- Refactors schrittweise, App lauffähig halten; für utils-Aufteilung (text/scroll/fs) später nachschärfen, aktuell bleiben die Helfer in `render/utils.rs`.

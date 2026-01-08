@@ -62,6 +62,7 @@ pub(in crate::ui) fn short_commit(s: &str) -> String {
     s.chars().take(7).collect()
 }
 
+// Horizontal window with ellipsis; used in messages/log views.
 pub(in crate::ui) fn window_hscroll(s: &str, start: usize, max: usize) -> String {
     let max = max.max(1);
     let chars: Vec<char> = s.chars().collect();
@@ -107,6 +108,7 @@ pub(in crate::ui) fn window_hscroll(s: &str, start: usize, max: usize) -> String
     truncate_end(&out, max)
 }
 
+// Simple slice of a string by chars; used for logs/inspect horizontal cropping.
 pub(in crate::ui) fn slice_window(s: &str, start: usize, width: usize) -> String {
     let width = width.max(1);
     let chars: Vec<char> = s.chars().collect();
