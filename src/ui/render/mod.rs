@@ -6,3 +6,4 @@ pub mod utils;
 pub mod format;
 pub mod highlight;
 pub mod badges;
+pub mod table;

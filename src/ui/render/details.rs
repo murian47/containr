@@ -1,12 +1,13 @@
 use std::fs;
 
 use crate::docker::{ContainerRow, NetworkRow};
+use crate::ui::render::table::{render_detail_table, DetailRow};
 use crate::ui::{
     action_error_details, action_error_label, action_status_prefix, current_match_pos,
     draw_shell_hr, format_action_ts, image_update_indicator, image_update_view_for_ref,
-    json_highlight_line, registry_auth_label, render_detail_table, shell_header_style,
-    shell_row_highlight, short_commit, stack_name_from_labels, truncate_end, yaml_highlight_line,
-    ActionErrorKind, App, DetailRow, ShellFocus, ShellView, StackDetailsFocus, TemplatesKind,
+    json_highlight_line, registry_auth_label, shell_header_style, shell_row_highlight,
+    short_commit, stack_name_from_labels, truncate_end, yaml_highlight_line, ActionErrorKind, App,
+    ShellFocus, ShellView, StackDetailsFocus, TemplatesKind,
 };
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
