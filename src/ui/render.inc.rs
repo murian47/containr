@@ -5068,22 +5068,6 @@ fn draw_shell_header(
     );
 }
 
-fn action_error_label(err: &LastActionError) -> &'static str {
-    match err.kind {
-        ActionErrorKind::InUse => "in use",
-        ActionErrorKind::Other => "error",
-    }
-}
-
-fn action_error_details(err: &LastActionError) -> String {
-    let ts = format_action_ts(err.at);
-    if err.action.trim().is_empty() {
-        ts
-    } else {
-        format!("{} {}", err.action, ts)
-    }
-}
-
 fn split_at_chars(s: &str, n: usize) -> (&str, &str) {
     if n == 0 {
         return ("", s);
@@ -7091,17 +7075,6 @@ fn format_session_ts(at: OffsetDateTime) -> String {
     static FMT: OnceLock<Vec<time::format_description::FormatItem<'static>>> = OnceLock::new();
     let fmt = FMT.get_or_init(|| {
         time::format_description::parse("[hour]:[minute]:[second]")
-            .unwrap_or_else(|_| Vec::new())
-    });
-    at.format(fmt)
-        .unwrap_or_else(|_| at.unix_timestamp().to_string())
-}
-
-fn format_action_ts(at: OffsetDateTime) -> String {
-    use std::sync::OnceLock;
-    static FMT: OnceLock<Vec<time::format_description::FormatItem<'static>>> = OnceLock::new();
-    let fmt = FMT.get_or_init(|| {
-        time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
             .unwrap_or_else(|_| Vec::new())
     });
     at.format(fmt)

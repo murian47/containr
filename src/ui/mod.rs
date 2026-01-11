@@ -25,6 +25,7 @@ use render::format::{
     truncate_start,
 };
 use render::badges::header_logo_spans;
+use render::status::action_error_label;
 use render::highlight::{json_highlight_line, split_yaml_comment, yaml_highlight_line};
 use render::utils::{
     draw_shell_scrollbar_h, draw_shell_scrollbar_v, expand_user_path, shell_row_highlight,

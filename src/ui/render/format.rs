@@ -1,7 +1,9 @@
 use std::time::Instant;
+use std::sync::OnceLock;
 
 use ratatui::style::Style;
 use ratatui::text::Span;
+use time::OffsetDateTime;
 
 use crate::ui::render::utils::truncate_end;
 
@@ -85,6 +87,16 @@ pub(crate) fn format_bytes_short(bytes: u64) -> String {
     } else {
         format!("{:.1}{}", v, UNITS[u])
     }
+}
+
+pub(crate) fn format_action_ts(at: OffsetDateTime) -> String {
+    static FMT: OnceLock<Vec<time::format_description::FormatItem<'static>>> = OnceLock::new();
+    let fmt = FMT.get_or_init(|| {
+        time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
+            .unwrap_or_else(|_| Vec::new())
+    });
+    at.format(fmt)
+        .unwrap_or_else(|_| at.unix_timestamp().to_string())
 }
 
 pub(crate) fn bar_spans_threshold(
