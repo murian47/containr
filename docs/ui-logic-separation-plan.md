@@ -44,6 +44,28 @@ Goal: decouple UI (ratatui) from domain logic so we can maintain TUI easily and 
 4) Flip rendering to ViewModels once a feature’s data/events are migrated.
 5) Remove legacy hooks after parity is confirmed.
 
+## Short-term fast-track (keep app runnable)
+- Catalog render.inc.rs helpers: split pure formatting/badge/table helpers from logic-heavy parts.
+- Extract pure render helpers into dedicated modules (`render/format.rs`, `render/badges.rs`, `render/table.rs`), adjust call sites, then `cargo test`.
+- Move status/marker/update derivation into UI-free state/domain helpers so rendering consumes prepared data only.
+- Refine `render/utils.rs` gradually (text/scroll/fs), avoid new monoliths; remove duplicates.
+- After each chunk: document briefly, keep version patch-bumped for code changes, run tests, then commit.
+
+## Helper catalog (first pass – render.inc.rs)
+- Pure formatting/render candidates (move to `render/format.rs`, `render/badges.rs`, `render/table.rs`):
+  - text/layout: `wrap_text`, `pad_right`, `truncate_start`, `spinner_char`, `loading_spinner`
+  - units/bars: `format_bytes_short`, `bar_spans_threshold`, `bar_spans_gradient`
+  - styles/highlighting: `yaml_highlight_line`, `json_highlight_line`, `split_yaml_comment`, `split_yaml_key`
+  - headers/footer: `header_logo_spans`, `shell_breadcrumbs`, `draw_rate_limit_banner`, `action_error_label`, `action_error_details`
+  - tables: `render_detail_table` (plus table-specific style helpers)
+- Logic-heavy (should move to state/domain before render depends on them):
+  - image update/digest normalization: `normalize_*`, `image_update_*`, `manifest_*`, `local_repo_digest`, `is_rate_limit_error`
+  - template/build helpers: `build_compose_yaml`, `write_stack_template_compose`, `create_template`, `create_net_template`, `deploy_*`, `delete_*`, `maybe_autocommit_templates`
+  - command/exec glue: `shell_exec_*`, `shell_check_image_updates`, `shell_execute_action`, `shell_open_console`
+  - parse/escape: `parse_cmdline_tokens`, `shell_escape_*`, `shell_is_safe_token`, `shell_escape_double_quoted`
+- Inspect/log view helpers (could move to dedicated module later):
+  - `highlight_log_line_*`, `build_inspect_lines*`, `summarize`, `collect_*` helpers.
+
 ## Notes
 - No version bump for doc-only changes.
 - Keep commits small; run `cargo test` after each migration step.

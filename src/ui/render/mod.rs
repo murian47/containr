@@ -3,3 +3,6 @@ pub mod layout;
 pub mod details;
 pub mod sidebar;
 pub mod utils;
+pub mod format;
+pub mod highlight;
+pub mod badges;

@@ -20,6 +20,12 @@ use render::details::draw_shell_main_details;
 use render::sidebar::{
     draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
+use render::format::{
+    bar_spans_gradient, bar_spans_threshold, format_bytes_short, loading_spinner, pad_right,
+    spinner_char, truncate_start, wrap_text,
+};
+use render::badges::header_logo_spans;
+use render::highlight::{json_highlight_line, split_yaml_comment, yaml_highlight_line};
 use render::utils::{
     draw_shell_scrollbar_h, draw_shell_scrollbar_v, expand_user_path, shell_row_highlight,
     short_commit, slice_window, truncate_end, window_hscroll, write_text_file,
