@@ -5068,27 +5068,6 @@ fn draw_shell_header(
     );
 }
 
-fn split_at_chars(s: &str, n: usize) -> (&str, &str) {
-    if n == 0 {
-        return ("", s);
-    }
-    let mut idx = 0usize;
-    let mut chars = 0usize;
-    for (i, _) in s.char_indices() {
-        if chars == n {
-            idx = i;
-            break;
-        }
-        chars += 1;
-        idx = s.len();
-    }
-    if chars < n {
-        (s, "")
-    } else {
-        s.split_at(idx)
-    }
-}
-
 fn shell_breadcrumbs(app: &App) -> String {
     match app.shell_view {
         ShellView::Dashboard => String::new(),
@@ -5312,27 +5291,6 @@ fn draw_shell_title(
     f.render_widget(
         Paragraph::new(shown)
             .style(bg.fg(fg))
-            .wrap(Wrap { trim: false }),
-        area,
-    );
-}
-
-fn draw_rate_limit_banner(
-    f: &mut ratatui::Frame,
-    app: &App,
-    banner: Option<String>,
-    area: ratatui::layout::Rect,
-) {
-    let bg = app.theme.panel.to_style();
-    let text = banner.unwrap_or_default();
-    let style = bg
-        .patch(app.theme.text_info.to_style())
-        .add_modifier(Modifier::BOLD);
-    let content = truncate_end(&text, area.width.max(1) as usize);
-    f.render_widget(
-        Paragraph::new(content)
-            .style(style)
-            .alignment(Alignment::Center)
             .wrap(Wrap { trim: false }),
         area,
     );

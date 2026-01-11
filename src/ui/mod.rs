@@ -22,9 +22,10 @@ use render::sidebar::{
 };
 use render::format::{
     bar_spans_gradient, bar_spans_threshold, format_bytes_short, loading_spinner, spinner_char,
-    truncate_start,
+    split_at_chars, truncate_start,
 };
 use render::badges::header_logo_spans;
+use render::header::draw_rate_limit_banner;
 use render::status::action_error_label;
 use render::highlight::{json_highlight_line, split_yaml_comment, yaml_highlight_line};
 use render::utils::{

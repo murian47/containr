@@ -99,6 +99,27 @@ pub(crate) fn format_action_ts(at: OffsetDateTime) -> String {
         .unwrap_or_else(|_| at.unix_timestamp().to_string())
 }
 
+pub(crate) fn split_at_chars(s: &str, n: usize) -> (&str, &str) {
+    if n == 0 {
+        return ("", s);
+    }
+    let mut idx = 0usize;
+    let mut chars = 0usize;
+    for (i, _) in s.char_indices() {
+        if chars == n {
+            idx = i;
+            break;
+        }
+        chars += 1;
+        idx = s.len();
+    }
+    if chars < n {
+        (s, "")
+    } else {
+        s.split_at(idx)
+    }
+}
+
 pub(crate) fn bar_spans_threshold(
     width: usize,
     ratio: f32,

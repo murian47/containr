@@ -8,3 +8,4 @@ pub mod highlight;
 pub mod badges;
 pub mod table;
 pub mod status;
+pub mod header;
