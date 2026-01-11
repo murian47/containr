@@ -1,5 +1,3 @@
-use crate::ui::App;
-
 pub(crate) fn stack_name_from_labels(labels: &str) -> Option<String> {
     // docker ps --format exposes labels as a comma-separated "k=v" list.
     // Compose stacks typically set:
@@ -24,9 +22,4 @@ pub(crate) fn stack_name_from_labels(labels: &str) -> Option<String> {
         }
     }
     None
-}
-
-pub(crate) fn selected_stack_name(app: &App) -> Option<String> {
-    app.selected_stack()
-        .map(|(name, _idx, _expanded, _has_running)| name.to_string())
 }
