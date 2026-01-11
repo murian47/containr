@@ -9,3 +9,5 @@ pub mod badges;
 pub mod table;
 pub mod status;
 pub mod header;
+pub mod breadcrumbs;
+pub mod stacks;

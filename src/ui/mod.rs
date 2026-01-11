@@ -26,12 +26,14 @@ use render::format::{
 };
 use render::badges::header_logo_spans;
 use render::header::draw_rate_limit_banner;
+use render::breadcrumbs::shell_breadcrumbs;
 use render::status::action_error_label;
 use render::highlight::{json_highlight_line, split_yaml_comment, yaml_highlight_line};
 use render::utils::{
     draw_shell_scrollbar_h, draw_shell_scrollbar_v, expand_user_path, shell_row_highlight,
     short_commit, slice_window, truncate_end, window_hscroll, write_text_file,
 };
+use render::stacks::stack_name_from_labels;
 
 use crate::config::{self, ContainrConfig, DockerCmd, KeyBinding, ServerEntry};
 use crate::docker::{

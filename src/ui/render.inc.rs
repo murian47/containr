@@ -5068,71 +5068,6 @@ fn draw_shell_header(
     );
 }
 
-fn shell_breadcrumbs(app: &App) -> String {
-    match app.shell_view {
-        ShellView::Dashboard => String::new(),
-        ShellView::Stacks => app
-            .selected_stack_entry()
-            .map(|s| format!("/{}", s.name))
-            .unwrap_or_default(),
-        ShellView::Containers => {
-            if let Some((name, ..)) = app.selected_stack() {
-                return format!("/{name}");
-            }
-            if let Some(c) = app.selected_container() {
-                if let Some(stack) = stack_name_from_labels(&c.labels) {
-                    format!("/{stack}/{}", c.name)
-                } else {
-                    format!("/{}", c.name)
-                }
-            } else {
-                String::new()
-            }
-        }
-        ShellView::Images => app
-            .selected_image()
-            .map(|i| format!("/{}", i.name()))
-            .unwrap_or_default(),
-        ShellView::Volumes => app
-            .selected_volume()
-            .map(|v| format!("/{}", v.name))
-            .unwrap_or_default(),
-        ShellView::Networks => app
-            .selected_network()
-            .map(|n| format!("/{}", n.name))
-            .unwrap_or_default(),
-        ShellView::Templates => match app.templates_state.kind {
-            TemplatesKind::Stacks => app
-                .selected_template()
-                .map(|t| format!("/{}", t.name))
-                .unwrap_or_default(),
-            TemplatesKind::Networks => app
-                .selected_net_template()
-                .map(|t| format!("/{}", t.name))
-                .unwrap_or_default(),
-        },
-        ShellView::Registries => app
-            .registries_cfg
-            .registries
-            .get(app.registries_selected)
-            .map(|r| format!("/{}", r.host))
-            .unwrap_or_default(),
-        ShellView::Inspect => app
-            .inspect.target
-            .as_ref()
-            .map(|t| format!("/{}", t.label))
-            .unwrap_or_default(),
-        ShellView::Logs => app
-            .logs.for_id
-            .as_ref()
-            .and_then(|_| app.selected_container().map(|c| c.name.clone()))
-            .map(|n| format!("/{n}"))
-            .unwrap_or_default(),
-        ShellView::Help => String::new(),
-        ShellView::Messages => String::new(),
-    }
-}
-
 pub(in crate::ui) fn draw_shell_main_list(
     f: &mut ratatui::Frame,
     app: &mut App,
@@ -7151,32 +7086,6 @@ fn is_container_stopped(status: &str) -> bool {
     let s = status.trim();
     // docker ps STATUS values: "Up ...", "Exited (...) ...", "Created", "Dead"
     !(s.starts_with("Up") || s.starts_with("Restarting"))
-}
-
-fn stack_name_from_labels(labels: &str) -> Option<String> {
-    // docker ps --format exposes labels as a comma-separated "k=v" list.
-    // Compose stacks typically set:
-    // - com.docker.compose.project=<stack>
-    // Swarm stacks often set:
-    // - com.docker.stack.namespace=<stack>
-    for part in labels.split(',') {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-        let Some((k, v)) = part.split_once('=') else {
-            continue;
-        };
-        let k = k.trim();
-        let v = v.trim();
-        if v.is_empty() {
-            continue;
-        }
-        if k == "com.docker.compose.project" || k == "com.docker.stack.namespace" {
-            return Some(v.to_string());
-        }
-    }
-    None
 }
 
 fn action_status_prefix(action: ContainerAction) -> &'static str {
