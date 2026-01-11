@@ -11,3 +11,4 @@ pub mod status;
 pub mod header;
 pub mod breadcrumbs;
 pub mod stacks;
+pub mod footer;
