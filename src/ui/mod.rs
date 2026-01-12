@@ -12,6 +12,7 @@
 
 mod commands;
 mod render;
+mod state;
 pub mod theme;
 
 use render::help::shell_help_lines;
@@ -23,6 +24,11 @@ use render::sidebar::{
 use render::format::{
     bar_spans_gradient, bar_spans_threshold, format_bytes_short, loading_spinner, spinner_char,
     split_at_chars, truncate_start,
+};
+use crate::ui::state::image_updates::{
+    resolve_image_update_state, resolve_stack_update_state, normalize_image_ref_for_updates,
+    resolve_image_ref_for_updates, normalize_image_ref, image_repo_name, image_registry_for_ref,
+    local_repo_digest, is_rate_limit_error, ImageUpdateView,
 };
 use render::badges::header_logo_spans;
 use render::header::draw_rate_limit_banner;
