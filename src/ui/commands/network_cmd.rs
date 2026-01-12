@@ -15,7 +15,7 @@ pub fn handle_network(
     match sub {
         "rm" | "remove" | "delete" => {
             if force {
-                super::super::shell_exec_network_remove(app, action_req_tx);
+                crate::ui::state::actions::exec_network_remove(app, action_req_tx);
             } else {
                 // Avoid prompting when only system networks are selected/marked.
                 let any_removable = if !app.marked_networks.is_empty() {

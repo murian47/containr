@@ -15,14 +15,14 @@ pub fn handle_image(
     match sub {
         "untag" => {
             if force {
-                super::super::shell_exec_image_action(app, true, action_req_tx);
+                crate::ui::state::actions::exec_image_action(app, true, action_req_tx);
             } else {
                 shell_begin_confirm(app, "image untag", cmdline_full);
             }
         }
         "rm" | "remove" | "delete" => {
             if force {
-                super::super::shell_exec_image_action(app, false, action_req_tx);
+                crate::ui::state::actions::exec_image_action(app, false, action_req_tx);
             } else {
                 shell_begin_confirm(app, "image rm", cmdline_full);
             }

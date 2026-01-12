@@ -15,12 +15,12 @@ pub fn handle_container(
     let sub = args.first().copied().unwrap_or("");
     let rest = &args.get(1..).unwrap_or(&[]);
     match sub {
-        "start" => super::super::shell_exec_container_action(app, ContainerAction::Start, action_req_tx),
-        "stop" => super::super::shell_exec_container_action(app, ContainerAction::Stop, action_req_tx),
-        "restart" => super::super::shell_exec_container_action(app, ContainerAction::Restart, action_req_tx),
+        "start" => crate::ui::state::actions::exec_container_action(app, ContainerAction::Start, action_req_tx),
+        "stop" => crate::ui::state::actions::exec_container_action(app, ContainerAction::Stop, action_req_tx),
+        "restart" => crate::ui::state::actions::exec_container_action(app, ContainerAction::Restart, action_req_tx),
         "rm" | "delete" | "remove" => {
             if force {
-                super::super::shell_exec_container_action(app, ContainerAction::Remove, action_req_tx)
+                crate::ui::state::actions::exec_container_action(app, ContainerAction::Remove, action_req_tx)
             } else {
                 shell_begin_confirm(app, "container rm", cmdline_full);
             }

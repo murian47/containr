@@ -264,7 +264,7 @@ fn network_remove_uses_marked_ids() {
     app.marked_networks.insert(app.networks[1].id.clone());
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ActionRequest>();
-    shell_exec_network_remove(&mut app, &tx);
+    crate::ui::state::actions::exec_network_remove(&mut app, &tx);
 
     let mut ids = Vec::new();
     while let Ok(req) = rx.try_recv() {

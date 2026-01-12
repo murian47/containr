@@ -15,7 +15,7 @@ pub fn handle_volume(
     match sub {
         "rm" | "remove" | "delete" => {
             if force {
-                super::super::shell_exec_volume_remove(app, action_req_tx);
+                crate::ui::state::actions::exec_volume_remove(app, action_req_tx);
             } else {
                 shell_begin_confirm(app, "volume rm", cmdline_full);
             }

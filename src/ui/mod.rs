@@ -861,18 +861,18 @@ struct LocalState {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct DeployMarker {
+pub(in crate::ui) struct DeployMarker {
     started: Instant,
 }
 
 #[derive(Clone, Copy, Debug)]
-struct ActionMarker {
+pub(in crate::ui) struct ActionMarker {
     action: ContainerAction,
     until: Instant,
 }
 
 #[derive(Clone, Copy, Debug)]
-struct SimpleMarker {
+pub(in crate::ui) struct SimpleMarker {
     until: Instant,
 }
 
@@ -1013,7 +1013,7 @@ fn truncate_msg(s: &str, max: usize) -> String {
 }
 
 #[derive(Debug, Clone)]
-enum ActionRequest {
+pub(in crate::ui) enum ActionRequest {
     Container {
         action: ContainerAction,
         id: String,
