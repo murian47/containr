@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
 use crate::ui::{App, ShellView};
-use crate::ui::render::utils::truncate_end;
+use crate::ui::render::text::truncate_end;
 use crate::ui::theme;
 
 pub(crate) fn draw_shell_footer(

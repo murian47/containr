@@ -1,7 +1,8 @@
 use crate::ui::{
     App, ShellAction, ShellFocus, ShellSidebarItem, ShellView, shell_module_shortcut,
-    shell_row_highlight, truncate_end,
 };
+use crate::ui::render::utils::shell_row_highlight;
+use crate::ui::render::text::truncate_end;
 use crate::ui::theme;
 use ratatui::layout::Rect;
 use ratatui::style::Color;

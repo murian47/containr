@@ -3,7 +3,7 @@ use ratatui::text::Span;
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::ui::render::format::{pad_right, wrap_text};
-use crate::ui::render::utils::truncate_end;
+use crate::ui::render::text::truncate_end;
 use crate::ui::{App, ShellFocus};
 
 #[derive(Debug, Clone)]

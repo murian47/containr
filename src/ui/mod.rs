@@ -31,9 +31,10 @@ use render::footer::draw_shell_footer;
 use render::status::action_error_label;
 use render::highlight::{json_highlight_line, split_yaml_comment, yaml_highlight_line};
 use render::utils::{
-    draw_shell_scrollbar_h, draw_shell_scrollbar_v, expand_user_path, shell_row_highlight,
-    short_commit, slice_window, truncate_end, window_hscroll, write_text_file,
+    expand_user_path, shell_row_highlight, write_text_file,
 };
+use render::text::{short_commit, slice_window, truncate_end, window_hscroll};
+use render::scroll::{draw_shell_scrollbar_h, draw_shell_scrollbar_v};
 use render::stacks::stack_name_from_labels;
 
 use crate::config::{self, ContainrConfig, DockerCmd, KeyBinding, ServerEntry};

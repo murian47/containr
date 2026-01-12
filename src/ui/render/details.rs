@@ -4,11 +4,13 @@ use crate::docker::{ContainerRow, NetworkRow};
 use crate::ui::render::format::format_action_ts;
 use crate::ui::render::status::{action_error_details, action_error_label};
 use crate::ui::render::table::{render_detail_table, DetailRow};
+use crate::ui::render::text::truncate_end;
+use crate::ui::render::text::short_commit;
 use crate::ui::{
     action_status_prefix, current_match_pos, draw_shell_hr, image_update_indicator, image_update_view_for_ref,
     json_highlight_line, registry_auth_label, shell_header_style, shell_row_highlight,
-    short_commit, stack_name_from_labels, truncate_end, yaml_highlight_line, ActionErrorKind, App,
-    ShellFocus, ShellView, StackDetailsFocus, TemplatesKind,
+    stack_name_from_labels, yaml_highlight_line, ActionErrorKind, App, ShellFocus, ShellView,
+    StackDetailsFocus, TemplatesKind,
 };
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
