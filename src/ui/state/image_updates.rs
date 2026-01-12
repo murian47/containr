@@ -53,7 +53,6 @@ pub(crate) fn normalize_image_ref(image: &str) -> String {
 #[derive(Clone, Debug)]
 pub(crate) struct NormalizedImageRef {
     pub reference: String,
-    pub digest: Option<String>,
 }
 
 pub(crate) fn normalize_image_ref_for_updates(image: &str) -> Option<NormalizedImageRef> {
@@ -64,11 +63,7 @@ pub(crate) fn normalize_image_ref_for_updates(image: &str) -> Option<NormalizedI
     if normalized.is_empty() {
         return None;
     }
-    let digest = normalized.split_once('@').map(|(_, d)| d.to_string());
-    Some(NormalizedImageRef {
-        reference: normalized,
-        digest,
-    })
+    Some(NormalizedImageRef { reference: normalized })
 }
 
 fn normalize_image_id(id: &str) -> String {
@@ -91,54 +86,13 @@ pub(crate) fn resolve_image_ref_for_updates(app: &App, image: &str) -> Option<No
         for img in &app.images {
             if normalize_image_id(&img.id) == needle {
                 if let Some(reference) = App::image_row_ref(img) {
-                    return Some(NormalizedImageRef {
-                        reference,
-                        digest: None,
-                    });
+                    return Some(NormalizedImageRef { reference });
                 }
             }
         }
         return None;
     }
     normalize_image_ref_for_updates(image)
-}
-
-pub(crate) fn image_registry_for_ref(image_ref: &str) -> String {
-    let name = image_ref.split_once('@').map(|(n, _)| n).unwrap_or(image_ref);
-    let name = name.split_once(':').map(|(n, _)| n).unwrap_or(name);
-    let first = name.split('/').next().unwrap_or("");
-    let has_registry = first.contains('.') || first.contains(':') || first == "localhost";
-    if has_registry {
-        first.to_string()
-    } else {
-        "docker.io".to_string()
-    }
-}
-
-fn normalize_docker_hub_repo(name: &str) -> String {
-    let mut name = name.trim().to_string();
-    if let Some(rest) = name.strip_prefix("docker.io/") {
-        name = rest.to_string();
-    }
-    if !name.contains('/') {
-        name = format!("library/{name}");
-    }
-    name
-}
-
-pub(crate) fn local_repo_digest(repo_digests: &[String], repo: &str) -> Option<String> {
-    let repo_docker_hub = normalize_docker_hub_repo(repo);
-    for entry in repo_digests {
-        let (name, digest) = entry.split_once('@')?;
-        if name == repo || name == repo_docker_hub {
-            return Some(digest.to_string());
-        }
-        let name_docker_hub = normalize_docker_hub_repo(name);
-        if name_docker_hub == repo_docker_hub {
-            return Some(digest.to_string());
-        }
-    }
-    None
 }
 
 pub(crate) fn resolve_image_update_state(
@@ -221,10 +175,17 @@ pub(crate) fn is_rate_limit_error(err: Option<&str>) -> bool {
         || err.contains("429")
 }
 
-pub(crate) fn image_repo_name(image_ref: &str) -> String {
-    let name = image_ref.split_once('@').map(|(n, _)| n).unwrap_or(image_ref);
-    match name.rsplit_once(':') {
-        Some((base, tag)) if !tag.contains('/') => base.to_string(),
-        _ => name.to_string(),
+pub(crate) fn image_registry_for_ref(image_ref: &str) -> String {
+    let name = image_ref
+        .split_once('@')
+        .map(|(n, _)| n)
+        .unwrap_or(image_ref);
+    let name = name.split_once(':').map(|(n, _)| n).unwrap_or(name);
+    let first = name.split('/').next().unwrap_or("");
+    let has_registry = first.contains('.') || first.contains(':') || first == "localhost";
+    if has_registry {
+        first.to_string()
+    } else {
+        "docker.io".to_string()
     }
 }

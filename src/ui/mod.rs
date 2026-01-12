@@ -26,9 +26,8 @@ use render::format::{
     split_at_chars, truncate_start,
 };
 use crate::ui::state::image_updates::{
-    resolve_image_update_state, resolve_stack_update_state, normalize_image_ref_for_updates,
-    resolve_image_ref_for_updates, normalize_image_ref, image_repo_name, image_registry_for_ref,
-    local_repo_digest, is_rate_limit_error, ImageUpdateView,
+    resolve_image_update_state, resolve_stack_update_state, resolve_image_ref_for_updates,
+    normalize_image_ref, image_registry_for_ref, is_rate_limit_error, ImageUpdateView,
 };
 use render::badges::header_logo_spans;
 use render::header::draw_rate_limit_banner;
@@ -48,6 +47,7 @@ use crate::docker::{
     self, ContainerAction, ContainerRow, DockerCfg, ImageRow, NetworkRow, VolumeRow,
 };
 use crate::runner::Runner;
+use crate::services::image_update::ImageUpdateService;
 use crate::ssh::Ssh;
 use anyhow::Context as _;
 use crossterm::{
@@ -4743,7 +4743,8 @@ pub async fn run_tui(
                     let image_update_res_tx = image_update_res_tx.clone();
                     tokio::spawn(async move {
                         let _permit = permit;
-                        let res = check_image_update(&conn.runner, &conn.docker, &image, debug).await;
+                        let svc = ImageUpdateService::new(&conn.runner, &conn.docker, debug);
+                        let res = svc.check_image_update(&image).await;
                         let _ = image_update_res_tx
                             .send((ActionRequest::ImageUpdateCheck { image, debug }, res));
                     });
