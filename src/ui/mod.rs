@@ -34,6 +34,10 @@ use render::badges::header_logo_spans;
 use render::header::draw_rate_limit_banner;
 use render::breadcrumbs::shell_breadcrumbs;
 use render::footer::draw_shell_footer;
+use render::inspect::{
+    ancestors_of_pointer, build_inspect_lines, collect_expandable_paths, collect_match_paths,
+    collect_path_rank,
+};
 use render::status::action_error_label;
 use render::highlight::{json_highlight_line, split_yaml_comment, yaml_highlight_line};
 use render::utils::{
@@ -81,7 +85,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    fmt::Write as _,
 };
 use time::OffsetDateTime;
 use tokio::sync::mpsc;

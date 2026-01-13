@@ -14,3 +14,4 @@ pub mod stacks;
 pub mod text;
 pub mod scroll;
 pub mod footer;
+pub mod inspect;
