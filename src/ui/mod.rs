@@ -295,7 +295,8 @@ struct TemplatesState {
     net_template_deploy_inflight: HashMap<String, DeployMarker>,
 }
 
-fn shell_begin_confirm(app: &mut App, label: impl Into<String>, cmdline: impl Into<String>) {
+#[allow(private_interfaces)]
+pub(crate) fn shell_begin_confirm(app: &mut App, label: impl Into<String>, cmdline: impl Into<String>) {
     app.shell_cmdline.mode = true;
     app.shell_cmdline.input.clear();
     app.shell_cmdline.cursor = 0;
