@@ -2,6 +2,7 @@ mod config;
 mod docker;
 mod runner;
 mod services;
+mod domain;
 mod shell_parse;
 mod ssh;
 mod ui;

@@ -25,9 +25,10 @@ use render::format::{
     bar_spans_gradient, bar_spans_threshold, format_bytes_short, loading_spinner, spinner_char,
     split_at_chars, truncate_start,
 };
+use crate::domain::image_refs::{image_registry_for_ref, normalize_image_ref};
 use crate::ui::state::image_updates::{
     resolve_image_update_state, resolve_stack_update_state, resolve_image_ref_for_updates,
-    normalize_image_ref, image_registry_for_ref, is_rate_limit_error, ImageUpdateView,
+    is_rate_limit_error, ImageUpdateView,
 };
 use render::badges::header_logo_spans;
 use render::header::draw_rate_limit_banner;

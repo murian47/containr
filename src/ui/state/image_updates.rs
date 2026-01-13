@@ -1,3 +1,6 @@
+use crate::domain::image_refs::{
+    NormalizedImageRef, is_digest_only_image, normalize_image_ref_for_updates,
+};
 use crate::ui::{App, ImageUpdateKind};
 use crate::ui::render::stacks::stack_name_from_labels;
 
@@ -9,61 +12,6 @@ pub enum ImageUpdateView {
     UpdateAvailable,
     Error,
     RateLimited,
-}
-
-pub(crate) fn is_digest_only_image(image: &str) -> bool {
-    if let Some((_, digest)) = image.split_once('@') {
-        return digest.starts_with("sha256:");
-    }
-    if image.starts_with("sha256:") && !image.contains('/') {
-        return image.chars().all(|c| c.is_ascii_hexdigit());
-    }
-    false
-}
-
-pub(crate) fn normalize_image_ref(image: &str) -> String {
-    let image = image.trim();
-    if image.is_empty() {
-        return String::new();
-    }
-    if is_digest_only_image(image) {
-        return image.to_string();
-    }
-    let (name, digest) = match image.split_once('@') {
-        Some((name, digest)) => (name, Some(digest)),
-        None => (image, None),
-    };
-    let (base, tag) = match name.rsplit_once(':') {
-        Some((base, tag)) if !tag.contains('/') => (base, Some(tag)),
-        _ => (name, None),
-    };
-    let is_unqualified = !base.contains('/');
-    let base = if is_unqualified {
-        format!("docker.io/library/{base}")
-    } else {
-        base.to_string()
-    };
-    if let Some(digest) = digest {
-        return format!("{base}@{digest}");
-    }
-    let tag = tag.unwrap_or("latest");
-    format!("{base}:{tag}")
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct NormalizedImageRef {
-    pub reference: String,
-}
-
-pub(crate) fn normalize_image_ref_for_updates(image: &str) -> Option<NormalizedImageRef> {
-    if is_digest_only_image(image) {
-        return None;
-    }
-    let normalized = normalize_image_ref(image);
-    if normalized.is_empty() {
-        return None;
-    }
-    Some(NormalizedImageRef { reference: normalized })
 }
 
 fn normalize_image_id(id: &str) -> String {
@@ -86,7 +34,7 @@ pub(crate) fn resolve_image_ref_for_updates(app: &App, image: &str) -> Option<No
         for img in &app.images {
             if normalize_image_id(&img.id) == needle {
                 if let Some(reference) = App::image_row_ref(img) {
-                    return Some(NormalizedImageRef { reference });
+                    return Some(NormalizedImageRef { reference, digest: None });
                 }
             }
         }
@@ -173,19 +121,4 @@ pub(crate) fn is_rate_limit_error(err: Option<&str>) -> bool {
     err.contains("toomanyrequests")
         || err.contains("rate limit")
         || err.contains("429")
-}
-
-pub(crate) fn image_registry_for_ref(image_ref: &str) -> String {
-    let name = image_ref
-        .split_once('@')
-        .map(|(n, _)| n)
-        .unwrap_or(image_ref);
-    let name = name.split_once(':').map(|(n, _)| n).unwrap_or(name);
-    let first = name.split('/').next().unwrap_or("");
-    let has_registry = first.contains('.') || first.contains(':') || first == "localhost";
-    if has_registry {
-        first.to_string()
-    } else {
-        "docker.io".to_string()
-    }
 }
