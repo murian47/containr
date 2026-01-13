@@ -38,8 +38,11 @@ use render::inspect::{
     ancestors_of_pointer, build_inspect_lines, collect_expandable_paths, collect_match_paths,
     collect_path_rank,
 };
+use render::status::action_status_prefix;
 use render::status::action_error_label;
-use render::highlight::{json_highlight_line, split_yaml_comment, yaml_highlight_line};
+use render::highlight::{
+    highlight_log_line_regex, json_highlight_line, split_yaml_comment, yaml_highlight_line,
+};
 use render::utils::{
     expand_user_path, shell_row_highlight, write_text_file,
 };

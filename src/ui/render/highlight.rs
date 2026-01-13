@@ -1,7 +1,41 @@
-use ratatui::style::Style;
-use ratatui::text::Span;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
 
 use crate::ui::theme::ThemeSpec;
+
+pub(crate) fn highlight_log_line_regex(line: &str, matcher: Option<&regex::Regex>) -> Line<'static> {
+    let Some(re) = matcher else {
+        return Line::from(line.to_string());
+    };
+
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut last = 0usize;
+    for m in re.find_iter(line) {
+        let start = m.start();
+        let end = m.end();
+        if end <= start {
+            continue;
+        }
+        if start > last {
+            spans.push(Span::raw(line[last..start].to_string()));
+        }
+        spans.push(Span::styled(
+            line[start..end].to_string(),
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
+        last = end;
+    }
+    if spans.is_empty() {
+        return Line::from(line.to_string());
+    }
+    if last < line.len() {
+        spans.push(Span::raw(line[last..].to_string()));
+    }
+    Line::from(spans)
+}
 
 pub(crate) fn yaml_highlight_line(line: &str, base: Style, theme: &ThemeSpec) -> Vec<Span<'static>> {
     // Very small YAML-ish highlighter:

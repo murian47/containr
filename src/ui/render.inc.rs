@@ -6244,48 +6244,6 @@ fn is_container_stopped(status: &str) -> bool {
     !(s.starts_with("Up") || s.starts_with("Restarting"))
 }
 
-fn action_status_prefix(action: ContainerAction) -> &'static str {
-    match action {
-        ContainerAction::Start => "Starting...",
-        ContainerAction::Stop => "Stopping...",
-        ContainerAction::Restart => "Restarting...",
-        ContainerAction::Remove => "Removing...",
-    }
-}
-fn highlight_log_line_regex(line: &str, matcher: Option<&Regex>) -> Line<'static> {
-    let Some(re) = matcher else {
-        return Line::from(line.to_string());
-    };
-
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    let mut last = 0usize;
-    for m in re.find_iter(line) {
-        let start = m.start();
-        let end = m.end();
-        if end <= start {
-            continue;
-        }
-        if start > last {
-            spans.push(Span::raw(line[last..start].to_string()));
-        }
-        spans.push(Span::styled(
-            line[start..end].to_string(),
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ));
-        last = end;
-    }
-    if spans.is_empty() {
-        return Line::from(line.to_string());
-    }
-    if last < line.len() {
-        spans.push(Span::raw(line[last..].to_string()));
-    }
-    Line::from(spans)
-}
-
 fn highlight_log_line_literal(line: &str, query: &str) -> Line<'static> {
     let q = query.trim();
     if q.is_empty() {

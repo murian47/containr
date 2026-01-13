@@ -6,12 +6,12 @@ use crate::ui::render::status::{action_error_details, action_error_label};
 use crate::ui::render::table::{render_detail_table, DetailRow};
 use crate::ui::render::text::truncate_end;
 use crate::ui::render::text::short_commit;
+use crate::ui::render::status::action_status_prefix;
 use crate::ui::state::image_updates::resolve_image_update_state;
 use crate::ui::{
-    action_status_prefix, draw_shell_hr, image_update_indicator, json_highlight_line,
-    registry_auth_label, shell_header_style, shell_row_highlight, stack_name_from_labels,
-    yaml_highlight_line, ActionErrorKind, App, ShellFocus, ShellView, StackDetailsFocus,
-    TemplatesKind,
+    draw_shell_hr, image_update_indicator, json_highlight_line, registry_auth_label,
+    shell_header_style, shell_row_highlight, stack_name_from_labels, yaml_highlight_line,
+    ActionErrorKind, App, ShellFocus, ShellView, StackDetailsFocus, TemplatesKind,
 };
 use crate::ui::render::inspect::current_match_pos;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
