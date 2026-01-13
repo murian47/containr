@@ -4,6 +4,23 @@ use ratatui::style::Style;
 use std::fs;
 use std::path::PathBuf;
 
+pub(in crate::ui) fn shell_escape_sh_arg(text: &str) -> String {
+    if text
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "._-/:@".contains(c))
+    {
+        return text.to_string();
+    }
+    let escaped = text.replace('\'', r"'\''");
+    format!("'{}'", escaped)
+}
+
+pub(in crate::ui) fn is_container_stopped(status: &str) -> bool {
+    let s = status.trim();
+    // docker ps STATUS values: "Up ...", "Exited (...) ...", "Created", "Dead"
+    !(s.starts_with("Up") || s.starts_with("Restarting"))
+}
+
 pub(in crate::ui) fn write_text_file(
     path: &str,
     text: &str,

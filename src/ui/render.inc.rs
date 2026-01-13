@@ -6228,59 +6228,6 @@ fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui
     );
 }
 
-fn shell_escape_sh_arg(text: &str) -> String {
-    if text
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || "._-/:@".contains(c))
-    {
-        return text.to_string();
-    }
-    let escaped = text.replace('\'', r"'\''");
-    format!("'{}'", escaped)
-}
-fn is_container_stopped(status: &str) -> bool {
-    let s = status.trim();
-    // docker ps STATUS values: "Up ...", "Exited (...) ...", "Created", "Dead"
-    !(s.starts_with("Up") || s.starts_with("Restarting"))
-}
-
-fn highlight_log_line_literal(line: &str, query: &str) -> Line<'static> {
-    let q = query.trim();
-    if q.is_empty() {
-        return Line::from(line.to_string());
-    }
-
-    let line_lc = line.to_ascii_lowercase();
-    let q_lc = q.to_ascii_lowercase();
-    if q_lc.is_empty() {
-        return Line::from(line.to_string());
-    }
-
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    let mut start = 0usize;
-    while let Some(pos) = line_lc[start..].find(&q_lc) {
-        let abs = start + pos;
-        if abs > start {
-            spans.push(Span::raw(line[start..abs].to_string()));
-        }
-        let end = abs + q_lc.len();
-        spans.push(Span::styled(
-            line[abs..end].to_string(),
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ));
-        start = end;
-    }
-    if spans.is_empty() {
-        return Line::from(line.to_string());
-    }
-    if start < line.len() {
-        spans.push(Span::raw(line[start..].to_string()));
-    }
-    Line::from(spans)
-}
 fn copy_to_clipboard(text: &str) -> anyhow::Result<()> {
     // macOS
     if let Ok(()) = pipe_to_cmd("pbcopy", &[], text) {

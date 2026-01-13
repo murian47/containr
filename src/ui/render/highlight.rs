@@ -37,6 +37,44 @@ pub(crate) fn highlight_log_line_regex(line: &str, matcher: Option<&regex::Regex
     Line::from(spans)
 }
 
+pub(crate) fn highlight_log_line_literal(line: &str, query: &str) -> Line<'static> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Line::from(line.to_string());
+    }
+
+    let line_lc = line.to_ascii_lowercase();
+    let q_lc = q.to_ascii_lowercase();
+    if q_lc.is_empty() {
+        return Line::from(line.to_string());
+    }
+
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut start = 0usize;
+    while let Some(pos) = line_lc[start..].find(&q_lc) {
+        let abs = start + pos;
+        if abs > start {
+            spans.push(Span::raw(line[start..abs].to_string()));
+        }
+        let end = abs + q_lc.len();
+        spans.push(Span::styled(
+            line[abs..end].to_string(),
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
+        start = end;
+    }
+    if spans.is_empty() {
+        return Line::from(line.to_string());
+    }
+    if start < line.len() {
+        spans.push(Span::raw(line[start..].to_string()));
+    }
+    Line::from(spans)
+}
+
 pub(crate) fn yaml_highlight_line(line: &str, base: Style, theme: &ThemeSpec) -> Vec<Span<'static>> {
     // Very small YAML-ish highlighter:
     // - comments: dim

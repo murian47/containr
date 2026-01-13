@@ -41,10 +41,12 @@ use render::inspect::{
 use render::status::action_status_prefix;
 use render::status::action_error_label;
 use render::highlight::{
-    highlight_log_line_regex, json_highlight_line, split_yaml_comment, yaml_highlight_line,
+    highlight_log_line_literal, highlight_log_line_regex, json_highlight_line, split_yaml_comment,
+    yaml_highlight_line,
 };
 use render::utils::{
-    expand_user_path, shell_row_highlight, write_text_file,
+    expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
+    write_text_file,
 };
 use render::text::{short_commit, slice_window, truncate_end, window_hscroll};
 use render::scroll::{draw_shell_scrollbar_h, draw_shell_scrollbar_v};
