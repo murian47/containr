@@ -287,6 +287,8 @@ fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
     add(c, "C-c", ":container console bash");
     add(c, "C-S-C", ":container console sh");
     add(c, "C-t", ":container tree");
+    add(c, "C-i", ":inspect");
+    add(c, "C-l", ":logs");
 
     // Stacks.
     let s = KeyScope::View(ShellView::Stacks);
@@ -297,14 +299,17 @@ fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
 
     // Images.
     let i = KeyScope::View(ShellView::Images);
+    add(i, "C-i", ":inspect");
     add(i, "C-d", ":image rm");
 
     // Networks.
     let n = KeyScope::View(ShellView::Networks);
+    add(n, "C-i", ":inspect");
     add(n, "C-d", ":network rm");
 
     // Volumes.
     let v = KeyScope::View(ShellView::Volumes);
+    add(v, "C-i", ":inspect");
     add(v, "C-d", ":volume rm");
 
     // Templates.

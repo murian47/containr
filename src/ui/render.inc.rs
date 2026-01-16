@@ -100,7 +100,6 @@ fn shell_enter_logs(app: &mut App, logs_req_tx: &mpsc::UnboundedSender<(String, 
     shell_set_main_view(app, ShellView::Containers);
     app.shell_view = ShellView::Logs;
     app.shell_focus = ShellFocus::List;
-    shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Logs));
 
     let Some(id) = shell_first_container_id(app) else {
         app.logs.loading = false;
@@ -119,7 +118,6 @@ fn shell_enter_inspect(app: &mut App, inspect_req_tx: &mpsc::UnboundedSender<Ins
     }
     app.shell_view = ShellView::Inspect;
     app.shell_focus = ShellFocus::List;
-    shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Inspect));
 
     let Some(target) = app.selected_inspect_target() else {
         app.inspect.loading = false;
@@ -2164,6 +2162,7 @@ fn cmdline_command_candidates() -> Vec<&'static str> {
         "network",
         "net",
         "sidebar",
+        "inspect",
         "logs",
         "set",
         "layout",
@@ -2894,6 +2893,7 @@ fn shell_execute_cmdline(
     refresh_interval_tx: &watch::Sender<Duration>,
     refresh_pause_tx: &watch::Sender<bool>,
     image_update_limit_tx: &watch::Sender<usize>,
+    inspect_req_tx: &mpsc::UnboundedSender<InspectTarget>,
     logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
@@ -3353,6 +3353,11 @@ fn shell_execute_cmdline(
         return;
     }
 
+    if cmd == "inspect" {
+        shell_enter_inspect(app, inspect_req_tx);
+        return;
+    }
+
     if cmd == "logs" {
         let sub = it.next().unwrap_or("");
         let mut args: Vec<&str> = Vec::new();
@@ -3360,6 +3365,10 @@ fn shell_execute_cmdline(
             args.push(sub);
         }
         args.extend(it);
+        if args.is_empty() && app.shell_view != ShellView::Logs {
+            shell_enter_logs(app, logs_req_tx);
+            return;
+        }
         let _ = commands::logs_cmd::handle_logs(app, &args, logs_req_tx);
         return;
     }
@@ -3521,9 +3530,17 @@ fn shell_registry_test_selected(
 fn shell_execute_action(
     app: &mut App,
     a: ShellAction,
+    inspect_req_tx: &mpsc::UnboundedSender<InspectTarget>,
+    logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
     match a {
+        ShellAction::Inspect => {
+            shell_enter_inspect(app, inspect_req_tx);
+        }
+        ShellAction::Logs => {
+            shell_enter_logs(app, logs_req_tx);
+        }
         ShellAction::Start => {
             if app.shell_view == ShellView::Stacks {
                 crate::ui::state::actions::exec_stack_action(app, ContainerAction::Start, None, action_req_tx);
@@ -3830,6 +3847,7 @@ fn handle_shell_key(
                         refresh_interval_tx,
                         refresh_pause_tx,
                         image_update_limit_tx,
+                        inspect_req_tx,
                         logs_req_tx,
                         action_req_tx,
                     );
@@ -3867,6 +3885,7 @@ fn handle_shell_key(
                         refresh_interval_tx,
                         refresh_pause_tx,
                         image_update_limit_tx,
+                        inspect_req_tx,
                         logs_req_tx,
                         action_req_tx,
                     );
@@ -3901,6 +3920,7 @@ fn handle_shell_key(
                     refresh_interval_tx,
                     refresh_pause_tx,
                     image_update_limit_tx,
+                    inspect_req_tx,
                     logs_req_tx,
                     action_req_tx,
                 );
@@ -4444,6 +4464,7 @@ fn handle_shell_key(
                             refresh_interval_tx,
                             refresh_pause_tx,
                             image_update_limit_tx,
+                            inspect_req_tx,
                             logs_req_tx,
                             action_req_tx,
                         );
@@ -4556,7 +4577,9 @@ fn handle_shell_key(
                             shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
                         }
                     },
-                    ShellSidebarItem::Action(a) => shell_execute_action(app, a, action_req_tx),
+                    ShellSidebarItem::Action(a) => {
+                        shell_execute_action(app, a, inspect_req_tx, logs_req_tx, action_req_tx)
+                    }
                     ShellSidebarItem::Separator => {}
                     ShellSidebarItem::Gap => {}
                 }

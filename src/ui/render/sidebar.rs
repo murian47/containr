@@ -21,8 +21,6 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
     items.push(ShellSidebarItem::Module(ShellView::Images));
     items.push(ShellSidebarItem::Module(ShellView::Volumes));
     items.push(ShellSidebarItem::Module(ShellView::Networks));
-    items.push(ShellSidebarItem::Module(ShellView::Inspect));
-    items.push(ShellSidebarItem::Module(ShellView::Logs));
     items.push(ShellSidebarItem::Gap);
     items.push(ShellSidebarItem::Module(ShellView::Templates));
     items.push(ShellSidebarItem::Module(ShellView::Registries));
@@ -37,15 +35,21 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
             ShellAction::Delete,
         ],
         ShellView::Containers => vec![
+            ShellAction::Inspect,
+            ShellAction::Logs,
             ShellAction::Start,
             ShellAction::Stop,
             ShellAction::Restart,
             ShellAction::Delete,
             ShellAction::Console,
         ],
-        ShellView::Images => vec![ShellAction::ImageUntag, ShellAction::ImageForceRemove],
-        ShellView::Volumes => vec![ShellAction::VolumeRemove],
-        ShellView::Networks => vec![ShellAction::NetworkRemove],
+        ShellView::Images => vec![
+            ShellAction::Inspect,
+            ShellAction::ImageUntag,
+            ShellAction::ImageForceRemove,
+        ],
+        ShellView::Volumes => vec![ShellAction::Inspect, ShellAction::VolumeRemove],
+        ShellView::Networks => vec![ShellAction::Inspect, ShellAction::NetworkRemove],
         ShellView::Templates => vec![
             ShellAction::TemplateEdit,
             ShellAction::TemplateNew,

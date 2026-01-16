@@ -581,6 +581,8 @@ struct SessionMsg {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ShellAction {
+    Inspect,
+    Logs,
     Start,
     Stop,
     Restart,
@@ -600,6 +602,8 @@ enum ShellAction {
 impl ShellAction {
     fn label(self) -> &'static str {
         match self {
+            ShellAction::Inspect => "Inspect",
+            ShellAction::Logs => "Logs",
             ShellAction::Start => "Start",
             ShellAction::Stop => "Stop",
             ShellAction::Restart => "Restart",
@@ -619,6 +623,8 @@ impl ShellAction {
 
     fn ctrl_hint(self) -> &'static str {
         match self {
+            ShellAction::Inspect => "^i",
+            ShellAction::Logs => "^l",
             ShellAction::Start => "^s",
             ShellAction::Stop => "^o",
             ShellAction::Restart => "^r",
@@ -644,7 +650,7 @@ fn shell_module_shortcut(view: ShellView) -> char {
         ShellView::Dashboard => 'd',
         ShellView::Stacks => 's',
         ShellView::Containers => 'c',
-        ShellView::Images => 'm',
+        ShellView::Images => 'i',
         ShellView::Volumes => 'v',
         ShellView::Networks => 'n',
         ShellView::Templates => 't',
