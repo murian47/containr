@@ -5005,16 +5005,8 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
         vertical: 1,
         horizontal: 1,
     });
-    let show_image = app.dashboard_image_enabled() && inner.width >= 70 && inner.height >= 12;
-    let (content_area, image_area) = if show_image {
-        let parts = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(40), Constraint::Length(28)])
-            .split(inner);
-        (parts[0], parts[1])
-    } else {
-        (inner, ratatui::layout::Rect::new(0, 0, 0, 0))
-    };
+    let show_image = app.dashboard_image_enabled() && inner.width >= 60 && inner.height >= 12;
+    let content_area = inner;
     if app.servers.is_empty() && app.current_target.trim().is_empty() {
         let msg = "No server configured. Use :server add to get started.";
         f.render_widget(
@@ -5283,6 +5275,20 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             Cell::from(Line::from(bar)),
         ])
     };
+    let metric_row_text = |name: &str, val: String, extra: Option<String>| -> Row<'static> {
+        let mut val = truncate_end(&val, m_val_w);
+        if let Some(extra) = extra {
+            if !extra.trim().is_empty() {
+                let extra = format!(" {extra}");
+                val = truncate_end(&(val + &extra), m_val_w);
+            }
+        }
+        let name = truncate_end(name, m_key_w);
+        Row::new(vec![
+            Cell::from(Span::styled(name, mk)),
+            Cell::from(Span::styled(val, mv)),
+        ])
+    };
 
     let cpu_val = format!("{load1:.2}/{load5:.2}/{load15:.2}");
     let mem_val = format!(
@@ -5316,8 +5322,12 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     let mem_bar = bar_spans_threshold(m_bar_w, mem_ratio2, app.ascii_only, mem_fill, bar_empty);
 
     let mut metric_rows: Vec<Row> = vec![
-        metric_row("CPU", cpu_val, cpu_bar, Some(format!("{cores}c"))),
-        metric_row("MEM", mem_val, mem_bar, None),
+        metric_row("CPU", cpu_val.clone(), cpu_bar, Some(format!("{cores}c"))),
+        metric_row("MEM", mem_val.clone(), mem_bar, None),
+    ];
+    let mut metric_rows_text: Vec<Row> = vec![
+        metric_row_text("CPU", cpu_val, Some(format!("{cores}c"))),
+        metric_row_text("MEM", mem_val, None),
     ];
     if let Some(s) = snap {
         for (idx, disk) in s.disks.iter().enumerate() {
@@ -5339,7 +5349,8 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
                 bar_err,
                 bar_empty,
             );
-            metric_rows.push(metric_row(&label, val, dsk_bar, None));
+            metric_rows.push(metric_row(&label, val.clone(), dsk_bar, None));
+            metric_rows_text.push(metric_row_text(&label, val, None));
         }
         for (idx, nic) in s.nics.iter().take(3).enumerate() {
             let label = if idx == 0 {
@@ -5349,6 +5360,7 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             };
             let val = nic.addr.clone();
             metric_rows.push(metric_row(&label, val, Vec::new(), None));
+            metric_rows_text.push(metric_row_text(&label, nic.addr.clone(), None));
         }
     } else {
         let dsk_bar = bar_spans_gradient(
@@ -5360,7 +5372,8 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             bar_err,
             bar_empty,
         );
-        metric_rows.push(metric_row("DSK", dsk_val, dsk_bar, None));
+        metric_rows.push(metric_row("DSK", dsk_val.clone(), dsk_bar, None));
+        metric_rows_text.push(metric_row_text("DSK", dsk_val, None));
     }
     let metrics = Table::new(
         metric_rows,
@@ -5372,9 +5385,25 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     )
     .style(bg)
     .column_spacing(1);
-    f.render_widget(metrics, chunks[4]);
-
     if show_image {
+        let metric_parts = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(m_key_w as u16 + m_val_w as u16 + 1),
+                Constraint::Min(10),
+            ])
+            .split(chunks[4]);
+        let metrics = Table::new(
+            metric_rows_text,
+            [
+                Constraint::Length(m_key_w as u16),
+                Constraint::Length(m_val_w as u16),
+            ],
+        )
+        .style(bg)
+        .column_spacing(1);
+        f.render_widget(metrics, metric_parts[0]);
+
         app.update_dashboard_image();
         if let Some(state) = app
             .dashboard_image
@@ -5382,8 +5411,10 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             .and_then(|img| img.protocol.as_mut())
         {
             let image = StatefulImage::default().resize(Resize::Fit(None));
-            f.render_stateful_widget(image, image_area, state);
+            f.render_stateful_widget(image, metric_parts[1], state);
         }
+    } else {
+        f.render_widget(metrics, chunks[4]);
     }
 
     if let Some(err) = &app.dashboard.error {
