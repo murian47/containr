@@ -230,6 +230,7 @@ fn parse_view_name(s: &str) -> Option<ShellView> {
         "networks" | "network" | "net" => Some(ShellView::Networks),
         "templates" | "template" | "tpl" => Some(ShellView::Templates),
         "registries" | "registry" | "reg" => Some(ShellView::Registries),
+        "themes" | "theme" => Some(ShellView::ThemeSelector),
         // Backward compatibility for earlier experiments.
         "nettemplates" | "nettemplate" | "nettpl" | "ntpl" | "nt" => Some(ShellView::Templates),
         "logs" | "log" => Some(ShellView::Logs),
@@ -256,6 +257,7 @@ fn scope_to_string(scope: KeyScope) -> &'static str {
         KeyScope::View(ShellView::Inspect) => "view:inspect",
         KeyScope::View(ShellView::Messages) => "view:messages",
         KeyScope::View(ShellView::Help) => "view:help",
+        KeyScope::View(ShellView::ThemeSelector) => "view:themes",
     }
 }
 

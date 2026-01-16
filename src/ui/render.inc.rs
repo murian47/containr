@@ -55,6 +55,7 @@ fn shell_set_main_view(app: &mut App, view: ShellView) {
         ShellView::Networks => ActiveView::Networks,
         ShellView::Templates => app.active_view,
         ShellView::Registries => app.active_view,
+        ShellView::ThemeSelector => app.active_view,
         ShellView::Inspect | ShellView::Logs | ShellView::Help | ShellView::Messages => {
             app.active_view
         }
@@ -2027,6 +2028,809 @@ fn parse_cmdline_tokens(input: &str) -> Result<Vec<String>, String> {
     crate::shell_parse::parse_shell_tokens(input)
 }
 
+struct CmdlineCompletionContext {
+    tokens_before: Vec<String>,
+    token_prefix: String,
+    token_start: usize,
+    cursor_byte: usize,
+    quote_prefix: bool,
+}
+
+fn cmdline_char_to_byte_index(input: &str, char_idx: usize) -> usize {
+    if char_idx == 0 {
+        return 0;
+    }
+    match input.char_indices().nth(char_idx) {
+        Some((idx, _)) => idx,
+        None => input.len(),
+    }
+}
+
+fn cmdline_completion_context(input: &str, cursor: usize) -> CmdlineCompletionContext {
+    let cursor_byte = cmdline_char_to_byte_index(input, cursor);
+    let mut tokens_before: Vec<String> = Vec::new();
+    let mut token = String::new();
+    let mut token_start: Option<usize> = None;
+    let mut in_quotes = false;
+    let mut escaped = false;
+
+    for (idx, ch) in input[..cursor_byte].char_indices() {
+        if escaped {
+            token.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            in_quotes = !in_quotes;
+            if token_start.is_none() {
+                token_start = Some(idx);
+            }
+            continue;
+        }
+        if !in_quotes && ch.is_whitespace() {
+            if token_start.is_some() {
+                tokens_before.push(std::mem::take(&mut token));
+                token_start = None;
+            }
+            continue;
+        }
+        if token_start.is_none() {
+            token_start = Some(idx);
+        }
+        token.push(ch);
+    }
+
+    let (token_prefix, token_start) = if let Some(start) = token_start {
+        (token, start)
+    } else {
+        (String::new(), cursor_byte)
+    };
+    let quote_prefix = token_start < cursor_byte && input[token_start..cursor_byte].starts_with('"');
+
+    CmdlineCompletionContext {
+        tokens_before,
+        token_prefix,
+        token_start,
+        cursor_byte,
+        quote_prefix,
+    }
+}
+
+fn cmdline_common_prefix_len_ci(a: &str, b: &str) -> usize {
+    let mut len = 0usize;
+    let mut it_a = a.chars();
+    let mut it_b = b.chars();
+    loop {
+        let (ca, cb) = match (it_a.next(), it_b.next()) {
+            (Some(a), Some(b)) => (a, b),
+            _ => break,
+        };
+        if ca.to_ascii_lowercase() != cb.to_ascii_lowercase() {
+            break;
+        }
+        len += 1;
+    }
+    len
+}
+
+fn cmdline_common_prefix_ci(strings: &[String]) -> String {
+    if strings.is_empty() {
+        return String::new();
+    }
+    let mut len = strings[0].chars().count();
+    for s in strings.iter().skip(1) {
+        len = len.min(cmdline_common_prefix_len_ci(&strings[0], s));
+    }
+    strings[0].chars().take(len).collect()
+}
+
+fn cmdline_filter_candidates(prefix: &str, candidates: Vec<String>) -> Vec<String> {
+    let prefix_lc = prefix.to_ascii_lowercase();
+    let mut out: Vec<String> = candidates
+        .into_iter()
+        .filter(|c| c.to_ascii_lowercase().starts_with(&prefix_lc))
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn cmdline_command_candidates() -> Vec<&'static str> {
+    vec![
+        "q",
+        "help",
+        "?",
+        "messages",
+        "msgs",
+        "ack",
+        "refresh",
+        "theme",
+        "git",
+        "map",
+        "unmap",
+        "container",
+        "ctr",
+        "stack",
+        "stacks",
+        "stk",
+        "image",
+        "img",
+        "volume",
+        "vol",
+        "network",
+        "net",
+        "sidebar",
+        "logs",
+        "set",
+        "layout",
+        "templates",
+        "template",
+        "tpl",
+        "registries",
+        "registry",
+        "reg",
+        "nettemplate",
+        "nettpl",
+        "ntpl",
+        "nt",
+        "server",
+    ]
+}
+
+fn cmdline_scope_candidates() -> Vec<String> {
+    vec![
+        "always",
+        "global",
+        "view:dashboard",
+        "view:stacks",
+        "view:containers",
+        "view:images",
+        "view:volumes",
+        "view:networks",
+        "view:templates",
+        "view:registries",
+        "view:logs",
+        "view:inspect",
+        "view:messages",
+        "view:help",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect()
+}
+
+fn cmdline_key_candidates() -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for key in [
+        "Enter",
+        "Esc",
+        "Tab",
+        "Backspace",
+        "Delete",
+        "Home",
+        "End",
+        "PageUp",
+        "PageDown",
+        "Up",
+        "Down",
+        "Left",
+        "Right",
+        "Space",
+    ] {
+        out.push(key.to_string());
+    }
+    for n in 1..=12 {
+        out.push(format!("F{n}"));
+        out.push(format!("C-F{n}"));
+    }
+    for ch in ['a', 'b', 'c', 'd', 'e', 'g', 'k', 'n', 'o', 'p', 'r', 's', 't', 'u', 'y'] {
+        out.push(format!("C-{ch}"));
+    }
+    out
+}
+
+fn cmdline_theme_names(app: &App) -> Vec<String> {
+    match theme::list_theme_names(&app.config_path) {
+        Ok(mut names) => {
+            if !names.iter().any(|n| n == "default") {
+                names.insert(0, "default".to_string());
+            }
+            names
+        }
+        Err(_) => vec![],
+    }
+}
+
+fn cmdline_server_names(app: &App) -> Vec<String> {
+    let mut names: Vec<String> = app.servers.iter().map(|s| s.name.clone()).collect();
+    names.sort();
+    names
+}
+
+fn cmdline_template_names(app: &App) -> Vec<String> {
+    let mut names: Vec<String> = match app.templates_state.kind {
+        TemplatesKind::Stacks => app
+            .templates_state
+            .templates
+            .iter()
+            .map(|t| t.name.clone())
+            .collect(),
+        TemplatesKind::Networks => app
+            .templates_state
+            .net_templates
+            .iter()
+            .map(|t| t.name.clone())
+            .collect(),
+    };
+    names.sort();
+    names
+}
+
+fn cmdline_net_template_names(app: &App) -> Vec<String> {
+    let mut names: Vec<String> = app
+        .templates_state
+        .net_templates
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    names.sort();
+    names
+}
+
+fn cmdline_registry_hosts(app: &App) -> Vec<String> {
+    let mut hosts: Vec<String> = app
+        .registries_cfg
+        .registries
+        .iter()
+        .map(|r| r.host.clone())
+        .collect();
+    hosts.sort();
+    hosts
+}
+
+fn cmdline_stack_names(app: &App) -> Vec<String> {
+    let mut names: Vec<String> = app.stacks.iter().map(|s| s.name.clone()).collect();
+    names.sort();
+    names
+}
+
+fn cmdline_normalize_cmd(tokens_before: &[String]) -> (Option<String>, usize) {
+    if tokens_before.is_empty() {
+        return (None, 0);
+    }
+    let mut first = tokens_before[0].as_str();
+    if first == "!" {
+        if let Some(cmd) = tokens_before.get(1) {
+            return (Some(cmd.clone()), 1);
+        }
+        return (None, 1);
+    }
+    if let Some(rest) = first.strip_prefix(':') {
+        first = rest;
+    }
+    if let Some(rest) = first.strip_prefix('!') {
+        if !rest.is_empty() {
+            return (Some(rest.to_string()), 0);
+        }
+    }
+    if let Some(rest) = first.strip_suffix('!') {
+        if !rest.is_empty() {
+            return (Some(rest.to_string()), 0);
+        }
+    }
+    (Some(first.to_string()), 0)
+}
+
+fn cmdline_completion_candidates(app: &App, ctx: &CmdlineCompletionContext) -> (String, Vec<String>) {
+    let mut leading = String::new();
+    let token_index = ctx.tokens_before.len();
+    let mut token_prefix = ctx.token_prefix.clone();
+
+    let command_position = token_index == 0
+        || (token_index == 1 && ctx.tokens_before.first().is_some_and(|t| t == "!"));
+
+    if command_position {
+        if token_prefix.starts_with(':') {
+            leading.push(':');
+            token_prefix = token_prefix[1..].to_string();
+        }
+        if token_prefix.starts_with('!') {
+            leading.push('!');
+            token_prefix = token_prefix[1..].to_string();
+        }
+        if token_index == 1 {
+            leading.push('!');
+        }
+        let candidates: Vec<String> = cmdline_command_candidates()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+        return (leading, cmdline_filter_candidates(&token_prefix, candidates));
+    }
+
+    let (cmd_opt, cmd_idx) = cmdline_normalize_cmd(&ctx.tokens_before);
+    let Some(cmd_raw) = cmd_opt else {
+        return (String::new(), Vec::new());
+    };
+    let cmd = cmd_raw.to_ascii_lowercase();
+    let arg_index = ctx
+        .tokens_before
+        .len()
+        .saturating_sub(cmd_idx.saturating_add(1));
+    let sub = ctx
+        .tokens_before
+        .get(cmd_idx + 1)
+        .map(|s| s.as_str())
+        .unwrap_or("");
+
+    let candidates: Vec<String> = match cmd.as_str() {
+        "theme" => {
+            if arg_index == 0 {
+                vec!["list", "use", "new", "edit", "rm"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else if matches!(sub, "use" | "edit" | "rm") && arg_index == 1 {
+                cmdline_theme_names(app)
+            } else {
+                Vec::new()
+            }
+        }
+        "server" => {
+            if arg_index == 0 {
+                vec!["list", "use", "add", "rm", "shell"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else if matches!(sub, "use" | "rm" | "shell") && arg_index == 1 {
+                cmdline_server_names(app)
+            } else if sub == "add" {
+                if arg_index == 2 {
+                    vec!["ssh", "local"]
+                        .into_iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                } else if arg_index >= 3 && ctx.token_prefix.starts_with('-') {
+                    vec!["-p", "-i", "--cmd"]
+                        .into_iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        }
+        "container" | "ctr" => {
+            if arg_index == 0 {
+                vec![
+                    "start",
+                    "stop",
+                    "restart",
+                    "rm",
+                    "console",
+                    "tree",
+                    "check",
+                    "updates",
+                    "recreate",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect()
+            } else if sub == "console" && arg_index >= 1 {
+                if ctx.token_prefix.starts_with('-') {
+                    vec!["-u".to_string()]
+                } else {
+                    vec!["bash".to_string(), "sh".to_string()]
+                }
+            } else {
+                Vec::new()
+            }
+        }
+        "stack" | "stacks" | "stk" => {
+            if arg_index == 0 {
+                vec![
+                    "start", "stop", "restart", "rm", "check", "updates", "running", "all",
+                    "recreate",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect()
+            } else if matches!(sub, "start" | "stop" | "restart" | "rm" | "check")
+                && arg_index == 1
+            {
+                cmdline_stack_names(app)
+            } else {
+                Vec::new()
+            }
+        }
+        "image" | "img" => {
+            if arg_index == 0 {
+                vec!["untag", "rm", "remove", "delete"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        "volume" | "vol" => {
+            if arg_index == 0 {
+                vec!["rm", "remove", "delete"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        "network" | "net" => {
+            if arg_index == 0 {
+                vec!["rm", "remove", "delete"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        "templates" => {
+            if arg_index == 0 {
+                vec!["kind", "toggle"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else if sub == "kind" && arg_index == 1 {
+                vec!["stacks", "networks", "toggle"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        "template" | "tpl" => {
+            if arg_index == 0 {
+                vec![
+                    "add",
+                    "new",
+                    "edit",
+                    "deploy",
+                    "rm",
+                    "del",
+                    "delete",
+                    "from",
+                    "from-stack",
+                    "from-container",
+                    "kind",
+                    "toggle",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect()
+            } else if sub == "kind" && arg_index == 1 {
+                vec!["stacks", "networks", "toggle"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else if sub == "deploy" && arg_index >= 1 {
+                if ctx.token_prefix.starts_with('-') {
+                    vec!["--pull", "--recreate", "--force-recreate"]
+                        .into_iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                } else {
+                    let mut out = cmdline_template_names(app);
+                    out.extend(
+                        ["--pull", "--recreate", "--force-recreate", "pull", "recreate"]
+                            .into_iter()
+                            .map(|s| s.to_string()),
+                    );
+                    out
+                }
+            } else if matches!(sub, "rm" | "del" | "delete") && arg_index == 1 {
+                cmdline_template_names(app)
+            } else if sub == "from" && arg_index == 1 {
+                vec!["stack", "container"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        "nettemplate" | "nettpl" | "ntpl" | "nt" => {
+            if arg_index == 0 {
+                vec!["add", "new", "edit", "deploy", "rm", "del", "delete"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else if matches!(sub, "deploy" | "rm" | "del" | "delete") && arg_index == 1 {
+                cmdline_net_template_names(app)
+            } else {
+                Vec::new()
+            }
+        }
+        "registries" => {
+            if arg_index == 0 {
+                vec!["view", "list", "identity"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        "registry" | "reg" => {
+            if arg_index == 0 {
+                vec!["add", "rm", "remove", "del", "set", "test", "list"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else if matches!(sub, "rm" | "remove" | "del" | "test") && arg_index == 1 {
+                cmdline_registry_hosts(app)
+            } else if sub == "set" {
+                if arg_index == 1 {
+                    cmdline_registry_hosts(app)
+                } else if arg_index == 2 {
+                    vec![
+                        "auth",
+                        "username",
+                        "secret",
+                        "secret-file",
+                        "test-repo",
+                    ]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+                } else if arg_index == 3 {
+                    if let Some(field) = ctx.tokens_before.get(cmd_idx + 2) {
+                        if field == "auth" {
+                            return (
+                                String::new(),
+                                cmdline_filter_candidates(
+                                    &ctx.token_prefix,
+                                    vec![
+                                        "anonymous".to_string(),
+                                        "basic".to_string(),
+                                        "bearer".to_string(),
+                                        "github".to_string(),
+                                    ],
+                                ),
+                            );
+                        }
+                    }
+                    Vec::new()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        }
+        "set" => {
+            if arg_index == 0 {
+                vec![
+                    "refresh",
+                    "logtail",
+                    "history",
+                    "git_autocommit",
+                    "git_autocommit_confirm",
+                    "editor",
+                    "image_update_concurrency",
+                    "image_update_debug",
+                    "image_update_autocheck",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect()
+            } else if matches!(
+                sub,
+                "git_autocommit"
+                    | "git_autocommit_confirm"
+                    | "image_update_debug"
+                    | "image_update_autocheck"
+            ) && arg_index == 1
+            {
+                vec!["on", "off", "true", "false"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else if sub == "editor" && arg_index == 1 {
+                vec!["reset".to_string()]
+            } else {
+                Vec::new()
+            }
+        }
+        "layout" => {
+            if arg_index == 0 {
+                vec!["horizontal", "vertical", "toggle"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        "sidebar" => {
+            if arg_index == 0 {
+                vec!["toggle", "compact"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        "logs" => {
+            if arg_index == 0 {
+                vec!["reload", "refresh", "copy"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        "messages" | "msgs" => {
+            if arg_index == 0 {
+                vec!["copy", "save", "save!"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        "ack" => {
+            if arg_index == 0 {
+                vec!["all".to_string()]
+            } else {
+                Vec::new()
+            }
+        }
+        "git" => {
+            if arg_index == 0 {
+                vec!["templates", "themes"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else if arg_index == 1 {
+                vec![
+                    "status",
+                    "diff",
+                    "log",
+                    "commit",
+                    "config",
+                    "pull",
+                    "push",
+                    "init",
+                    "clone",
+                    "autocommit",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect()
+            } else if sub == "config" && arg_index == 2 {
+                vec!["user.name", "user.email"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else if matches!(sub, "commit" | "autocommit") && arg_index == 2 {
+                vec!["-m".to_string()]
+            } else {
+                Vec::new()
+            }
+        }
+        "map" => {
+            if arg_index == 0 {
+                let mut out = vec!["list".to_string()];
+                out.extend(cmdline_scope_candidates());
+                out
+            } else if arg_index == 1 {
+                cmdline_key_candidates()
+            } else {
+                Vec::new()
+            }
+        }
+        "unmap" => {
+            if arg_index == 0 {
+                cmdline_scope_candidates()
+            } else if arg_index == 1 {
+                cmdline_key_candidates()
+            } else {
+                Vec::new()
+            }
+        }
+        _ => Vec::new(),
+    };
+
+    (String::new(), cmdline_filter_candidates(&ctx.token_prefix, candidates))
+}
+
+fn cmdline_apply_completion(app: &mut App) {
+    let input = app.shell_cmdline.input.clone();
+    let cursor = app.shell_cmdline.cursor;
+    let ctx = cmdline_completion_context(&input, cursor);
+    let (leading, mut matches) = cmdline_completion_candidates(app, &ctx);
+    if matches.is_empty() {
+        return;
+    }
+
+    let mut prefix = ctx.token_prefix.clone();
+    if !leading.is_empty() && prefix.starts_with(':') {
+        prefix = prefix.trim_start_matches(':').to_string();
+    }
+    if leading.contains('!') && prefix.starts_with('!') {
+        prefix = prefix.trim_start_matches('!').to_string();
+    }
+
+    let single_match = matches.len() == 1;
+    let replacement = if single_match {
+        matches[0].clone()
+    } else {
+        let common = cmdline_common_prefix_ci(&matches);
+        if common.len() > prefix.len() {
+            common
+        } else {
+            String::new()
+        }
+    };
+
+    if replacement.is_empty() {
+        let max = 12usize;
+        if matches.len() > max {
+            let rest = matches.len() - max;
+            matches.truncate(max);
+            app.set_info(format!(
+                "matches: {} ... +{rest} more",
+                matches.join(" ")
+            ));
+        } else {
+            app.set_info(format!("matches: {}", matches.join(" ")));
+        }
+        return;
+    }
+
+    let mut replace_text = format!("{leading}{replacement}");
+    if ctx.quote_prefix {
+        replace_text = format!("\"{}", replace_text);
+    }
+
+    let mut new_input = String::new();
+    new_input.push_str(&input[..ctx.token_start]);
+    new_input.push_str(&replace_text);
+    new_input.push_str(&input[ctx.cursor_byte..]);
+    app.shell_cmdline.input = new_input;
+    app.shell_cmdline.cursor =
+        app.shell_cmdline.input[..ctx.token_start + replace_text.len()].chars().count();
+
+    if single_match {
+        let after = &app.shell_cmdline.input[ctx.token_start + replace_text.len()..];
+        if after.is_empty() {
+            app.shell_cmdline.input.push(' ');
+            app.shell_cmdline.cursor += 1;
+        }
+    } else {
+        let max = 12usize;
+        if matches.len() > max {
+            let rest = matches.len() - max;
+            matches.truncate(max);
+            app.set_info(format!(
+                "matches: {} ... +{rest} more",
+                matches.join(" ")
+            ));
+        } else {
+            app.set_info(format!("matches: {}", matches.join(" ")));
+        }
+    }
+}
+
 fn shell_open_console(app: &mut App, user: Option<&str>, shell: &str) {
     let Some(c) = app.selected_container() else {
         app.set_warn("no container selected");
@@ -2278,7 +3082,8 @@ fn shell_execute_cmdline(
                 | ShellView::Inspect
                 | ShellView::Help
                 | ShellView::Messages
-                | ShellView::Registries => {}
+                | ShellView::Registries
+                | ShellView::ThemeSelector => {}
             }
             app.set_info("cleared action error marker(s) for selection");
             return;
@@ -2306,31 +3111,9 @@ fn shell_execute_cmdline(
                         return;
                     }
             match sub {
-                "list" => match theme::list_theme_names(&app.config_path) {
-                    Ok(mut names) => {
-                        if names.is_empty() {
-                            app.set_info("no themes found");
-                        } else {
-                            // Ensure default is always visible.
-                            if !names.iter().any(|n| n == "default") {
-                                names.insert(0, "default".to_string());
-                            }
-                            app.set_info("Themes:");
-                            for n in names {
-                                if n == app.theme_name {
-                                    app.set_info(format!("* {n} (active)"));
-                                } else {
-                                    app.set_info(format!("  {n}"));
-                                }
-                            }
-                        }
-                        app.shell_msgs.return_view = app.shell_view;
-                        app.shell_view = ShellView::Messages;
-                        app.shell_focus = ShellFocus::List;
-                        app.shell_msgs.scroll = usize::MAX;
-                    }
-                    Err(e) => app.set_error(format!("theme list failed: {:#}", e)),
-                },
+                "list" => {
+                    app.open_theme_selector();
+                }
                 "use" => {
                     let Some(name) = it.next() else {
                         app.set_warn("usage: :theme use <name>");
@@ -2338,6 +3121,8 @@ fn shell_execute_cmdline(
                     };
                     if let Err(e) = commands::theme_cmd::set_theme(app, name) {
                         app.set_error(format!("{:#}", e));
+                    } else {
+                        app.reset_dashboard_image();
                     }
                 }
                 "new" => {
@@ -3156,6 +3941,9 @@ fn handle_shell_key(
             }
             KeyCode::Home => app.shell_cmdline.cursor = 0,
             KeyCode::End => app.shell_cmdline.cursor = app.shell_cmdline.input.chars().count(),
+            KeyCode::Tab => {
+                cmdline_apply_completion(app);
+            }
             KeyCode::Char(ch) => {
                 // Common readline-like movement shortcuts.
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -3517,6 +4305,127 @@ fn handle_shell_key(
         if app.inspect.mode != InspectMode::Normal {
             return;
         }
+    }
+
+    if app.shell_view == ShellView::ThemeSelector {
+        match key.code {
+            KeyCode::Esc => {
+                if app.theme_selector.search_mode {
+                    app.theme_selector.search_mode = false;
+                    app.theme_selector.search_input.clear();
+                    app.theme_selector.search_cursor = 0;
+                } else {
+                    app.theme_selector_cancel();
+                }
+                return;
+            }
+            KeyCode::Char('q') if key.modifiers.is_empty() => {
+                app.theme_selector_cancel();
+                return;
+            }
+            KeyCode::Enter => {
+                if app.theme_selector.search_mode {
+                    app.theme_selector.search_mode = false;
+                } else {
+                    app.theme_selector_apply();
+                }
+                return;
+            }
+            KeyCode::Char('/') if key.modifiers.is_empty() => {
+                app.theme_selector.search_mode = true;
+                app.theme_selector.search_input.clear();
+                app.theme_selector.search_cursor = 0;
+                return;
+            }
+            _ => {}
+        }
+
+        if app.theme_selector.search_mode {
+            match key.code {
+                KeyCode::Backspace => {
+                    backspace_at_cursor(
+                        &mut app.theme_selector.search_input,
+                        &mut app.theme_selector.search_cursor,
+                    );
+                    let query = app.theme_selector.search_input.clone();
+                    app.theme_selector_search(&query);
+                    return;
+                }
+                KeyCode::Delete => {
+                    delete_at_cursor(
+                        &mut app.theme_selector.search_input,
+                        &mut app.theme_selector.search_cursor,
+                    );
+                    let query = app.theme_selector.search_input.clone();
+                    app.theme_selector_search(&query);
+                    return;
+                }
+                KeyCode::Left => {
+                    app.theme_selector.search_cursor =
+                        clamp_cursor_to_text(&app.theme_selector.search_input, app.theme_selector.search_cursor)
+                            .saturating_sub(1);
+                    return;
+                }
+                KeyCode::Right => {
+                    let len = app.theme_selector.search_input.chars().count();
+                    app.theme_selector.search_cursor =
+                        clamp_cursor_to_text(&app.theme_selector.search_input, app.theme_selector.search_cursor)
+                            .saturating_add(1)
+                            .min(len);
+                    return;
+                }
+                KeyCode::Home => {
+                    app.theme_selector.search_cursor = 0;
+                    return;
+                }
+                KeyCode::End => {
+                    app.theme_selector.search_cursor = app.theme_selector.search_input.chars().count();
+                    return;
+                }
+                KeyCode::Char(ch) => {
+                    if !ch.is_control() && !key.modifiers.contains(KeyModifiers::CONTROL) {
+                        insert_char_at_cursor(
+                            &mut app.theme_selector.search_input,
+                            &mut app.theme_selector.search_cursor,
+                            ch,
+                        );
+                        let query = app.theme_selector.search_input.clone();
+                        app.theme_selector_search(&query);
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        match key.code {
+            KeyCode::Up => {
+                app.theme_selector_move(-1);
+            }
+            KeyCode::Down => {
+                app.theme_selector_move(1);
+            }
+            KeyCode::PageUp => {
+                app.theme_selector_page_move(-1);
+            }
+            KeyCode::PageDown => {
+                app.theme_selector_page_move(1);
+            }
+            KeyCode::Home => {
+                app.theme_selector_move(-(app.theme_selector.selected as i32));
+            }
+            KeyCode::End => {
+                let last = app
+                    .theme_selector
+                    .names
+                    .len()
+                    .saturating_sub(1) as i32;
+                let delta = last.saturating_sub(app.theme_selector.selected as i32);
+                app.theme_selector_move(delta);
+            }
+            _ => {}
+        }
+        return;
     }
 
     // Custom key bindings (outside of input modes). Skip single-letter shortcuts when sidebar has focus.
@@ -4077,6 +4986,7 @@ fn handle_shell_key(
             KeyCode::End => app.shell_msgs.scroll = usize::MAX,
             _ => {}
         },
+        ShellView::ThemeSelector => {}
     }
 }
 
@@ -4122,17 +5032,32 @@ fn draw_shell_header(
     } else {
         String::new()
     };
+    let global_loading = app.loading
+        || app.dashboard.loading
+        || app.logs.loading
+        || app.inspect.loading
+        || !app.action_inflight.is_empty()
+        || !app.image_action_inflight.is_empty()
+        || !app.volume_action_inflight.is_empty()
+        || !app.network_action_inflight.is_empty()
+        || !app.templates_state.template_deploy_inflight.is_empty()
+        || !app.templates_state.net_template_deploy_inflight.is_empty()
+        || !app.image_updates_inflight.is_empty();
+    let refresh_label = format!("⟳ {}s", app.refresh_secs.max(1));
     let commit_label = if commands::git_cmd::git_available() && app.git_autocommit {
         "  Commit: auto"
     } else {
         ""
     };
     let mid = format!(
-        "Server: {server}  {conn} connected{err_badge}  ⟳ {}s{commit_label}  View: {}{crumb}{deploy}",
-        app.refresh_secs.max(1),
+        "Server: {server}  {conn} connected{err_badge}  {refresh_label}{commit_label}  View: {}{crumb}{deploy}",
         app.shell_view.title(),
     );
-    let right = "";
+    let right = if global_loading {
+        dot_spinner(app.ascii_only).to_string()
+    } else {
+        String::new()
+    };
 
     let w = area.width.max(1) as usize;
     let mut line = String::new();
@@ -4141,7 +5066,9 @@ fn draw_shell_header(
     let min_right = right.chars().count();
     let shown = truncate_end(&line, w.saturating_sub(min_right));
     let rem = w.saturating_sub(shown.chars().count());
-    let right_shown = truncate_start(right, rem);
+    let right_shown = truncate_start(&right, rem);
+    let right_len = right_shown.chars().count();
+    let gap = rem.saturating_sub(right_len);
 
     let mut spans: Vec<Span> = Vec::new();
     let (logo, rest) = split_at_chars(&shown, left.chars().count());
@@ -4216,6 +5143,9 @@ fn draw_shell_header(
         spans = updated;
     }
     if !right_shown.is_empty() {
+        if gap > 0 {
+            spans.push(Span::styled(" ".repeat(gap), bg));
+        }
         spans.push(Span::styled(right_shown, bg.fg(Color::Gray)));
     }
 
@@ -4354,6 +5284,9 @@ pub(in crate::ui) fn draw_shell_main_list(
             draw_shell_title(f, app, "Messages", app.session_msgs.len(), title_area);
             draw_shell_messages_view(f, app, content_area);
         }
+        ShellView::ThemeSelector => {
+            draw_shell_title(f, app, "Themes", 0, title_area);
+        }
     }
 }
 
@@ -4437,6 +5370,19 @@ fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::
                         true,
                     ),
                 },
+                ShellView::ThemeSelector => {
+                    if app.theme_selector.search_mode {
+                        (
+                            "SEARCH",
+                            "/",
+                            app.theme_selector.search_input.clone(),
+                            app.theme_selector.search_cursor,
+                            true,
+                        )
+                    } else {
+                        ("CONTAINR", "", String::new(), 0, false)
+                    }
+                }
                 _ => ("CONTAINR", "", String::new(), 0, false),
             }
         };
@@ -5386,12 +6332,10 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     .style(bg)
     .column_spacing(1);
     if show_image {
+        let text_w = m_key_w as u16 + m_val_w as u16;
         let metric_parts = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(m_key_w as u16 + m_val_w as u16 + 1),
-                Constraint::Min(10),
-            ])
+            .constraints([Constraint::Length(text_w), Constraint::Min(10)])
             .split(chunks[4]);
         let metrics = Table::new(
             metric_rows_text,
@@ -5401,17 +6345,27 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             ],
         )
         .style(bg)
-        .column_spacing(1);
+        .column_spacing(0);
         f.render_widget(metrics, metric_parts[0]);
 
-        app.update_dashboard_image();
-        if let Some(state) = app
-            .dashboard_image
-            .as_mut()
-            .and_then(|img| img.protocol.as_mut())
-        {
-            let image = StatefulImage::default().resize(Resize::Fit(None));
-            f.render_stateful_widget(image, metric_parts[1], state);
+        let disk_rows = if let Some(s) = snap { s.disks.len().max(1) } else { 1 };
+        let bar_rows = 2 + disk_rows;
+        if (bar_rows as u16) <= metric_parts[1].height {
+            let image_area = ratatui::layout::Rect {
+                x: metric_parts[1].x,
+                y: metric_parts[1].y,
+                width: metric_parts[1].width,
+                height: bar_rows as u16,
+            };
+            app.update_dashboard_image(image_area);
+            if let Some(state) = app
+                .dashboard_image
+                .as_mut()
+                .and_then(|img| img.protocol.as_mut())
+            {
+                let image = StatefulImage::default().resize(Resize::Fit(None));
+                f.render_stateful_widget(image, image_area, state);
+            }
         }
     } else {
         f.render_widget(metrics, chunks[4]);

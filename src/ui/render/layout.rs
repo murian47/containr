@@ -2,10 +2,15 @@ use crate::ui::{
     App, ShellSplitMode, ShellView, draw_shell_main_details, draw_shell_main_list,
     draw_shell_sidebar,
 };
+use crate::ui::render::theme_selector::draw_theme_selector;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
 pub(in crate::ui) fn draw_shell_body(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
+    if app.shell_view == ShellView::ThemeSelector {
+        draw_theme_selector(f, app, area);
+        return;
+    }
     if app.shell_sidebar_hidden {
         draw_shell_main(f, app, area);
         return;

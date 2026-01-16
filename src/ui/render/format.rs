@@ -214,3 +214,18 @@ pub(crate) fn spinner_char(started: Instant, ascii_only: bool) -> char {
         frames[((ms / 120) % frames.len() as u64) as usize]
     }
 }
+
+pub(crate) fn dot_spinner(ascii_only: bool) -> &'static str {
+    const FRAMES_ASCII: [&str; 3] = ["·..", ".·.", "..·"];
+    const FRAMES_UNI: [&str; 3] = ["●··", "·●·", "··●"];
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let idx = ((ms / 400) % FRAMES_ASCII.len() as u64) as usize;
+    if ascii_only {
+        FRAMES_ASCII[idx]
+    } else {
+        FRAMES_UNI[idx]
+    }
+}

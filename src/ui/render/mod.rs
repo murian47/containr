@@ -16,3 +16,4 @@ pub mod scroll;
 pub mod footer;
 pub mod inspect;
 pub mod git;
+pub mod theme_selector;

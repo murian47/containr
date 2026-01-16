@@ -22,8 +22,8 @@ use render::sidebar::{
     draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
 use render::format::{
-    bar_spans_gradient, bar_spans_threshold, format_bytes_short, loading_spinner, spinner_char,
-    split_at_chars, truncate_start,
+    bar_spans_gradient, bar_spans_threshold, dot_spinner, format_bytes_short, loading_spinner,
+    spinner_char, split_at_chars, truncate_start,
 };
 use crate::domain::image_refs::{image_registry_for_ref, normalize_image_ref};
 use crate::ui::state::image_updates::{
@@ -229,6 +229,23 @@ struct ShellMessagesState {
 struct ShellHelpState {
     scroll: usize,
     return_view: ShellView,
+}
+
+#[derive(Debug, Clone)]
+struct ThemeSelectorState {
+    names: Vec<String>,
+    selected: usize,
+    scroll: usize,
+    page_size: usize,
+    center_on_open: bool,
+    return_view: ShellView,
+    base_theme_name: String,
+    base_theme: theme::ThemeSpec,
+    preview_theme: theme::ThemeSpec,
+    error: Option<String>,
+    search_mode: bool,
+    search_input: String,
+    search_cursor: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -479,6 +496,7 @@ enum ShellView {
     Logs,
     Help,
     Messages,
+    ThemeSelector,
 }
 
 impl ShellView {
@@ -496,6 +514,7 @@ impl ShellView {
             ShellView::Logs => "logs",
             ShellView::Help => "help",
             ShellView::Messages => "messages",
+            ShellView::ThemeSelector => "themes",
         }
     }
 
@@ -513,6 +532,7 @@ impl ShellView {
             ShellView::Logs => "Logs",
             ShellView::Help => "Help",
             ShellView::Messages => "Messages",
+            ShellView::ThemeSelector => "Themes",
         }
     }
 }
@@ -634,6 +654,7 @@ fn shell_module_shortcut(view: ShellView) -> char {
         ShellView::Help => '?',
         // Not a primary module; used only for internal navigation/help display.
         ShellView::Messages => 'g',
+        ShellView::ThemeSelector => 't',
     }
 }
 
@@ -1171,6 +1192,7 @@ struct App {
     shell_pending_interactive: Option<ShellInteractive>,
     shell_cmdline: ShellCmdlineState,
     shell_help: ShellHelpState,
+    theme_selector: ThemeSelectorState,
     refresh_secs: u64,
     refresh_paused: bool,
     refresh_pause_reason: Option<String>,
@@ -1617,6 +1639,8 @@ impl App {
             }
             !v.hits.is_empty() || v.limited_until.is_some()
         });
+        let theme_name_clone = theme_name.clone();
+        let theme_clone = theme.clone();
         let mut app = Self {
             containers: Vec::new(),
             images: Vec::new(),
@@ -1760,6 +1784,21 @@ impl App {
             shell_help: ShellHelpState {
                 scroll: 0,
                 return_view: ShellView::Dashboard,
+            },
+            theme_selector: ThemeSelectorState {
+                names: Vec::new(),
+                selected: 0,
+                scroll: 0,
+                page_size: 0,
+                center_on_open: false,
+                return_view: ShellView::Dashboard,
+                base_theme_name: theme_name_clone,
+                base_theme: theme_clone.clone(),
+                preview_theme: theme_clone,
+                error: None,
+                search_mode: false,
+                search_input: String::new(),
+                search_cursor: 0,
             },
             refresh_secs: 5,
             refresh_paused: false,
@@ -1932,7 +1971,7 @@ impl App {
             .unwrap_or(false)
     }
 
-    fn update_dashboard_image(&mut self) {
+    fn update_dashboard_image(&mut self, area: ratatui::layout::Rect) {
         let Some(state) = &mut self.dashboard_image else {
             return;
         };
@@ -1942,36 +1981,62 @@ impl App {
         let Some(snap) = self.dashboard.snap.as_ref() else {
             return;
         };
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
         let mem_ratio = if snap.mem_total_bytes == 0 {
             0.0
         } else {
             (snap.mem_used_bytes as f32) / (snap.mem_total_bytes as f32)
-        };
-        let disk_ratio = if snap.disk_total_bytes == 0 {
-            0.0
-        } else {
-            (snap.disk_used_bytes as f32) / (snap.disk_total_bytes as f32)
         };
         let cpu_ratio = if snap.cpu_cores == 0 {
             0.0
         } else {
             (snap.load1 / (snap.cpu_cores as f32)).clamp(0.0, 1.0)
         };
+        let mut ratios: Vec<f32> = Vec::new();
+        ratios.push(cpu_ratio);
+        ratios.push(mem_ratio);
+        if snap.disks.is_empty() {
+            let disk_ratio = if snap.disk_total_bytes == 0 {
+                0.0
+            } else {
+                (snap.disk_used_bytes as f32) / (snap.disk_total_bytes as f32)
+            };
+            ratios.push(disk_ratio);
+        } else {
+            for disk in &snap.disks {
+                let total = disk.total_bytes.max(1) as f32;
+                ratios.push((disk.used_bytes as f32) / total);
+            }
+        }
         let key = format!(
-            "{:.2}-{:.2}-{:.2}-{}-{}",
+            "{:.2}-{:.2}-{}-{}x{}",
             cpu_ratio,
             mem_ratio,
-            disk_ratio,
-            snap.disks.len(),
-            snap.nics.len()
+            ratios.len(),
+            area.width,
+            area.height
         );
         if state.last_key.as_deref() == Some(&key) {
             return;
         }
-        let img = build_dashboard_image(&self.theme, snap, cpu_ratio, mem_ratio, disk_ratio);
+        let (fw, fh) = state.picker.font_size();
+        let px_w = (area.width as u32).saturating_mul(fw.max(1) as u32);
+        let px_h = (area.height as u32).saturating_mul(fh.max(1) as u32);
+        if px_w == 0 || px_h == 0 {
+            return;
+        }
+        let img = build_dashboard_image(&self.theme, &ratios, px_w, px_h);
         let dyn_img = DynamicImage::ImageRgba8(img);
         state.protocol = Some(state.picker.new_resize_protocol(dyn_img));
         state.last_key = Some(key);
+    }
+
+    fn reset_dashboard_image(&mut self) {
+        if let Some(state) = &mut self.dashboard_image {
+            apply_dashboard_theme(state, &self.theme);
+        }
     }
 
     fn selected_template(&self) -> Option<&TemplateEntry> {
@@ -2110,6 +2175,190 @@ impl App {
         self.templates_state
             .net_templates
             .get(self.templates_state.net_templates_selected)
+    }
+
+    fn open_theme_selector(&mut self) {
+        let names = match theme::list_theme_names(&self.config_path) {
+            Ok(mut list) => {
+                if !list.iter().any(|n| n == "default") {
+                    list.insert(0, "default".to_string());
+                }
+                list
+            }
+            Err(e) => {
+                self.set_error(format!("theme list failed: {e:#}"));
+                vec![self.theme_name.clone()]
+            }
+        };
+        let selected = names
+            .iter()
+            .position(|n| n == &self.theme_name)
+            .unwrap_or(0);
+
+        self.theme_selector.names = names;
+        self.theme_selector.selected = selected;
+        self.theme_selector.scroll = 0;
+        self.theme_selector.page_size = 0;
+        self.theme_selector.center_on_open = true;
+        let return_view = if self.shell_view == ShellView::ThemeSelector {
+            self.theme_selector.return_view
+        } else {
+            self.shell_view
+        };
+        self.theme_selector.return_view = return_view;
+        self.theme_selector.base_theme_name = self.theme_name.clone();
+        self.theme_selector.base_theme = self.theme.clone();
+        self.theme_selector.error = None;
+        self.theme_selector.search_mode = false;
+        self.theme_selector.search_input.clear();
+        self.theme_selector.search_cursor = 0;
+        self.theme_selector_update_preview();
+        self.theme_selector_adjust_scroll(true);
+
+        self.shell_cmdline.mode = false;
+        self.shell_cmdline.confirm = None;
+        self.shell_focus = ShellFocus::Sidebar;
+        self.shell_view = ShellView::ThemeSelector;
+    }
+
+    fn theme_selector_selected_name(&self) -> Option<&str> {
+        self.theme_selector
+            .names
+            .get(self.theme_selector.selected)
+            .map(|s| s.as_str())
+    }
+
+    fn theme_selector_update_preview(&mut self) {
+        let Some(name) = self.theme_selector_selected_name().map(|s| s.to_string()) else {
+            self.theme_selector.preview_theme = self.theme.clone();
+            self.theme_selector.error = Some("no themes available".to_string());
+            return;
+        };
+        match theme::load_theme(&self.config_path, &name) {
+            Ok(spec) => {
+                self.theme_selector.preview_theme = spec;
+                self.theme_selector.error = None;
+            }
+            Err(e) => {
+                self.theme_selector.preview_theme = self.theme.clone();
+                self.theme_selector.error = Some(format!("failed to load theme '{name}': {e:#}"));
+            }
+        }
+    }
+
+    fn theme_selector_search(&mut self, query: &str) {
+        let query = query.trim().to_ascii_lowercase();
+        if query.is_empty() {
+            return;
+        }
+        if let Some((idx, _)) = self
+            .theme_selector
+            .names
+            .iter()
+            .enumerate()
+            .find(|(_, name)| name.to_ascii_lowercase().contains(&query))
+        {
+            if idx != self.theme_selector.selected {
+                self.theme_selector.selected = idx;
+                self.theme_selector_update_preview();
+            }
+            self.theme_selector_adjust_scroll(true);
+        }
+    }
+
+    fn theme_selector_adjust_scroll(&mut self, center: bool) {
+        let total = self.theme_selector.names.len();
+        if total == 0 {
+            self.theme_selector.scroll = 0;
+            self.theme_selector.selected = 0;
+            return;
+        }
+        let view = self.theme_selector.page_size.max(1);
+        let max_scroll = total.saturating_sub(view);
+        let selected = self.theme_selector.selected.min(total.saturating_sub(1));
+
+        if center {
+            let mut scroll = selected.saturating_sub(view / 2);
+            if scroll > max_scroll {
+                scroll = max_scroll;
+            }
+            self.theme_selector.scroll = scroll;
+            return;
+        }
+
+        let mut scroll = self.theme_selector.scroll.min(max_scroll);
+        if selected < scroll {
+            scroll = selected;
+        } else if selected >= scroll + view {
+            scroll = selected.saturating_sub(view.saturating_sub(1));
+        }
+        self.theme_selector.scroll = scroll;
+    }
+
+    fn theme_selector_move(&mut self, delta: i32) {
+        if self.theme_selector.names.is_empty() {
+            self.theme_selector.selected = 0;
+            return;
+        }
+        let len = self.theme_selector.names.len();
+        let cur = self.theme_selector.selected;
+        let step = if delta < 0 { (-delta) as usize } else { delta as usize };
+        let next = if delta < 0 {
+            cur.saturating_sub(step)
+        } else {
+            cur.saturating_add(step)
+        }
+        .min(len.saturating_sub(1));
+        if next != cur {
+            self.theme_selector.selected = next;
+            self.theme_selector_update_preview();
+            self.theme_selector_adjust_scroll(false);
+        }
+    }
+
+    fn theme_selector_page_move(&mut self, delta: i32) {
+        let step = self.theme_selector.page_size.max(1);
+        self.theme_selector_move(delta.saturating_mul(step as i32));
+    }
+
+    fn theme_selector_apply(&mut self) {
+        let Some(name) = self.theme_selector_selected_name().map(|s| s.to_string()) else {
+            self.set_warn("no theme selected");
+            return;
+        };
+        if let Err(e) = commands::theme_cmd::set_theme(self, &name) {
+            self.set_error(format!("{e:#}"));
+            return;
+        }
+        self.reset_dashboard_image();
+        let return_view = if self.theme_selector.return_view == ShellView::ThemeSelector {
+            ShellView::Dashboard
+        } else {
+            self.theme_selector.return_view
+        };
+        self.shell_view = return_view;
+        self.shell_focus = ShellFocus::List;
+        if return_view != ShellView::ThemeSelector {
+            shell_sidebar_select_item(self, ShellSidebarItem::Module(return_view));
+        }
+    }
+
+    fn theme_selector_cancel(&mut self) {
+        let base = self.theme_selector.base_theme_name.clone();
+        if let Err(e) = commands::theme_cmd::set_theme(self, &base) {
+            self.set_error(format!("{e:#}"));
+        } else {
+            self.reset_dashboard_image();
+        }
+        self.shell_view = if self.theme_selector.return_view == ShellView::ThemeSelector {
+            ShellView::Dashboard
+        } else {
+            self.theme_selector.return_view
+        };
+        self.shell_focus = ShellFocus::List;
+        if self.shell_view != ShellView::ThemeSelector {
+            shell_sidebar_select_item(self, ShellSidebarItem::Module(self.shell_view));
+        }
     }
 
     fn rebuild_keymap(&mut self) {
@@ -3425,6 +3674,21 @@ fn init_dashboard_image(mut picker: Picker, theme: &theme::ThemeSpec) -> Dashboa
     }
 }
 
+fn apply_dashboard_theme(state: &mut DashboardImageState, theme: &theme::ThemeSpec) {
+    let fallback = Rgba([16, 16, 16, 255]);
+    let panel_raw = theme.panel.bg.trim();
+    let panel_bg = theme_color_rgba(&theme.panel.bg, fallback);
+    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset") {
+        theme_color_rgba(&theme.background.bg, fallback)
+    } else {
+        panel_bg
+    };
+    state.picker.set_background_color(bg);
+    state.enabled = state.picker.protocol_type() == ProtocolType::Kitty;
+    state.protocol = None;
+    state.last_key = None;
+}
+
 #[derive(Clone, Debug)]
 struct DiskEntry {
     source: String,
@@ -3442,13 +3706,10 @@ struct NicEntry {
 
 fn build_dashboard_image(
     theme: &theme::ThemeSpec,
-    snap: &DashboardSnapshot,
-    cpu_ratio: f32,
-    mem_ratio: f32,
-    disk_ratio: f32,
+    ratios: &[f32],
+    width: u32,
+    height: u32,
 ) -> RgbaImage {
-    let width = 480u32;
-    let height = 180u32;
     let mut img = RgbaImage::new(width, height);
     let fallback_bg = Rgba([16, 16, 16, 255]);
     let panel_raw = theme.panel.bg.trim();
@@ -3457,7 +3718,7 @@ fn build_dashboard_image(
     } else {
         theme_color_rgba(&theme.panel.bg, fallback_bg)
     };
-    let faint = theme_color_rgba(&theme.text_faint.fg, Rgba([40, 40, 40, 255]));
+    let faint = theme_color_rgba(&theme.header.bg, Rgba([40, 40, 40, 255]));
     let ok = theme_color_rgba(&theme.text_ok.fg, Rgba([90, 200, 120, 255]));
     let warn = theme_color_rgba(&theme.text_warn.fg, Rgba([255, 190, 64, 255]));
     let err = theme_color_rgba(&theme.text_error.fg, Rgba([220, 120, 120, 255]));
@@ -3494,28 +3755,22 @@ fn build_dashboard_image(
         }
     };
 
-    let ratios = [
-        cpu_ratio.clamp(0.0, 1.0),
-        mem_ratio.clamp(0.0, 1.0),
-        disk_ratio.clamp(0.0, 1.0),
-    ];
-    let margin_x = 16u32;
+    let ratios: Vec<f32> = ratios.iter().map(|r| r.clamp(0.0, 1.0)).collect();
+    if ratios.is_empty() {
+        return img;
+    }
+    let margin_x = 2u32;
     let bar_w = width.saturating_sub(margin_x * 2);
-    let bar_h = 26u32;
-    let gap = 18u32;
-    let mut y = 20u32;
-    for ratio in ratios {
+    let rows = ratios.len().max(1) as u32;
+    let row_h = (height / rows).max(1);
+    let pad = (row_h / 6).min(2);
+    let bar_h = row_h.saturating_sub(pad * 2).max(3);
+    for (idx, ratio) in ratios.iter().enumerate() {
+        let row_top = idx as u32 * row_h;
+        let y = row_top + (row_h.saturating_sub(bar_h)) / 2;
         fill_rect(margin_x, y, bar_w, bar_h, faint);
         let fill_w = ((bar_w as f32) * ratio).round() as u32;
-        fill_rect(margin_x, y, fill_w, bar_h, ratio_color(ratio));
-        y = y.saturating_add(bar_h + gap);
-    }
-
-    if snap.disks.len() > 1 {
-        let mark_w = (bar_w / 6).max(6);
-        let mark_h = 4u32;
-        let mark_y = height.saturating_sub(mark_h + 8);
-        fill_rect(margin_x, mark_y, mark_w, mark_h, faint);
+        fill_rect(margin_x, y, fill_w, bar_h, ratio_color(*ratio));
     }
 
     img
@@ -5833,6 +6088,7 @@ pub async fn run_tui(
                         }
                         if let Some(name) = app.theme_refresh_after_edit.take() {
                             commands::theme_cmd::reload_active_theme_after_edit(&mut app, &name);
+                            app.reset_dashboard_image();
                         }
                         if let Err(e) = res {
                             app.set_error(format!("{:#}", e));

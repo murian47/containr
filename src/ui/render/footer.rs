@@ -67,5 +67,8 @@ fn footer_hint(view: ShellView) -> &'static str {
         ShellView::Messages => {
             " F1 help  Up/Down select  Left/Right hscroll  PgUp/PgDn  ^c copy  ^g toggle  q back  :q quit"
         }
+        ShellView::ThemeSelector => {
+            " F1 help  / search  Up/Down select  Enter apply  Esc cancel"
+        }
     }
 }

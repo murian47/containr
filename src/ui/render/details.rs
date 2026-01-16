@@ -38,6 +38,7 @@ pub(in crate::ui) fn draw_shell_main_details(
         ShellView::Inspect => draw_shell_inspect_meta(f, app, area),
         ShellView::Help => draw_shell_help_meta(f, app, area),
         ShellView::Messages => draw_shell_messages_meta(f, app, area),
+        ShellView::ThemeSelector => {}
     }
 }
 

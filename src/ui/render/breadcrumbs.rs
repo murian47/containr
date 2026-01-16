@@ -63,5 +63,6 @@ pub(crate) fn shell_breadcrumbs(app: &App) -> String {
             .unwrap_or_default(),
         ShellView::Help => String::new(),
         ShellView::Messages => String::new(),
+        ShellView::ThemeSelector => String::new(),
     }
 }

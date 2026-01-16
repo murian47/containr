@@ -54,7 +54,7 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
         ],
         ShellView::Registries => vec![ShellAction::RegistryTest],
         ShellView::Inspect | ShellView::Logs | ShellView::Help => vec![],
-        ShellView::Messages => vec![],
+        ShellView::Messages | ShellView::ThemeSelector => vec![],
     };
     if !actions.is_empty() {
         items.push(ShellSidebarItem::Separator);

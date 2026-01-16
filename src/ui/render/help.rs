@@ -147,7 +147,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(Line::from(""));
 
     out.push(h("Theme"));
-    out.push(item("Global", ":theme list", "List available themes"));
+    out.push(item(
+        "Global",
+        ":theme list",
+        "Open theme selector (preview + apply)",
+    ));
     out.push(item("Global", ":theme use <name>", "Switch active theme (persisted)"));
     out.push(item(
         "Global",
