@@ -51,6 +51,7 @@ fn mk_integration_app(templates_dir: PathBuf) -> App {
         HashMap::new(),
         "default".to_string(),
         theme::default_theme_spec(),
+        None,
         false,
         false,
         String::new(),

@@ -5005,6 +5005,16 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
         vertical: 1,
         horizontal: 1,
     });
+    let show_image = app.dashboard_image_enabled() && inner.width >= 70 && inner.height >= 12;
+    let (content_area, image_area) = if show_image {
+        let parts = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(40), Constraint::Length(28)])
+            .split(inner);
+        (parts[0], parts[1])
+    } else {
+        (inner, ratatui::layout::Rect::new(0, 0, 0, 0))
+    };
     if app.servers.is_empty() && app.current_target.trim().is_empty() {
         let msg = "No server configured. Use :server add to get started.";
         f.render_widget(
@@ -5012,7 +5022,7 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
                 .style(bg.patch(app.theme.text_dim.to_style()))
                 .alignment(Alignment::Center)
                 .wrap(Wrap { trim: true }),
-            inner,
+            content_area,
         );
         return;
     }
@@ -5027,7 +5037,7 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             Constraint::Length(7), // metrics table
             Constraint::Min(1),    // notes
         ])
-        .split(inner);
+        .split(content_area);
 
     let ok = bg.patch(app.theme.text_ok.to_style());
     let warn = bg.patch(app.theme.text_warn.to_style());
@@ -5363,6 +5373,18 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     .style(bg)
     .column_spacing(1);
     f.render_widget(metrics, chunks[4]);
+
+    if show_image {
+        app.update_dashboard_image();
+        if let Some(state) = app
+            .dashboard_image
+            .as_mut()
+            .and_then(|img| img.protocol.as_mut())
+        {
+            let image = StatefulImage::default().resize(Resize::Fit(None));
+            f.render_stateful_widget(image, image_area, state);
+        }
+    }
 
     if let Some(err) = &app.dashboard.error {
         let msg = truncate_end(err, inner.width.max(1) as usize);

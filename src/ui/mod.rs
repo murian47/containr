@@ -46,7 +46,7 @@ use render::highlight::{
 };
 use render::utils::{
     expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
-    write_text_file,
+    theme_color_rgba, write_text_file,
 };
 use render::text::{short_commit, slice_window, truncate_end, window_hscroll};
 use render::scroll::{draw_shell_scrollbar_h, draw_shell_scrollbar_v};
@@ -75,6 +75,10 @@ use ratatui::{
         Block, Cell, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap,
     },
 };
+use ratatui_image::picker::{Picker, ProtocolType};
+use ratatui_image::protocol::StatefulProtocol;
+use ratatui_image::{Resize, StatefulImage};
+use image::{DynamicImage, Rgba, RgbaImage};
 use reqwest::{Client, StatusCode, Url};
 use reqwest::header::WWW_AUTHENTICATE;
 use regex::{Regex, RegexBuilder};
@@ -1144,6 +1148,7 @@ struct App {
 
     logs: LogsState,
     dashboard: DashboardState,
+    dashboard_image: Option<DashboardImageState>,
 
     ip_cache: HashMap<String, (String, Instant)>,
     ip_refresh_needed: bool,
@@ -1579,6 +1584,7 @@ impl App {
         view_layout: HashMap<String, String>,
         theme_name: String,
         theme: theme::ThemeSpec,
+        dashboard_picker: Option<Picker>,
         git_autocommit: bool,
         git_autocommit_confirm: bool,
         editor_cmd: String,
@@ -1715,6 +1721,7 @@ impl App {
                 loading: true,
                 ..DashboardState::default()
             },
+            dashboard_image: dashboard_picker.map(|p| init_dashboard_image(p, &theme)),
 
             ip_cache: HashMap::new(),
             ip_refresh_needed: true,
@@ -1916,6 +1923,55 @@ impl App {
             .filter_map(|t| t.template_id.clone())
             .collect();
         self.template_deploys.retain(|id, _| known.contains(id));
+    }
+
+    fn dashboard_image_enabled(&self) -> bool {
+        self.dashboard_image
+            .as_ref()
+            .map(|state| state.enabled)
+            .unwrap_or(false)
+    }
+
+    fn update_dashboard_image(&mut self) {
+        let Some(state) = &mut self.dashboard_image else {
+            return;
+        };
+        if !state.enabled {
+            return;
+        }
+        let Some(snap) = self.dashboard.snap.as_ref() else {
+            return;
+        };
+        let mem_ratio = if snap.mem_total_bytes == 0 {
+            0.0
+        } else {
+            (snap.mem_used_bytes as f32) / (snap.mem_total_bytes as f32)
+        };
+        let disk_ratio = if snap.disk_total_bytes == 0 {
+            0.0
+        } else {
+            (snap.disk_used_bytes as f32) / (snap.disk_total_bytes as f32)
+        };
+        let cpu_ratio = if snap.cpu_cores == 0 {
+            0.0
+        } else {
+            (snap.load1 / (snap.cpu_cores as f32)).clamp(0.0, 1.0)
+        };
+        let key = format!(
+            "{:.2}-{:.2}-{:.2}-{}-{}",
+            cpu_ratio,
+            mem_ratio,
+            disk_ratio,
+            snap.disks.len(),
+            snap.nics.len()
+        );
+        if state.last_key.as_deref() == Some(&key) {
+            return;
+        }
+        let img = build_dashboard_image(&self.theme, snap, cpu_ratio, mem_ratio, disk_ratio);
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        state.protocol = Some(state.picker.new_resize_protocol(dyn_img));
+        state.last_key = Some(key);
     }
 
     fn selected_template(&self) -> Option<&TemplateEntry> {
@@ -3343,6 +3399,32 @@ struct DashboardState {
     snap: Option<DashboardSnapshot>,
 }
 
+struct DashboardImageState {
+    enabled: bool,
+    picker: Picker,
+    protocol: Option<StatefulProtocol>,
+    last_key: Option<String>,
+}
+
+fn init_dashboard_image(mut picker: Picker, theme: &theme::ThemeSpec) -> DashboardImageState {
+    let fallback = Rgba([16, 16, 16, 255]);
+    let panel_raw = theme.panel.bg.trim();
+    let panel_bg = theme_color_rgba(&theme.panel.bg, fallback);
+    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset") {
+        theme_color_rgba(&theme.background.bg, fallback)
+    } else {
+        panel_bg
+    };
+    picker.set_background_color(bg);
+    let enabled = picker.protocol_type() == ProtocolType::Kitty;
+    DashboardImageState {
+        enabled,
+        picker,
+        protocol: None,
+        last_key: None,
+    }
+}
+
 #[derive(Clone, Debug)]
 struct DiskEntry {
     source: String,
@@ -3356,6 +3438,87 @@ struct DiskEntry {
 struct NicEntry {
     name: String,
     addr: String,
+}
+
+fn build_dashboard_image(
+    theme: &theme::ThemeSpec,
+    snap: &DashboardSnapshot,
+    cpu_ratio: f32,
+    mem_ratio: f32,
+    disk_ratio: f32,
+) -> RgbaImage {
+    let width = 480u32;
+    let height = 180u32;
+    let mut img = RgbaImage::new(width, height);
+    let fallback_bg = Rgba([16, 16, 16, 255]);
+    let panel_raw = theme.panel.bg.trim();
+    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset") {
+        theme_color_rgba(&theme.background.bg, fallback_bg)
+    } else {
+        theme_color_rgba(&theme.panel.bg, fallback_bg)
+    };
+    let faint = theme_color_rgba(&theme.text_faint.fg, Rgba([40, 40, 40, 255]));
+    let ok = theme_color_rgba(&theme.text_ok.fg, Rgba([90, 200, 120, 255]));
+    let warn = theme_color_rgba(&theme.text_warn.fg, Rgba([255, 190, 64, 255]));
+    let err = theme_color_rgba(&theme.text_error.fg, Rgba([220, 120, 120, 255]));
+
+    for p in img.pixels_mut() {
+        *p = bg;
+    }
+
+    let mut fill_rect = |x: u32, y: u32, w: u32, h: u32, color: Rgba<u8>| {
+        let max_x = width.saturating_sub(1);
+        let max_y = height.saturating_sub(1);
+        let end_x = (x + w).min(width);
+        let end_y = (y + h).min(height);
+        for yy in y..end_y {
+            if yy > max_y {
+                break;
+            }
+            for xx in x..end_x {
+                if xx > max_x {
+                    break;
+                }
+                img.put_pixel(xx, yy, color);
+            }
+        }
+    };
+
+    let ratio_color = |ratio: f32| -> Rgba<u8> {
+        if ratio >= 0.85 {
+            err
+        } else if ratio >= 0.70 {
+            warn
+        } else {
+            ok
+        }
+    };
+
+    let ratios = [
+        cpu_ratio.clamp(0.0, 1.0),
+        mem_ratio.clamp(0.0, 1.0),
+        disk_ratio.clamp(0.0, 1.0),
+    ];
+    let margin_x = 16u32;
+    let bar_w = width.saturating_sub(margin_x * 2);
+    let bar_h = 26u32;
+    let gap = 18u32;
+    let mut y = 20u32;
+    for ratio in ratios {
+        fill_rect(margin_x, y, bar_w, bar_h, faint);
+        let fill_w = ((bar_w as f32) * ratio).round() as u32;
+        fill_rect(margin_x, y, fill_w, bar_h, ratio_color(ratio));
+        y = y.saturating_add(bar_h + gap);
+    }
+
+    if snap.disks.len() > 1 {
+        let mark_w = (bar_w / 6).max(6);
+        let mark_h = 4u32;
+        let mark_y = height.saturating_sub(mark_h + 8);
+        fill_rect(margin_x, mark_y, mark_w, mark_h, faint);
+    }
+
+    img
 }
 
 fn dashboard_command(docker_cmd: &DockerCmd) -> String {
@@ -4313,6 +4476,11 @@ pub async fn run_tui(
     const SLEEP_GAP_SECS: u64 = 120;
     const ERROR_PAUSE_THRESHOLD: u32 = 3;
     let mut terminal = setup_terminal().context("failed to setup terminal")?;
+    let dashboard_picker = if ascii_only {
+        None
+    } else {
+        Picker::from_query_stdio().ok()
+    };
     let (theme_spec, theme_err) = match theme::load_theme(&config_path, &active_theme) {
         Ok(t) => (t, None),
         Err(e) => (theme::default_theme_spec(), Some(e)),
@@ -4333,6 +4501,7 @@ pub async fn run_tui(
         view_layout,
         active_theme,
         theme_spec,
+        dashboard_picker,
         git_autocommit,
         git_autocommit_confirm,
         editor_cmd,

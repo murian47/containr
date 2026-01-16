@@ -1,6 +1,7 @@
 use anyhow::Context as _;
-use crate::ui::App;
-use ratatui::style::Style;
+use crate::ui::{App, theme};
+use image::Rgba;
+use ratatui::style::{Color, Style};
 use std::fs;
 use std::path::PathBuf;
 
@@ -63,4 +64,26 @@ pub(in crate::ui) fn shell_row_highlight(app: &App) -> Style {
 
 pub(in crate::ui) fn truncate_end(s: &str, max: usize) -> String {
     crate::ui::render::text::truncate_end(s, max)
+}
+
+pub(in crate::ui) fn color_to_rgba(color: Color, fallback: Rgba<u8>) -> Rgba<u8> {
+    match color {
+        Color::Rgb(r, g, b) => Rgba([r, g, b, 255]),
+        Color::Black => Rgba([0, 0, 0, 255]),
+        Color::Red => Rgba([255, 0, 0, 255]),
+        Color::Green => Rgba([0, 255, 0, 255]),
+        Color::Yellow => Rgba([255, 255, 0, 255]),
+        Color::Blue => Rgba([0, 0, 255, 255]),
+        Color::Magenta => Rgba([255, 0, 255, 255]),
+        Color::Cyan => Rgba([0, 255, 255, 255]),
+        Color::Gray => Rgba([128, 128, 128, 255]),
+        Color::DarkGray => Rgba([64, 64, 64, 255]),
+        Color::White => Rgba([255, 255, 255, 255]),
+        _ => fallback,
+    }
+}
+
+pub(in crate::ui) fn theme_color_rgba(spec: &str, fallback: Rgba<u8>) -> Rgba<u8> {
+    let color = theme::parse_color(spec);
+    color_to_rgba(color, fallback)
 }
