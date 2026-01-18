@@ -7,6 +7,7 @@ This list reflects the current implementation and what is planned next.
 ## Implemented
 
 - UI shell: sidebar, header, status/command line, messages view, themes
+- Theme selector UI with preview
 - Keymaps with scopes (`always`, `global`, `view:<name>`) via `:map`/`:unmap`
 - Servers: list/use/add/remove, SSH shell (`:server shell`)
 - Views: Dashboard, Containers, Images, Volumes, Networks, Templates, Logs, Inspect, Registries, Stacks
@@ -21,15 +22,16 @@ This list reflects the current implementation and what is planned next.
 
 ## Partial / Limited
 
-- Image update checks (manual); full update/rollback workflow not complete
 - Registry auth UX (keyring integration) not complete
 - Template deploy metadata (last deploy target) not shown in list yet
 
 ## Planned (Roadmap)
 
-- Template deployment metadata in list view
 - Update/rollback UI + registry auth via keyring (age fallback)
-- Command placeholders for CLI + keybindings (server/container/selection vars)
-- Theme selection UI with preview
 - AI-assisted template creation/editing
 
+## Deferred
+
+- Image update checks (manual); full update/rollback workflow not complete
+- Template deployment metadata in list view
+- Command placeholders for CLI + keybindings (server/container/selection vars)

@@ -6,7 +6,11 @@ pub fn handle_layout(app: &mut App, args: &[&str]) -> bool {
     let sub = args.first().copied().unwrap_or("toggle");
     let target_view = if matches!(
         app.shell_view,
-        ShellView::Inspect | ShellView::Logs | ShellView::Help | ShellView::Messages
+        ShellView::Inspect
+            | ShellView::Logs
+            | ShellView::Help
+            | ShellView::Messages
+            | ShellView::TemplateAi
     ) {
         app.shell_last_main_view
     } else {
