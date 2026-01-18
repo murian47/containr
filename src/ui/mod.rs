@@ -316,6 +316,27 @@ struct TemplatesState {
     net_template_deploy_inflight: HashMap<String, DeployMarker>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TemplateAiFocus {
+    Prompt,
+    Template,
+    Result,
+}
+
+#[derive(Debug, Clone)]
+struct TemplateAiState {
+    prompt: String,
+    prompt_cursor: usize,
+    prompt_scroll: usize,
+    template_text: String,
+    template_scroll: usize,
+    result_text: String,
+    result_scroll: usize,
+    focus: TemplateAiFocus,
+    target_name: String,
+    target_path: Option<PathBuf>,
+}
+
 #[allow(private_interfaces)]
 pub(crate) fn shell_begin_confirm(app: &mut App, label: impl Into<String>, cmdline: impl Into<String>) {
     app.shell_cmdline.mode = true;
@@ -491,6 +512,7 @@ enum ShellView {
     Volumes,
     Networks,
     Templates,
+    TemplateAi,
     Registries,
     Inspect,
     Logs,
@@ -509,6 +531,7 @@ impl ShellView {
             ShellView::Volumes => "volumes",
             ShellView::Networks => "networks",
             ShellView::Templates => "templates",
+            ShellView::TemplateAi => "template-ai",
             ShellView::Registries => "registries",
             ShellView::Inspect => "inspect",
             ShellView::Logs => "logs",
@@ -527,6 +550,7 @@ impl ShellView {
             ShellView::Volumes => "Volumes",
             ShellView::Networks => "Networks",
             ShellView::Templates => "Templates",
+            ShellView::TemplateAi => "Template AI",
             ShellView::Registries => "Registries",
             ShellView::Inspect => "Inspect",
             ShellView::Logs => "Logs",
@@ -593,6 +617,7 @@ enum ShellAction {
     VolumeRemove,
     NetworkRemove,
     RegistryTest,
+    TemplateAi,
     TemplateEdit,
     TemplateNew,
     TemplateDelete,
@@ -614,6 +639,7 @@ impl ShellAction {
             ShellAction::VolumeRemove => "Remove",
             ShellAction::NetworkRemove => "Remove",
             ShellAction::RegistryTest => "Test",
+            ShellAction::TemplateAi => "AI",
             ShellAction::TemplateEdit => "Edit",
             ShellAction::TemplateNew => "New",
             ShellAction::TemplateDelete => "Delete",
@@ -637,6 +663,7 @@ impl ShellAction {
             ShellAction::VolumeRemove => "^d",
             ShellAction::NetworkRemove => "^d",
             ShellAction::RegistryTest => "^y",
+            ShellAction::TemplateAi => "^a",
             ShellAction::TemplateEdit => "^e",
             ShellAction::TemplateNew => "^n",
             ShellAction::TemplateDelete => "^d",
@@ -654,6 +681,7 @@ fn shell_module_shortcut(view: ShellView) -> char {
         ShellView::Volumes => 'v',
         ShellView::Networks => 'n',
         ShellView::Templates => 't',
+        ShellView::TemplateAi => 'a',
         ShellView::Registries => 'r',
         ShellView::Inspect => 'i',
         ShellView::Logs => 'l',
@@ -1220,6 +1248,7 @@ struct App {
     keymap_defaults: HashMap<(KeyScope, KeySpec), String>,
 
     templates_state: TemplatesState,
+    template_ai: TemplateAiState,
     image_updates: HashMap<String, ImageUpdateEntry>,
     image_updates_inflight: HashSet<String>,
     image_updates_path: PathBuf,
@@ -1846,6 +1875,18 @@ impl App {
                 net_templates_details_scroll: 0,
                 net_templates_refresh_after_edit: None,
                 net_template_deploy_inflight: HashMap::new(),
+            },
+            template_ai: TemplateAiState {
+                prompt: String::new(),
+                prompt_cursor: 0,
+                prompt_scroll: 0,
+                template_text: String::new(),
+                template_scroll: 0,
+                result_text: String::new(),
+                result_scroll: 0,
+                focus: TemplateAiFocus::Prompt,
+                target_name: String::new(),
+                target_path: None,
             },
 
             theme_refresh_after_edit: None,

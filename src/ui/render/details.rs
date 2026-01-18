@@ -33,6 +33,7 @@ pub(in crate::ui) fn draw_shell_main_details(
         ShellView::Volumes => draw_shell_volume_details(f, app, area),
         ShellView::Networks => draw_shell_network_details(f, app, area),
         ShellView::Templates => draw_shell_template_details(f, app, area),
+        ShellView::TemplateAi => {}
         ShellView::Registries => draw_shell_registry_details(f, app, area),
         ShellView::Logs => draw_shell_logs_meta(f, app, area),
         ShellView::Inspect => draw_shell_inspect_meta(f, app, area),

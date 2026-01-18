@@ -229,6 +229,7 @@ fn parse_view_name(s: &str) -> Option<ShellView> {
         "volumes" | "volume" | "vol" => Some(ShellView::Volumes),
         "networks" | "network" | "net" => Some(ShellView::Networks),
         "templates" | "template" | "tpl" => Some(ShellView::Templates),
+        "template-ai" | "templateai" | "ai" => Some(ShellView::TemplateAi),
         "registries" | "registry" | "reg" => Some(ShellView::Registries),
         "themes" | "theme" => Some(ShellView::ThemeSelector),
         // Backward compatibility for earlier experiments.
@@ -252,6 +253,7 @@ fn scope_to_string(scope: KeyScope) -> &'static str {
         KeyScope::View(ShellView::Volumes) => "view:volumes",
         KeyScope::View(ShellView::Networks) => "view:networks",
         KeyScope::View(ShellView::Templates) => "view:templates",
+        KeyScope::View(ShellView::TemplateAi) => "view:template-ai",
         KeyScope::View(ShellView::Registries) => "view:registries",
         KeyScope::View(ShellView::Logs) => "view:logs",
         KeyScope::View(ShellView::Inspect) => "view:inspect",
@@ -319,6 +321,7 @@ fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
     add(t, "C-y", ":template deploy");
     add(t, "C-d", ":template rm");
     add(t, "C-t", ":templates toggle");
+    add(t, "C-a", ":ai");
 
     // Registries.
     let r = KeyScope::View(ShellView::Registries);

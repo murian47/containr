@@ -54,6 +54,9 @@ fn footer_hint(view: ShellView) -> &'static str {
         ShellView::Templates => {
             " F1 help  b sidebar  ^p layout  :q quit"
         }
+        ShellView::TemplateAi => {
+            " F1 help  Tab focus  Ctrl+Enter run  Esc back  :q quit"
+        }
         ShellView::Registries => {
             " F1 help  b sidebar  ^p layout  ^y test  :q quit"
         }

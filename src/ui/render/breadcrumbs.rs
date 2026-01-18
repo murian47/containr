@@ -44,6 +44,14 @@ pub(crate) fn shell_breadcrumbs(app: &App) -> String {
                 .map(|t| format!("/{}", t.name))
                 .unwrap_or_default(),
         },
+        ShellView::TemplateAi => {
+            let name = app.template_ai.target_name.trim();
+            if name.is_empty() {
+                String::new()
+            } else {
+                format!("/{name}")
+            }
+        }
         ShellView::Registries => app
             .registries_cfg
             .registries

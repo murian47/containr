@@ -210,6 +210,7 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Switch between stack templates and network templates",
     ));
     out.push(item("Templates", "^t", "Toggle stacks/networks (default binding)"));
+    out.push(item("Templates", "^a", "Open AI prompt view (default binding)"));
     out.push(item(
         "Templates",
         ":template/:tpl add <name>",
@@ -240,6 +241,7 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":template/:tpl deploy [--pull] [--recreate] [name]",
         "Deploy selected template (or by name) to active server",
     ));
+    out.push(item("Templates", ":ai", "Open AI prompt view for the selected template"));
     out.push(Line::from(""));
     out.push(item(
         "Templates",

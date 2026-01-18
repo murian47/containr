@@ -51,6 +51,7 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
         ShellView::Volumes => vec![ShellAction::Inspect, ShellAction::VolumeRemove],
         ShellView::Networks => vec![ShellAction::Inspect, ShellAction::NetworkRemove],
         ShellView::Templates => vec![
+            ShellAction::TemplateAi,
             ShellAction::TemplateEdit,
             ShellAction::TemplateNew,
             ShellAction::TemplateDelete,
@@ -58,7 +59,7 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
         ],
         ShellView::Registries => vec![ShellAction::RegistryTest],
         ShellView::Inspect | ShellView::Logs | ShellView::Help => vec![],
-        ShellView::Messages | ShellView::ThemeSelector => vec![],
+        ShellView::TemplateAi | ShellView::Messages | ShellView::ThemeSelector => vec![],
     };
     if !actions.is_empty() {
         items.push(ShellSidebarItem::Separator);
