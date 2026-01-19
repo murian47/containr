@@ -10,7 +10,6 @@ pub fn handle_layout(app: &mut App, args: &[&str]) -> bool {
             | ShellView::Logs
             | ShellView::Help
             | ShellView::Messages
-            | ShellView::TemplateAi
     ) {
         app.shell_last_main_view
     } else {

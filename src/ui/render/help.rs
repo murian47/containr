@@ -241,7 +241,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":template/:tpl deploy [--pull] [--recreate] [name]",
         "Deploy selected template (or by name) to active server",
     ));
-    out.push(item("Templates", ":ai", "Open AI prompt view for the selected template"));
+    out.push(item(
+        "Templates",
+        ":ai",
+        "Run the configured AI agent for the selected template",
+    ));
     out.push(Line::from(""));
     out.push(item(
         "Templates",

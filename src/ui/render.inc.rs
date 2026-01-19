@@ -42,7 +42,6 @@ fn shell_set_main_view(app: &mut App, view: ShellView) {
             | ShellView::Logs
             | ShellView::Help
             | ShellView::Messages
-            | ShellView::TemplateAi
     ) {
         app.shell_last_main_view = view;
     }
@@ -58,7 +57,6 @@ fn shell_set_main_view(app: &mut App, view: ShellView) {
         ShellView::Volumes => ActiveView::Volumes,
         ShellView::Networks => ActiveView::Networks,
         ShellView::Templates => app.active_view,
-        ShellView::TemplateAi => app.active_view,
         ShellView::Registries => app.active_view,
         ShellView::ThemeSelector => app.active_view,
         ShellView::Inspect | ShellView::Logs | ShellView::Help | ShellView::Messages => {
@@ -135,22 +133,29 @@ fn shell_enter_inspect(app: &mut App, inspect_req_tx: &mpsc::UnboundedSender<Ins
     let _ = inspect_req_tx.send(target);
 }
 
-fn shell_enter_template_ai(app: &mut App) {
+fn shell_run_template_ai(app: &mut App) {
     if app.shell_view != ShellView::Templates {
-        app.set_warn("AI view is only available in Templates");
+        app.set_warn("AI is only available in Templates");
         return;
     }
-    let (name, path, has_file) = match app.templates_state.kind {
+    let cmd_raw = match std::env::var("CONTAINR_AI_CMD") {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => {
+            app.set_warn("AI command not configured (set CONTAINR_AI_CMD)");
+            return;
+        }
+    };
+    let (kind, name, path, has_file) = match app.templates_state.kind {
         TemplatesKind::Stacks => app
             .selected_template()
-            .map(|t| (t.name.clone(), t.compose_path.clone(), t.has_compose))
-            .unwrap_or_default(),
+            .map(|t| ("stack", t.name.clone(), t.compose_path.clone(), t.has_compose))
+            .unwrap_or(("stack", String::new(), PathBuf::new(), false)),
         TemplatesKind::Networks => app
             .selected_net_template()
-            .map(|t| (t.name.clone(), t.cfg_path.clone(), t.has_cfg))
-            .unwrap_or_default(),
+            .map(|t| ("network", t.name.clone(), t.cfg_path.clone(), t.has_cfg))
+            .unwrap_or(("network", String::new(), PathBuf::new(), false)),
     };
-    if name.is_empty() {
+    if name.trim().is_empty() {
         app.set_warn("no template selected");
         return;
     }
@@ -158,146 +163,24 @@ fn shell_enter_template_ai(app: &mut App) {
         app.set_warn("template has no config file");
         return;
     }
-    let data = match fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(e) => format!("failed to read {}: {e}", path.to_string_lossy()),
-    };
-    if app.template_ai.target_path.as_ref() != Some(&path) {
-        app.template_ai.prompt.clear();
-        app.template_ai.prompt_cursor = 0;
-        app.template_ai.result_text.clear();
-        app.template_ai.result_scroll = 0;
+    let file = path.to_string_lossy().to_string();
+    app.capture_template_ai_snapshot(app.templates_state.kind, name.clone(), path.clone());
+    let cmd = format!(
+        "CONTAINR_AI_FILE={} CONTAINR_AI_KIND={} CONTAINR_AI_NAME={} {}",
+        shell_escape_sh_arg(&file),
+        shell_escape_sh_arg(kind),
+        shell_escape_sh_arg(&name),
+        cmd_raw
+    );
+    match app.templates_state.kind {
+        TemplatesKind::Stacks => {
+            app.templates_state.templates_refresh_after_edit = Some(name);
+        }
+        TemplatesKind::Networks => {
+            app.templates_state.net_templates_refresh_after_edit = Some(name);
+        }
     }
-    app.template_ai.target_name = name;
-    app.template_ai.target_path = Some(path);
-    app.template_ai.template_text = data;
-    app.template_ai.template_scroll = 0;
-    app.template_ai.focus = TemplateAiFocus::Prompt;
-    app.shell_view = ShellView::TemplateAi;
-    app.shell_focus = ShellFocus::List;
-    app.shell_last_main_view = ShellView::Templates;
-    shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-}
-
-fn template_ai_run(app: &mut App) {
-    if app.template_ai.prompt.trim().is_empty() {
-        app.set_warn("prompt is empty");
-        return;
-    }
-    if app.template_ai.target_path.is_none() {
-        app.set_warn("no template selected");
-        return;
-    }
-    if std::env::var("CONTAINR_AI_CMD").ok().filter(|v| !v.trim().is_empty()).is_none() {
-        app.template_ai.result_text =
-            "AI command not configured. Set CONTAINR_AI_CMD to enable execution.".to_string();
-        app.template_ai.result_scroll = 0;
-        return;
-    }
-    app.template_ai.result_text =
-        "AI execution is not wired yet (command configured).".to_string();
-    app.template_ai.result_scroll = 0;
-}
-
-fn handle_template_ai_scroll(key: event::KeyEvent, scroll: &mut usize) -> bool {
-    match key.code {
-        KeyCode::Up | KeyCode::Char('k') => {
-            *scroll = scroll.saturating_sub(1);
-            true
-        }
-        KeyCode::Down | KeyCode::Char('j') => {
-            *scroll += 1;
-            true
-        }
-        KeyCode::PageUp => {
-            *scroll = scroll.saturating_sub(10);
-            true
-        }
-        KeyCode::PageDown => {
-            *scroll += 10;
-            true
-        }
-        KeyCode::Home => {
-            *scroll = 0;
-            true
-        }
-        KeyCode::End => {
-            *scroll = usize::MAX;
-            true
-        }
-        _ => false,
-    }
-}
-
-fn template_ai_move_cursor_vert(input: &str, cursor: usize, dir: i32) -> usize {
-    let mut line = 0usize;
-    let mut col = 0usize;
-    let mut idx = 0usize;
-    for ch in input.chars() {
-        if idx == cursor {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            col = 0;
-        } else {
-            col += 1;
-        }
-        idx += 1;
-    }
-    let lines: Vec<&str> = input.split('\n').collect();
-    if lines.is_empty() {
-        return cursor;
-    }
-    let target_line = if dir < 0 {
-        line.saturating_sub(1)
-    } else {
-        (line + 1).min(lines.len().saturating_sub(1))
-    };
-    if target_line == line {
-        return cursor;
-    }
-    let target_len = lines[target_line].chars().count();
-    let new_col = col.min(target_len);
-    let mut new_cursor = 0usize;
-    for (i, l) in lines.iter().enumerate() {
-        if i == target_line {
-            new_cursor += new_col;
-            break;
-        }
-        new_cursor += l.chars().count().saturating_add(1);
-    }
-    new_cursor
-}
-
-fn template_ai_line_start(input: &str, cursor: usize) -> usize {
-    let mut idx = 0usize;
-    let mut start = 0usize;
-    for ch in input.chars() {
-        if idx >= cursor {
-            break;
-        }
-        if ch == '\n' {
-            start = idx + 1;
-        }
-        idx += 1;
-    }
-    start
-}
-
-fn template_ai_line_end(input: &str, cursor: usize) -> usize {
-    let mut idx = 0usize;
-    for ch in input.chars() {
-        if idx < cursor {
-            idx += 1;
-            continue;
-        }
-        if ch == '\n' {
-            return idx;
-        }
-        idx += 1;
-    }
-    input.chars().count()
+    app.shell_pending_interactive = Some(ShellInteractive::RunLocalCommand { cmd });
 }
 
 fn shell_back_from_full(app: &mut App) {
@@ -2362,7 +2245,6 @@ fn cmdline_scope_candidates() -> Vec<String> {
         "view:volumes",
         "view:networks",
         "view:templates",
-        "view:template-ai",
         "view:registries",
         "view:logs",
         "view:inspect",
@@ -3255,8 +3137,7 @@ fn shell_execute_cmdline(
                 | ShellView::Help
                 | ShellView::Messages
                 | ShellView::Registries
-                | ShellView::ThemeSelector
-                | ShellView::TemplateAi => {}
+                | ShellView::ThemeSelector => {}
             }
             app.set_info("cleared action error marker(s) for selection");
             return;
@@ -3531,7 +3412,7 @@ fn shell_execute_cmdline(
             app.set_warn("usage: :ai");
             return;
         }
-        shell_enter_template_ai(app);
+        shell_run_template_ai(app);
         return;
     }
 
@@ -3778,7 +3659,7 @@ fn shell_execute_action(
             }
             shell_begin_confirm(app, "network rm", "network rm");
         }
-        ShellAction::TemplateAi => shell_enter_template_ai(app),
+        ShellAction::TemplateAi => shell_run_template_ai(app),
         ShellAction::TemplateEdit => shell_edit_selected_template(app),
         ShellAction::TemplateNew => {
             app.shell_cmdline.mode = true;
@@ -4631,128 +4512,6 @@ fn handle_shell_key(
         return;
     }
 
-    if app.shell_view == ShellView::TemplateAi {
-        match key.code {
-            KeyCode::Tab => {
-                app.template_ai.focus = match app.template_ai.focus {
-                    TemplateAiFocus::Prompt => TemplateAiFocus::Template,
-                    TemplateAiFocus::Template => TemplateAiFocus::Result,
-                    TemplateAiFocus::Result => TemplateAiFocus::Prompt,
-                };
-                return;
-            }
-            KeyCode::Esc => {
-                shell_set_main_view(app, ShellView::Templates);
-                return;
-            }
-            _ => {}
-        }
-
-        match app.template_ai.focus {
-            TemplateAiFocus::Prompt => {
-                let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-                match key.code {
-                    KeyCode::Enter if ctrl => {
-                        template_ai_run(app);
-                    }
-                    KeyCode::Enter => {
-                        insert_char_at_cursor(
-                            &mut app.template_ai.prompt,
-                            &mut app.template_ai.prompt_cursor,
-                            '\n',
-                        );
-                    }
-                    KeyCode::Backspace => {
-                        backspace_at_cursor(
-                            &mut app.template_ai.prompt,
-                            &mut app.template_ai.prompt_cursor,
-                        );
-                    }
-                    KeyCode::Delete => {
-                        delete_at_cursor(
-                            &mut app.template_ai.prompt,
-                            &mut app.template_ai.prompt_cursor,
-                        );
-                    }
-                    KeyCode::Left => {
-                        app.template_ai.prompt_cursor = clamp_cursor_to_text(
-                            &app.template_ai.prompt,
-                            app.template_ai.prompt_cursor,
-                        )
-                        .saturating_sub(1);
-                    }
-                    KeyCode::Right => {
-                        let len = app.template_ai.prompt.chars().count();
-                        app.template_ai.prompt_cursor = clamp_cursor_to_text(
-                            &app.template_ai.prompt,
-                            app.template_ai.prompt_cursor,
-                        )
-                        .saturating_add(1)
-                        .min(len);
-                    }
-                    KeyCode::Up => {
-                        app.template_ai.prompt_cursor = template_ai_move_cursor_vert(
-                            &app.template_ai.prompt,
-                            app.template_ai.prompt_cursor,
-                            -1,
-                        );
-                    }
-                    KeyCode::Down => {
-                        app.template_ai.prompt_cursor = template_ai_move_cursor_vert(
-                            &app.template_ai.prompt,
-                            app.template_ai.prompt_cursor,
-                            1,
-                        );
-                    }
-                    KeyCode::Home => {
-                        app.template_ai.prompt_cursor =
-                            template_ai_line_start(&app.template_ai.prompt, app.template_ai.prompt_cursor);
-                    }
-                    KeyCode::End => {
-                        app.template_ai.prompt_cursor =
-                            template_ai_line_end(&app.template_ai.prompt, app.template_ai.prompt_cursor);
-                    }
-                    KeyCode::Char(ch) => {
-                        if ctrl {
-                            match ch {
-                                'a' | 'A' => {
-                                    app.template_ai.prompt_cursor = 0;
-                                }
-                                'e' | 'E' => {
-                                    app.template_ai.prompt_cursor =
-                                        app.template_ai.prompt.chars().count();
-                                }
-                                'u' | 'U' => {
-                                    app.template_ai.prompt.clear();
-                                    app.template_ai.prompt_cursor = 0;
-                                }
-                                _ => {}
-                            }
-                        } else if !ch.is_control() {
-                            insert_char_at_cursor(
-                                &mut app.template_ai.prompt,
-                                &mut app.template_ai.prompt_cursor,
-                                ch,
-                            );
-                        }
-                    }
-                    _ => {}
-                }
-                return;
-            }
-            TemplateAiFocus::Template => {
-                if handle_template_ai_scroll(key, &mut app.template_ai.template_scroll) {
-                    return;
-                }
-            }
-            TemplateAiFocus::Result => {
-                if handle_template_ai_scroll(key, &mut app.template_ai.result_scroll) {
-                    return;
-                }
-            }
-        }
-    }
-
     // Custom key bindings (outside of input modes). Skip single-letter shortcuts when sidebar has focus.
     if let Some(spec) = key_spec_from_event(key) {
         if app.shell_focus != ShellFocus::Sidebar || !is_single_letter_without_modifiers(spec) {
@@ -5306,7 +5065,6 @@ fn handle_shell_key(
             KeyCode::End => app.shell_msgs.scroll = usize::MAX,
             _ => {}
         },
-        ShellView::TemplateAi => {}
         ShellView::ThemeSelector => {}
     }
 }
@@ -5576,17 +5334,6 @@ pub(in crate::ui) fn draw_shell_main_list(
                 draw_shell_templates_table(f, app, content_area);
             }
         },
-        ShellView::TemplateAi => {
-            let title = if app.template_ai.target_name.trim().is_empty() {
-                "Template AI".to_string()
-            } else {
-                format!("Template AI: {}", app.template_ai.target_name)
-            };
-            draw_shell_title(f, app, &title, usize::MAX, title_area);
-            if let Some(area) = banner_area {
-                draw_rate_limit_banner(f, app, banner, area);
-            }
-        }
         ShellView::Registries => {
             draw_shell_title(
                 f,
@@ -6750,11 +6497,13 @@ fn draw_shell_stack_templates_table(
     let now = Instant::now();
     let local_head = app.templates_state.git_head.as_deref();
     let active_server = app.active_server.as_deref();
+    let mut max_state = "STATE".chars().count();
     let rows: Vec<Row> = app
         .templates_state
         .templates
         .iter()
         .map(|t| {
+            let dirty = app.templates_state.dirty_templates.contains(&t.name);
             let (state, state_style) = if let Some(m) =
                 app.templates_state.template_deploy_inflight.get(&t.name)
             {
@@ -6775,38 +6524,65 @@ fn draw_shell_stack_templates_table(
                         .and_then(|srv| list.iter().find(|e| e.server_name == srv))
                         .or_else(|| list.first())
                     {
-                        let deployed = entry
-                            .commit
-                            .as_deref()
-                            .map(short_commit)
-                            .unwrap_or_else(|| "deployed".to_string());
-                        if let Some(local) = local_head {
-                            if let Some(commit) = entry.commit.as_deref() {
-                                let local_short = short_commit(local);
-                                let deployed_short = short_commit(commit);
-                                if local_short != deployed_short {
-                                    (
-                                        format!("deployed {deployed_short} (local {local_short})"),
-                                        Style::default(),
-                                    )
+                        if dirty {
+                            (
+                                "deployed (modified)".to_string(),
+                                Style::default().patch(app.theme.text_warn.to_style()),
+                            )
+                        } else {
+                            let deployed = entry
+                                .commit
+                                .as_deref()
+                                .map(short_commit)
+                                .unwrap_or_else(|| "deployed".to_string());
+                            if let Some(local) = local_head {
+                                if let Some(commit) = entry.commit.as_deref() {
+                                    let local_short = short_commit(local);
+                                    let deployed_short = short_commit(commit);
+                                    if local_short != deployed_short {
+                                        (
+                                            format!(
+                                                "deployed {deployed_short} (local {local_short})"
+                                            ),
+                                            Style::default(),
+                                        )
+                                    } else {
+                                        (format!("deployed {deployed_short}"), Style::default())
+                                    }
                                 } else {
-                                    (format!("deployed {deployed_short}"), Style::default())
+                                    (deployed, Style::default())
                                 }
                             } else {
                                 (deployed, Style::default())
                             }
-                        } else {
-                            (deployed, Style::default())
                         }
+                    } else if dirty {
+                        (
+                            "modified".to_string(),
+                            Style::default().patch(app.theme.text_warn.to_style()),
+                        )
                     } else {
                         (String::new(), Style::default())
                     }
+                } else if dirty {
+                    (
+                        "modified".to_string(),
+                        Style::default().patch(app.theme.text_warn.to_style()),
+                    )
                 } else {
                     (String::new(), Style::default())
                 }
             } else {
-                (String::new(), Style::default())
+                if dirty {
+                    (
+                        "modified".to_string(),
+                        Style::default().patch(app.theme.text_warn.to_style()),
+                    )
+                } else {
+                    (String::new(), Style::default())
+                }
             };
+            max_state = max_state.max(state.chars().count());
             Row::new(vec![
                 Cell::from(t.name.clone()),
                 Cell::from(if t.has_compose { "yes" } else { "no" }),
@@ -6815,6 +6591,7 @@ fn draw_shell_stack_templates_table(
             ])
         })
         .collect();
+    let state_w = max_state.clamp(10, 22) as u16;
 
     let mut state = TableState::default();
     state.select(Some(
@@ -6825,7 +6602,7 @@ fn draw_shell_stack_templates_table(
         [
             Constraint::Length(24),
             Constraint::Length(7),
-            Constraint::Length(16),
+            Constraint::Length(state_w),
             Constraint::Min(10),
         ],
     )
@@ -6969,11 +6746,13 @@ fn draw_shell_net_templates_table(
     }
 
     let now = Instant::now();
+    let mut max_state = "STATE".chars().count();
     let rows: Vec<Row> = app
         .templates_state
         .net_templates
         .iter()
         .map(|t| {
+            let dirty = app.templates_state.dirty_net_templates.contains(&t.name);
             let (state, state_style) = if let Some(m) =
                 app.templates_state.net_template_deploy_inflight.get(&t.name)
             {
@@ -6988,9 +6767,15 @@ fn draw_shell_net_templates_table(
                     ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
                 };
                 (action_error_label(err).to_string(), st)
+            } else if dirty {
+                (
+                    "modified".to_string(),
+                    Style::default().patch(app.theme.text_warn.to_style()),
+                )
             } else {
                 (String::new(), Style::default())
             };
+            max_state = max_state.max(state.chars().count());
             Row::new(vec![
                 Cell::from(t.name.clone()),
                 Cell::from(if t.has_cfg { "yes" } else { "no" }),
@@ -6999,6 +6784,7 @@ fn draw_shell_net_templates_table(
             ])
         })
         .collect();
+    let state_w = max_state.clamp(10, 22) as u16;
 
     let mut state = TableState::default();
     state.select(Some(
@@ -7010,7 +6796,7 @@ fn draw_shell_net_templates_table(
         [
             Constraint::Length(24),
             Constraint::Length(7),
-            Constraint::Length(10),
+            Constraint::Length(state_w),
             Constraint::Min(10),
         ],
     )

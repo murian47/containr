@@ -6,6 +6,7 @@ use crate::ui::render::status::{action_error_details, action_error_label};
 use crate::ui::render::table::{render_detail_table, DetailRow};
 use crate::ui::render::text::truncate_end;
 use crate::ui::render::text::short_commit;
+use crate::ui::commands::git_cmd;
 use crate::ui::render::status::action_status_prefix;
 use crate::ui::state::image_updates::resolve_image_update_state;
 use crate::ui::{
@@ -33,7 +34,6 @@ pub(in crate::ui) fn draw_shell_main_details(
         ShellView::Volumes => draw_shell_volume_details(f, app, area),
         ShellView::Networks => draw_shell_network_details(f, app, area),
         ShellView::Templates => draw_shell_template_details(f, app, area),
-        ShellView::TemplateAi => {}
         ShellView::Registries => draw_shell_registry_details(f, app, area),
         ShellView::Logs => draw_shell_logs_meta(f, app, area),
         ShellView::Inspect => draw_shell_inspect_meta(f, app, area),
@@ -739,6 +739,7 @@ fn draw_shell_stack_template_details(
         out.push(Line::from(Span::styled(format!("{:>lnw$} ", 1), ln_style)));
     }
 
+    let dirty = app.templates_state.dirty_templates.contains(&t.name);
     let (mut status_text, status_style) = if let Some(m) =
         app.templates_state.template_deploy_inflight.get(&t.name)
     {
@@ -753,6 +754,11 @@ fn draw_shell_stack_template_details(
             ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
         };
         (format!("Status: {}", action_error_label(err)), st)
+    } else if dirty {
+        (
+            "Status: modified".to_string(),
+            bg.patch(app.theme.text_warn.to_style()),
+        )
     } else {
         ("Status: -".to_string(), bg.patch(app.theme.text_dim.to_style()))
     };
@@ -774,7 +780,9 @@ fn draw_shell_stack_template_details(
     if status_text == "Status: -" && servers_text != "-" {
         status_text = "Status: deployed".to_string();
     }
-    let local_commit = app.templates_state.git_head.as_deref().map(short_commit);
+    let repo_commit = app.templates_state.git_head.clone();
+    let template_commit = git_cmd::git_head_short(&t.dir);
+    let local_commit = template_commit.clone().or(repo_commit.clone());
     let deployed_commit = deploy_list.and_then(|list| {
         active_server
             .and_then(|srv| list.iter().find(|e| e.server_name == srv))
@@ -782,20 +790,50 @@ fn draw_shell_stack_template_details(
             .and_then(|e| e.commit.as_deref())
             .map(short_commit)
     });
-    let commit_text = match (local_commit, deployed_commit) {
-        (Some(local), Some(deployed)) if local != deployed => {
-            format!("Commit: local {local} | deployed {deployed}")
-        }
-        (Some(_local), Some(deployed)) => format!("Commit: {deployed} (local)"),
-        (None, Some(deployed)) => format!("Commit: {deployed}"),
-        (Some(local), None) => format!("Commit: local {local}"),
-        (None, None) => "Commit: -".to_string(),
-    };
     let info_style = bg.patch(app.theme.text_dim.to_style());
+    let warn_style = bg.patch(app.theme.text_warn.to_style());
+    if dirty && servers_text != "-" && !status_text.starts_with("Status: deploying") {
+        status_text = "Status: deployed (modified)".to_string();
+    }
+
+    let commit_line = match (local_commit, deployed_commit) {
+        (Some(local), Some(deployed)) if local != deployed => {
+            Line::from(Span::styled(
+                format!("Commit: local {local} | deployed {deployed}"),
+                info_style,
+            ))
+        }
+        (Some(_local), Some(deployed)) => Line::from(Span::styled(
+            format!("Commit: {deployed} (local)"),
+            info_style,
+        )),
+        (None, Some(deployed)) => {
+            Line::from(Span::styled(format!("Commit: {deployed}"), info_style))
+        }
+        (Some(local), None) => {
+            if let (Some(repo), Some(template)) = (repo_commit.as_deref(), template_commit.as_deref())
+            {
+                if repo != template {
+                    return_line_with_git_mismatch(local, repo, info_style, warn_style)
+                } else {
+                    Line::from(Span::styled(format!("Commit: local {local}"), info_style))
+                }
+            } else if let Some(repo) = repo_commit.as_deref() {
+                if local != repo {
+                    return_line_with_git_mismatch(local, repo, info_style, warn_style)
+                } else {
+                    Line::from(Span::styled(format!("Commit: local {local}"), info_style))
+                }
+            } else {
+                Line::from(Span::styled(format!("Commit: local {local}"), info_style))
+            }
+        }
+        (None, None) => Line::from(Span::styled("Commit: -".to_string(), info_style)),
+    };
     let status_lines = Text::from(vec![
         Line::from(Span::styled(status_text, status_style)),
         Line::from(Span::styled(format!("Servers: {servers_text}"), info_style)),
-        Line::from(Span::styled(commit_text, info_style)),
+        commit_line,
     ]);
     f.render_widget(
         Paragraph::new(status_lines).wrap(Wrap { trim: true }),
@@ -821,6 +859,20 @@ fn draw_shell_template_details(
         TemplatesKind::Stacks => draw_shell_stack_template_details(f, app, area),
         TemplatesKind::Networks => draw_shell_net_template_details(f, app, area),
     }
+}
+
+fn return_line_with_git_mismatch(
+    local: String,
+    repo: &str,
+    info: Style,
+    warn: Style,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("Commit: local ", info),
+        Span::styled(local, info),
+        Span::styled(" / git ", info),
+        Span::styled(repo.to_string(), warn),
+    ])
 }
 
 fn draw_shell_registry_details(
@@ -991,6 +1043,7 @@ fn draw_shell_net_template_details(
         out.push(Line::from(Span::styled(format!("{:>lnw$} ", 1), ln_style)));
     }
 
+    let dirty = app.templates_state.dirty_net_templates.contains(&t.name);
     let (status_text, status_style) = if let Some(m) =
         app.templates_state.net_template_deploy_inflight.get(&t.name)
     {
@@ -1005,6 +1058,11 @@ fn draw_shell_net_template_details(
             ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
         };
         (format!("Status: {}", action_error_label(err)), st)
+    } else if dirty {
+        (
+            "Status: modified".to_string(),
+            bg.patch(app.theme.text_warn.to_style()),
+        )
     } else {
         ("Status: -".to_string(), bg.patch(app.theme.text_dim.to_style()))
     };

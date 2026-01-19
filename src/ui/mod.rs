@@ -95,6 +95,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 };
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::sync::Semaphore;
@@ -307,6 +309,7 @@ struct TemplatesState {
     templates_refresh_after_edit: Option<String>,
     template_deploy_inflight: HashMap<String, DeployMarker>,
     git_head: Option<String>,
+    dirty_templates: HashSet<String>,
 
     net_templates: Vec<NetTemplateEntry>,
     net_templates_selected: usize,
@@ -314,27 +317,16 @@ struct TemplatesState {
     net_templates_details_scroll: usize,
     net_templates_refresh_after_edit: Option<String>,
     net_template_deploy_inflight: HashMap<String, DeployMarker>,
+    dirty_net_templates: HashSet<String>,
+    ai_edit_snapshot: Option<TemplateEditSnapshot>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TemplateAiFocus {
-    Prompt,
-    Template,
-    Result,
-}
-
-#[derive(Debug, Clone)]
-struct TemplateAiState {
-    prompt: String,
-    prompt_cursor: usize,
-    prompt_scroll: usize,
-    template_text: String,
-    template_scroll: usize,
-    result_text: String,
-    result_scroll: usize,
-    focus: TemplateAiFocus,
-    target_name: String,
-    target_path: Option<PathBuf>,
+#[derive(Clone, Debug)]
+struct TemplateEditSnapshot {
+    kind: TemplatesKind,
+    name: String,
+    path: PathBuf,
+    hash: Option<u64>,
 }
 
 #[allow(private_interfaces)]
@@ -512,7 +504,6 @@ enum ShellView {
     Volumes,
     Networks,
     Templates,
-    TemplateAi,
     Registries,
     Inspect,
     Logs,
@@ -531,7 +522,6 @@ impl ShellView {
             ShellView::Volumes => "volumes",
             ShellView::Networks => "networks",
             ShellView::Templates => "templates",
-            ShellView::TemplateAi => "template-ai",
             ShellView::Registries => "registries",
             ShellView::Inspect => "inspect",
             ShellView::Logs => "logs",
@@ -550,7 +540,6 @@ impl ShellView {
             ShellView::Volumes => "Volumes",
             ShellView::Networks => "Networks",
             ShellView::Templates => "Templates",
-            ShellView::TemplateAi => "Template AI",
             ShellView::Registries => "Registries",
             ShellView::Inspect => "Inspect",
             ShellView::Logs => "Logs",
@@ -681,7 +670,6 @@ fn shell_module_shortcut(view: ShellView) -> char {
         ShellView::Volumes => 'v',
         ShellView::Networks => 'n',
         ShellView::Templates => 't',
-        ShellView::TemplateAi => 'a',
         ShellView::Registries => 'r',
         ShellView::Inspect => 'i',
         ShellView::Logs => 'l',
@@ -1248,7 +1236,6 @@ struct App {
     keymap_defaults: HashMap<(KeyScope, KeySpec), String>,
 
     templates_state: TemplatesState,
-    template_ai: TemplateAiState,
     image_updates: HashMap<String, ImageUpdateEntry>,
     image_updates_inflight: HashSet<String>,
     image_updates_path: PathBuf,
@@ -1869,26 +1856,16 @@ impl App {
                 templates_refresh_after_edit: None,
                 template_deploy_inflight: HashMap::new(),
                 git_head: None,
+                dirty_templates: HashSet::new(),
                 net_templates: Vec::new(),
                 net_templates_selected: 0,
                 net_templates_error: None,
                 net_templates_details_scroll: 0,
                 net_templates_refresh_after_edit: None,
                 net_template_deploy_inflight: HashMap::new(),
+                dirty_net_templates: HashSet::new(),
+                ai_edit_snapshot: None,
             },
-            template_ai: TemplateAiState {
-                prompt: String::new(),
-                prompt_cursor: 0,
-                prompt_scroll: 0,
-                template_text: String::new(),
-                template_scroll: 0,
-                result_text: String::new(),
-                result_scroll: 0,
-                focus: TemplateAiFocus::Prompt,
-                target_name: String::new(),
-                target_path: None,
-            },
-
             theme_refresh_after_edit: None,
 
             stacks: Vec::new(),
@@ -1933,6 +1910,7 @@ impl App {
         self.templates_state.templates_details_scroll = 0;
         self.templates_state.git_head =
             commands::git_cmd::git_head_short(&self.templates_state.dir);
+        self.refresh_template_git_status();
 
         self.migrate_templates_layout_if_needed();
 
@@ -2164,6 +2142,7 @@ impl App {
         self.templates_state.net_templates_error = None;
         self.templates_state.net_templates.clear();
         self.templates_state.net_templates_details_scroll = 0;
+        self.refresh_template_git_status();
 
         self.migrate_templates_layout_if_needed();
 
@@ -2218,10 +2197,81 @@ impl App {
         }
     }
 
+    fn refresh_template_git_status(&mut self) {
+        self.templates_state.dirty_templates.clear();
+        self.templates_state.dirty_net_templates.clear();
+        let dir = self.templates_state.dir.clone();
+        if !commands::git_cmd::is_git_repo(&dir) {
+            return;
+        }
+        let out = match commands::git_cmd::run_git(&dir, &["status", "--porcelain"]) {
+            Ok(out) => out,
+            Err(e) => {
+                self.log_msg(MsgLevel::Warn, format!("git status failed: {:#}", e));
+                return;
+            }
+        };
+        for line in out.lines() {
+            let path = parse_git_status_path(line);
+            let Some(path) = path else { continue };
+            if let Some(rest) = path.strip_prefix("stacks/") {
+                if let Some(name) = rest.split('/').next() {
+                    if !name.trim().is_empty() {
+                        self.templates_state.dirty_templates.insert(name.to_string());
+                    }
+                }
+            } else if let Some(rest) = path.strip_prefix("networks/") {
+                if let Some(name) = rest.split('/').next() {
+                    if !name.trim().is_empty() {
+                        self.templates_state
+                            .dirty_net_templates
+                            .insert(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
     fn selected_net_template(&self) -> Option<&NetTemplateEntry> {
         self.templates_state
             .net_templates
             .get(self.templates_state.net_templates_selected)
+    }
+
+    fn capture_template_ai_snapshot(&mut self, kind: TemplatesKind, name: String, path: PathBuf) {
+        let hash = file_content_hash(&path);
+        self.templates_state.ai_edit_snapshot = Some(TemplateEditSnapshot {
+            kind,
+            name,
+            path,
+            hash,
+        });
+    }
+
+    fn apply_template_ai_snapshot_if_kind(&mut self, kind: TemplatesKind) {
+        let Some(snapshot) = self.templates_state.ai_edit_snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.kind != kind {
+            return;
+        }
+        let snapshot = self.templates_state.ai_edit_snapshot.take().unwrap();
+        if commands::git_cmd::is_git_repo(&self.templates_state.dir) {
+            return;
+        }
+        let next_hash = file_content_hash(&snapshot.path);
+        if next_hash != snapshot.hash {
+            match snapshot.kind {
+                TemplatesKind::Stacks => {
+                    self.templates_state.dirty_templates.insert(snapshot.name);
+                }
+                TemplatesKind::Networks => {
+                    self.templates_state
+                        .dirty_net_templates
+                        .insert(snapshot.name);
+                }
+            }
+        }
     }
 
     fn open_theme_selector(&mut self) {
@@ -6107,6 +6157,7 @@ pub async fn run_tui(
                             {
                                 app.templates_state.templates_selected = idx;
                             }
+                            app.apply_template_ai_snapshot_if_kind(TemplatesKind::Stacks);
                             maybe_autocommit_templates(
                                 &mut app,
                                 TemplatesKind::Stacks,
@@ -6126,6 +6177,7 @@ pub async fn run_tui(
                             {
                                 app.templates_state.net_templates_selected = idx;
                             }
+                            app.apply_template_ai_snapshot_if_kind(TemplatesKind::Networks);
                             maybe_autocommit_templates(
                                 &mut app,
                                 TemplatesKind::Networks,
@@ -6234,6 +6286,32 @@ fn shell_single_quote(s: &str) -> String {
     }
     out.push('\'');
     out
+}
+
+fn parse_git_status_path(line: &str) -> Option<String> {
+    let line = line.trim_end();
+    if line.len() < 4 {
+        return None;
+    }
+    let rest = line.get(3..)?.trim();
+    let path = if let Some((_, new)) = rest.split_once(" -> ") {
+        new.trim()
+    } else {
+        rest
+    };
+    let path = path.trim_matches('"');
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
+}
+
+fn file_content_hash(path: &Path) -> Option<u64> {
+    let data = fs::read(path).ok()?;
+    let mut hasher = DefaultHasher::new();
+    hasher.write(&data);
+    Some(hasher.finish())
 }
 
 async fn perform_template_deploy(

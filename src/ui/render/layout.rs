@@ -3,7 +3,6 @@ use crate::ui::{
     draw_shell_sidebar,
 };
 use crate::ui::render::theme_selector::draw_theme_selector;
-use crate::ui::render::template_ai::draw_template_ai_view;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
@@ -36,11 +35,6 @@ pub(in crate::ui) fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area
         draw_shell_main_list(f, app, area);
         return;
     }
-    if app.shell_view == ShellView::TemplateAi {
-        draw_template_ai_view(f, app, area);
-        return;
-    }
-
     let is_full = matches!(app.shell_view, ShellView::Logs | ShellView::Inspect);
     let is_split_view = matches!(
         app.shell_view,

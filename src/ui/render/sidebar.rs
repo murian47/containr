@@ -9,6 +9,12 @@ use ratatui::style::Color;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState};
 
+fn ai_cmd_configured() -> bool {
+    std::env::var("CONTAINR_AI_CMD")
+        .ok()
+        .is_some_and(|v| !v.trim().is_empty())
+}
+
 pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
     let mut items: Vec<ShellSidebarItem> = Vec::new();
     for i in 0..app.servers.len() {
@@ -50,16 +56,22 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
         ],
         ShellView::Volumes => vec![ShellAction::Inspect, ShellAction::VolumeRemove],
         ShellView::Networks => vec![ShellAction::Inspect, ShellAction::NetworkRemove],
-        ShellView::Templates => vec![
-            ShellAction::TemplateAi,
-            ShellAction::TemplateEdit,
-            ShellAction::TemplateNew,
-            ShellAction::TemplateDelete,
-            ShellAction::TemplateDeploy,
-        ],
+        ShellView::Templates => {
+            let mut out = Vec::new();
+            if ai_cmd_configured() {
+                out.push(ShellAction::TemplateAi);
+            }
+            out.extend([
+                ShellAction::TemplateEdit,
+                ShellAction::TemplateNew,
+                ShellAction::TemplateDelete,
+                ShellAction::TemplateDeploy,
+            ]);
+            out
+        }
         ShellView::Registries => vec![ShellAction::RegistryTest],
         ShellView::Inspect | ShellView::Logs | ShellView::Help => vec![],
-        ShellView::TemplateAi | ShellView::Messages | ShellView::ThemeSelector => vec![],
+        ShellView::Messages | ShellView::ThemeSelector => vec![],
     };
     if !actions.is_empty() {
         items.push(ShellSidebarItem::Separator);

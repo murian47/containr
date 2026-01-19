@@ -260,8 +260,30 @@ pub fn handle_git(app: &mut App, args: &[&str]) -> bool {
             }
             let _ = std::fs::create_dir_all(&dir);
             let msg = msg.unwrap();
+            match run_git(&dir, &["status", "--porcelain"]) {
+                Ok(out) => {
+                    if out.trim().is_empty() {
+                        app.set_info("git commit: no changes".to_string());
+                        return true;
+                    }
+                }
+                Err(e) => {
+                    app.set_error(format!("{e:#}"));
+                    return true;
+                }
+            }
+            if let Err(e) = run_git(&dir, &["add", "-A"]) {
+                app.set_error(format!("{e:#}"));
+                return true;
+            }
             match run_git(&dir, &["commit", "-m", msg.as_str()]) {
-                Ok(out) => show_git_output(app, "git commit", &out),
+                Ok(out) => {
+                    show_git_output(app, "git commit", &out);
+                    if ctx == GitContext::Templates {
+                        app.refresh_templates();
+                        app.refresh_net_templates();
+                    }
+                }
                 Err(e) => app.set_error(format!("{e:#}")),
             }
         }
@@ -328,7 +350,13 @@ pub fn handle_git(app: &mut App, args: &[&str]) -> bool {
             }
             let msg = msg.unwrap();
             match run_git(&dir, &["commit", "-m", msg.as_str()]) {
-                Ok(out) => show_git_output(app, "git autocommit", &out),
+                Ok(out) => {
+                    show_git_output(app, "git autocommit", &out);
+                    if ctx == GitContext::Templates {
+                        app.refresh_templates();
+                        app.refresh_net_templates();
+                    }
+                }
                 Err(e) => app.set_error(format!("{e:#}")),
             }
         }
