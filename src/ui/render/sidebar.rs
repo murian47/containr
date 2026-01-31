@@ -39,6 +39,8 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
             ShellAction::Stop,
             ShellAction::Restart,
             ShellAction::Delete,
+            ShellAction::StackUpdate,
+            ShellAction::StackUpdateAll,
         ],
         ShellView::Containers => vec![
             ShellAction::Inspect,

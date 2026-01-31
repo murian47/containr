@@ -1959,6 +1959,83 @@ fn service_name_from_label_list(labels: &str, stack_name: Option<&str>, containe
     }
 }
 
+fn shell_stack_update(
+    app: &mut App,
+    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
+    force: bool,
+    services_filter: Option<Vec<String>>,
+) {
+    let target = app.selected_stack_entry().map(|s| s.name.clone());
+    let Some(target) = target else {
+        app.set_warn("no stack selected");
+        return;
+    };
+    if app.stack_update_inflight.contains_key(&target) {
+        app.set_warn(format!("stack '{target}' is already updating"));
+        return;
+    }
+    let compose_path = match stack_compose_path(app, &target) {
+        Ok(path) => path,
+        Err(err) => {
+            app.set_warn(format!("stack update: {err}"));
+            return;
+        }
+    };
+    let docker = DockerCfg {
+        docker_cmd: current_docker_cmd_from_app(app),
+    };
+    if docker.docker_cmd.is_empty() {
+        app.set_warn("no server configured");
+        return;
+    }
+    let runner = current_runner_from_app(app);
+    let mut services: HashMap<String, StackUpdateService> = HashMap::new();
+    for c in app
+        .containers
+        .iter()
+        .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(target.as_str()))
+    {
+        let svc = service_name_from_label_list(&c.labels, Some(target.as_str()), &c.name);
+        services.entry(svc.clone()).or_insert(StackUpdateService {
+            name: svc,
+            container_id: c.id.clone(),
+            image: c.image.clone(),
+        });
+    }
+    if let Some(filter) = services_filter.as_ref() {
+        let allow: HashSet<String> = filter.iter().map(|s| s.to_string()).collect();
+        services.retain(|name, _| allow.contains(name));
+    }
+    let services: Vec<StackUpdateService> = services.into_values().collect();
+    if services.is_empty() {
+        app.set_warn("stack update: no services found");
+        return;
+    }
+    app.stack_update_inflight.insert(
+        target.clone(),
+        DeployMarker {
+            started: Instant::now(),
+        },
+    );
+    app.stack_update_error.remove(&target);
+    let _ = action_req_tx.send(ActionRequest::StackUpdate {
+        stack_name: target.clone(),
+        runner,
+        docker,
+        compose_path,
+        pull: true,
+        dry: false,
+        force,
+        services,
+    });
+    let mut msg = format!("stack update {target}");
+    if force {
+        msg.push_str(" [all]");
+    }
+    app.set_info(msg);
+    app.log_msg(MsgLevel::Info, format!("stack update started: {target}"));
+}
+
 fn stack_compose_path(app: &App, stack_name: &str) -> anyhow::Result<String> {
     let stack_name = stack_name.trim();
     anyhow::ensure!(!stack_name.is_empty(), "stack name is empty");
@@ -3924,6 +4001,12 @@ fn shell_execute_action(
             } else {
                 shell_begin_confirm(app, "container rm", "container rm");
             }
+        }
+        ShellAction::StackUpdate => {
+            shell_stack_update(app, action_req_tx, false, None);
+        }
+        ShellAction::StackUpdateAll => {
+            shell_stack_update(app, action_req_tx, true, None);
         }
         ShellAction::Console => {
             shell_open_console(app, Some("root"), "bash");

@@ -601,6 +601,8 @@ enum ShellAction {
     Stop,
     Restart,
     Delete,
+    StackUpdate,
+    StackUpdateAll,
     Console,
     ImageUntag,
     ImageForceRemove,
@@ -623,6 +625,8 @@ impl ShellAction {
             ShellAction::Stop => "Stop",
             ShellAction::Restart => "Restart",
             ShellAction::Delete => "Delete",
+            ShellAction::StackUpdate => "Update",
+            ShellAction::StackUpdateAll => "Update all",
             ShellAction::Console => "Console",
             ShellAction::ImageUntag => "Untag",
             ShellAction::ImageForceRemove => "Remove",
@@ -645,6 +649,8 @@ impl ShellAction {
             ShellAction::Stop => "^o",
             ShellAction::Restart => "^r",
             ShellAction::Delete => "^d",
+            ShellAction::StackUpdate => "^u",
+            ShellAction::StackUpdateAll => "^U",
             // Console: ^c = bash, ^C = sh (Ctrl+Shift+C)
             ShellAction::Console => "^c",
             // Non-container actions: keep a separate chord to avoid ambiguity
