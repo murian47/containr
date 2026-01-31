@@ -2045,7 +2045,7 @@ fn stack_compose_path(app: &App, stack_name: &str) -> anyhow::Result<String> {
             let home = std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME is not set"))?;
             format!("{home}/.config/containr/apps/{stack_name}")
         }
-        Runner::Ssh(_) => deploy_remote_dir_for(stack_name),
+        Runner::Ssh(_) => format!("$HOME/{}", deploy_remote_dir_for(stack_name)),
     };
     let compose_path = format!("{remote_dir}/compose.rendered.yaml");
     if matches!(runner, Runner::Local) && !Path::new(&compose_path).exists() {

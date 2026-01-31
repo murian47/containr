@@ -6578,6 +6578,9 @@ async fn perform_stack_update(
         lines.push(up_cmd);
         return Ok(lines.join("\n"));
     }
+    if pull {
+        let _ = runner.run(&pull_cmd).await?;
+    }
     let mut to_recreate: Vec<String> = Vec::new();
     if force {
         for svc in services {
@@ -6634,9 +6637,6 @@ async fn perform_stack_update(
     let up_cmd = format!(
         "cd {dir_q} && {docker_cmd} compose -f {file_q} up -d --force-recreate{svc_args_str}"
     );
-    if pull {
-        let _ = runner.run(&pull_cmd).await?;
-    }
     let out = runner.run(&up_cmd).await?;
     Ok(out)
 }

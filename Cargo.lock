@@ -335,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "containr"
-version = "0.4.80"
+version = "0.4.82"
 dependencies = [
  "age",
  "anyhow",
