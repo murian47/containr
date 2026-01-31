@@ -296,6 +296,8 @@ fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
     add(s, "C-o", ":stack stop");
     add(s, "C-r", ":stack restart");
     add(s, "C-d", ":stack rm");
+    add(s, "C-u", ":stack update");
+    add(s, "C-S-U", ":stack update --all");
 
     // Images.
     let i = KeyScope::View(ShellView::Images);
