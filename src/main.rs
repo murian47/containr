@@ -232,6 +232,8 @@ async fn main() -> anyhow::Result<()> {
         image_update_concurrency,
         image_update_debug,
         image_update_autocheck,
+        config.log_dock_enabled,
+        config.log_dock_height,
     )
     .await
 }

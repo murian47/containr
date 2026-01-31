@@ -1642,6 +1642,8 @@ impl App {
         image_update_concurrency: usize,
         image_update_debug: bool,
         image_update_autocheck: bool,
+        log_dock_enabled: bool,
+        log_dock_height: u16,
         registries_cfg: config::RegistriesConfig,
     ) -> Self {
         let mut server_selected = 0usize;
@@ -1848,8 +1850,8 @@ impl App {
                 hscroll: 0,
                 return_view: ShellView::Dashboard,
             },
-            log_dock_enabled: false,
-            log_dock_height: 5,
+            log_dock_enabled,
+            log_dock_height,
 
             keymap,
             keymap_parsed: HashMap::new(),
@@ -4833,6 +4835,8 @@ pub async fn run_tui(
     image_update_concurrency: usize,
     image_update_debug: bool,
     image_update_autocheck: bool,
+    log_dock_enabled: bool,
+    log_dock_height: u16,
 ) -> anyhow::Result<()> {
     const SLEEP_GAP_SECS: u64 = 120;
     const ERROR_PAUSE_THRESHOLD: u32 = 3;
@@ -4869,6 +4873,8 @@ pub async fn run_tui(
         image_update_concurrency,
         image_update_debug,
         image_update_autocheck,
+        log_dock_enabled,
+        log_dock_height,
         registries_cfg,
     );
     if let Some(e) = theme_err {

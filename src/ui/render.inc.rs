@@ -350,6 +350,8 @@ impl App {
             image_update_concurrency: self.image_update_concurrency,
             image_update_debug: self.image_update_debug,
             image_update_autocheck: self.image_update_autocheck,
+            log_dock_enabled: self.log_dock_enabled,
+            log_dock_height: self.log_dock_height,
         };
         if let Err(e) = config::save(&self.config_path, &cfg) {
             self.set_error(format!("failed to save config: {:#}", e));
@@ -3123,6 +3125,7 @@ fn shell_execute_cmdline(
             } else if !app.log_dock_enabled && app.shell_focus == ShellFocus::Dock {
                 app.shell_focus = ShellFocus::List;
             }
+            app.persist_config();
             return;
         }
         "ack" => {

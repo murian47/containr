@@ -43,6 +43,8 @@ fn mk_test_app() -> App {
         4,
         false,
         false,
+        false,
+        5,
         RegistriesConfig::default(),
     )
 }
@@ -174,6 +176,8 @@ fn dashboard_shows_no_server_message() {
         4,
         false,
         false,
+        false,
+        5,
         RegistriesConfig::default(),
     );
     app.loading = false;

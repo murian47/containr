@@ -203,6 +203,10 @@ pub struct ContainrConfig {
     pub image_update_debug: bool,
     #[serde(default)]
     pub image_update_autocheck: bool,
+    #[serde(default)]
+    pub log_dock_enabled: bool,
+    #[serde(default = "default_log_dock_height")]
+    pub log_dock_height: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -298,6 +302,10 @@ fn default_image_update_concurrency() -> usize {
     4
 }
 
+fn default_log_dock_height() -> u16 {
+    5
+}
+
 impl Default for ContainrConfig {
     fn default() -> Self {
         Self {
@@ -318,6 +326,8 @@ impl Default for ContainrConfig {
             image_update_concurrency: default_image_update_concurrency(),
             image_update_debug: false,
             image_update_autocheck: false,
+            log_dock_enabled: false,
+            log_dock_height: default_log_dock_height(),
         }
     }
 }
