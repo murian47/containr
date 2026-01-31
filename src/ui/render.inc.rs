@@ -6539,7 +6539,7 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     .style(bg)
     .column_spacing(1);
     if show_image {
-        let text_w = m_key_w as u16 + m_val_w as u16;
+        let text_w = m_key_w as u16 + m_val_w as u16 + 1;
         let metric_parts = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(text_w), Constraint::Min(10)])
@@ -6552,7 +6552,7 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
             ],
         )
         .style(bg)
-        .column_spacing(0);
+        .column_spacing(1);
         f.render_widget(metrics, metric_parts[0]);
 
         let last = app.dashboard.last_disk_count.max(1);
