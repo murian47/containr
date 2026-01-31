@@ -1909,6 +1909,56 @@ fn deploy_remote_net_dir_for(name: &str) -> String {
     format!(".config/containr/networks/{name}")
 }
 
+fn label_value_from_list(labels: &str, key: &str) -> Option<String> {
+    for part in labels.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let mut it = part.splitn(2, '=');
+        let k = it.next().unwrap_or("").trim();
+        if k == key {
+            let v = it.next().unwrap_or("").trim();
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn service_name_from_label_list(labels: &str, stack_name: Option<&str>, container_name: &str) -> String {
+    if let Some(name) = label_value_from_list(labels, "com.docker.compose.service") {
+        return name;
+    }
+    if let Some(name) = label_value_from_list(labels, "com.docker.swarm.service.name") {
+        if let Some(stack) = stack_name {
+            for sep in ['_', '-', '.'] {
+                let prefix = format!("{stack}{sep}");
+                if name.starts_with(&prefix) {
+                    return name[prefix.len()..].to_string();
+                }
+            }
+        }
+        return name;
+    }
+    let mut name = container_name.trim().trim_start_matches('/').to_string();
+    if let Some(stack) = stack_name {
+        for sep in ['_', '-', '.'] {
+            let prefix = format!("{stack}{sep}");
+            if name.starts_with(&prefix) {
+                name = name[prefix.len()..].to_string();
+                break;
+            }
+        }
+    }
+    if name.is_empty() {
+        "service".to_string()
+    } else {
+        name
+    }
+}
+
 fn stack_compose_path(app: &App, stack_name: &str) -> anyhow::Result<String> {
     let stack_name = stack_name.trim();
     anyhow::ensure!(!stack_name.is_empty(), "stack name is empty");
@@ -3456,9 +3506,49 @@ fn shell_execute_cmdline(
                 crate::ui::state::actions::exec_stack_action(app, ContainerAction::Remove, Some(&target), action_req_tx);
             }
             "update" => {
-                let target = name
-                    .map(|s| s.to_string())
-                    .or_else(|| app.selected_stack_entry().map(|s| s.name.clone()));
+                let mut target: Option<String> = None;
+                let mut pull = true;
+                let mut dry = false;
+                let mut all = false;
+                let mut services_filter: Option<Vec<String>> = None;
+                let mut i = 0usize;
+                while i < args.len() {
+                    let arg = args[i];
+                    match arg {
+                        "--no-pull" | "no-pull" => pull = false,
+                        "--pull" | "pull" => pull = true,
+                        "--dry" | "dry" => dry = true,
+                        "--all" | "all" => all = true,
+                        "--services" | "services" => {
+                            if let Some(raw) = args.get(i + 1) {
+                                let list: Vec<String> = raw
+                                    .split(',')
+                                    .map(|v| v.trim().to_string())
+                                    .filter(|v| !v.is_empty())
+                                    .collect();
+                                if list.is_empty() {
+                                    app.set_warn("usage: :stack update [name] [--dry] [--no-pull] [--all] [--services <csv>]");
+                                    return;
+                                }
+                                services_filter = Some(list);
+                                i += 1;
+                            } else {
+                                app.set_warn("usage: :stack update [name] [--dry] [--no-pull] [--all] [--services <csv>]");
+                                return;
+                            }
+                        }
+                        _ => {
+                            if !arg.starts_with('-') {
+                                target = Some(arg.to_string());
+                            }
+                        }
+                    }
+                    i += 1;
+                }
+                if target.is_none() {
+                    target = name.map(|s| s.to_string());
+                }
+                let target = target.or_else(|| app.selected_stack_entry().map(|s| s.name.clone()));
                 let Some(target) = target else {
                     app.set_warn("no stack selected");
                     return;
@@ -3467,8 +3557,6 @@ fn shell_execute_cmdline(
                     app.set_warn(format!("stack '{target}' is already updating"));
                     return;
                 }
-                let pull = !args.iter().any(|v| *v == "--no-pull" || *v == "no-pull");
-                let dry = args.iter().any(|v| *v == "--dry" || *v == "dry");
                 let compose_path = match stack_compose_path(app, &target) {
                     Ok(path) => path,
                     Err(err) => {
@@ -3484,6 +3572,28 @@ fn shell_execute_cmdline(
                     return;
                 }
                 let runner = current_runner_from_app(app);
+                let mut services: HashMap<String, StackUpdateService> = HashMap::new();
+                for c in app
+                    .containers
+                    .iter()
+                    .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(target.as_str()))
+                {
+                    let svc = service_name_from_label_list(&c.labels, Some(target.as_str()), &c.name);
+                    services.entry(svc.clone()).or_insert(StackUpdateService {
+                        name: svc,
+                        container_id: c.id.clone(),
+                        image: c.image.clone(),
+                    });
+                }
+                if let Some(filter) = services_filter.as_ref() {
+                    let allow: HashSet<String> = filter.iter().map(|s| s.to_string()).collect();
+                    services.retain(|name, _| allow.contains(name));
+                }
+                let services: Vec<StackUpdateService> = services.into_values().collect();
+                if services.is_empty() {
+                    app.set_warn("stack update: no services found");
+                    return;
+                }
                 app.stack_update_inflight.insert(
                     target.clone(),
                     DeployMarker {
@@ -3498,6 +3608,8 @@ fn shell_execute_cmdline(
                     compose_path,
                     pull,
                     dry,
+                    force: all,
+                    services,
                 });
                 let mut msg = format!("stack update {target}");
                 if pull {
@@ -3505,6 +3617,12 @@ fn shell_execute_cmdline(
                 }
                 if dry {
                     msg.push_str(" [dry]");
+                }
+                if all {
+                    msg.push_str(" [all]");
+                }
+                if let Some(filter) = services_filter.as_ref() {
+                    msg.push_str(&format!(" [services={}]", filter.join(",")));
                 }
                 app.set_info(msg);
                 app.log_msg(MsgLevel::Info, format!("stack update started: {target}"));

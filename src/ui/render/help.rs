@@ -325,8 +325,8 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     ));
     out.push(item(
         "Stacks",
-        ":stack/:stk update [name] [--dry] [--no-pull]",
-        "Update stack (MVP: pull + recreate all services)",
+        ":stack/:stk update [name] [--dry] [--no-pull] [--all] [--services <csv>]",
+        "Update stack (pull + recreate only updated services)",
     ));
     out.push(item(
         "Stacks",

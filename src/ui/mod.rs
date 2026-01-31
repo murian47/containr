@@ -948,6 +948,13 @@ struct LastActionError {
     message: String,
 }
 
+#[derive(Clone, Debug)]
+struct StackUpdateService {
+    name: String,
+    container_id: String,
+    image: String,
+}
+
 fn classify_action_error(msg: &str) -> ActionErrorKind {
     let s = msg.to_ascii_lowercase();
     if s.contains("in use")
@@ -1099,6 +1106,8 @@ pub(in crate::ui) enum ActionRequest {
         compose_path: String,
         pull: bool,
         dry: bool,
+        force: bool,
+        services: Vec<StackUpdateService>,
     },
     NetTemplateDeploy {
         name: String,
@@ -5292,7 +5301,19 @@ pub async fn run_tui(
                     compose_path,
                     pull,
                     dry,
-                } => perform_stack_update(runner, docker, stack_name, compose_path, *pull, *dry).await,
+                    force,
+                    services,
+                } => perform_stack_update(
+                    runner,
+                    docker,
+                    stack_name,
+                    compose_path,
+                    *pull,
+                    *dry,
+                    *force,
+                    services,
+                )
+                .await,
                 ActionRequest::NetTemplateDeploy {
                     name,
                     runner,
@@ -5923,17 +5944,22 @@ pub async fn run_tui(
                                 }
                             }
                         }
-                        ActionRequest::StackUpdate { stack_name, .. } => {
+                        ActionRequest::StackUpdate { stack_name, dry, .. } => {
                             app.stack_update_inflight.remove(stack_name);
                             app.stack_update_error.remove(stack_name);
                             app.set_info(format!("stack update finished for {stack_name}"));
                             if out.trim().is_empty() {
                                 continue;
                             }
-                            if out.lines().count() > 1 {
+                            if *dry || out.lines().count() > 1 {
+                                let label = if *dry {
+                                    "stack update dry-run output"
+                                } else {
+                                    "stack update output"
+                                };
                                 app.log_msg(
                                     MsgLevel::Info,
-                                    format!("stack update dry-run output for {stack_name}:"),
+                                    format!("{label} for {stack_name}:"),
                                 );
                                 for line in out.lines() {
                                     app.log_msg(MsgLevel::Info, line.to_string());
@@ -6500,6 +6526,8 @@ async fn perform_stack_update(
     compose_path: &str,
     pull: bool,
     dry: bool,
+    force: bool,
+    services: &[StackUpdateService],
 ) -> anyhow::Result<String> {
     if docker.docker_cmd.is_empty() {
         anyhow::bail!("no server configured");
@@ -6520,8 +6548,20 @@ async fn perform_stack_update(
     let file_q = shell_single_quote(file);
     let docker_cmd = docker.docker_cmd.to_shell();
     let pull_cmd = format!("cd {dir_q} && {docker_cmd} compose -f {file_q} pull");
+    let mut svc_args: Vec<String> = Vec::new();
+    for svc in services {
+        let name = svc.name.trim();
+        if !name.is_empty() {
+            svc_args.push(shell_single_quote(name));
+        }
+    }
+    let svc_args_str = if svc_args.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", svc_args.join(" "))
+    };
     let up_cmd = format!(
-        "cd {dir_q} && {docker_cmd} compose -f {file_q} up -d --force-recreate"
+        "cd {dir_q} && {docker_cmd} compose -f {file_q} up -d --force-recreate{svc_args_str}"
     );
     if dry {
         let mut lines = Vec::new();
@@ -6532,6 +6572,62 @@ async fn perform_stack_update(
         lines.push(up_cmd);
         return Ok(lines.join("\n"));
     }
+    let mut to_recreate: Vec<String> = Vec::new();
+    if force {
+        for svc in services {
+            if !svc.name.trim().is_empty() {
+                to_recreate.push(svc.name.clone());
+            }
+        }
+    } else {
+        for svc in services {
+            let container_id = svc.container_id.trim();
+            if container_id.is_empty() {
+                continue;
+            }
+            let image_ref = svc.image.trim();
+            if image_ref.is_empty() {
+                continue;
+            }
+            let container_id_q = shell_single_quote(container_id);
+            let image_ref_q = shell_single_quote(image_ref);
+            let container_cmd = format!(
+                "{docker_cmd} inspect --format '{{{{.Image}}}}' {container_id_q}"
+            );
+            let image_cmd = format!(
+                "{docker_cmd} image inspect --format '{{{{.Id}}}}' {image_ref_q}"
+            );
+            let current = runner.run(&container_cmd).await?.trim().to_string();
+            let latest = runner.run(&image_cmd).await?.trim().to_string();
+            if !current.is_empty() && !latest.is_empty() && current != latest {
+                to_recreate.push(svc.name.clone());
+            }
+        }
+    }
+    if !force && to_recreate.is_empty() {
+        return Ok(format!("stack update: no changes for {stack_name}"));
+    }
+    if !force {
+        let mut uniq: Vec<String> = Vec::new();
+        let mut seen = HashSet::new();
+        for name in to_recreate {
+            if seen.insert(name.clone()) {
+                uniq.push(name);
+            }
+        }
+        svc_args = uniq
+            .iter()
+            .map(|name| shell_single_quote(name))
+            .collect();
+    }
+    let svc_args_str = if svc_args.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", svc_args.join(" "))
+    };
+    let up_cmd = format!(
+        "cd {dir_q} && {docker_cmd} compose -f {file_q} up -d --force-recreate{svc_args_str}"
+    );
     if pull {
         let _ = runner.run(&pull_cmd).await?;
     }
