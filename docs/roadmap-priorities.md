@@ -22,6 +22,7 @@ reports `xterm-256color` (e.g. iTerm2 via Profile → Terminal → Report Termin
 2. Update/Rollback + registry auth
    - Rollback/history UI for template deploys
    - Registry auth via keyring (primary) + optional age fallback for headless/WSL
+   - Stack update (image-based recreate): see `concept-stack-update.md`
 
 3. Command placeholders
    - Implement placeholder expansion for command line + keybindings
