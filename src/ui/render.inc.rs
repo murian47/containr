@@ -6407,7 +6407,8 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     let m_bar_w = metrics_w.saturating_sub(m_key_w + m_val_w + 2).max(10);
     let mk = dim;
     let mv = v;
-    let bar_empty = bg.patch(app.theme.text_faint.to_style());
+    let header_bg = theme::parse_color(&app.theme.header.bg);
+    let bar_empty = bg.fg(header_bg);
     let bar_ok = bg.patch(app.theme.text_ok.to_style());
     let bar_warn = bg.patch(app.theme.text_warn.to_style());
     let bar_err = bg.patch(app.theme.text_error.to_style());
