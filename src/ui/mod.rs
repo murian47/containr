@@ -1098,6 +1098,7 @@ pub(in crate::ui) enum ActionRequest {
         docker: DockerCfg,
         compose_path: String,
         pull: bool,
+        dry: bool,
     },
     NetTemplateDeploy {
         name: String,
@@ -5290,7 +5291,8 @@ pub async fn run_tui(
                     docker,
                     compose_path,
                     pull,
-                } => perform_stack_update(runner, docker, stack_name, compose_path, *pull).await,
+                    dry,
+                } => perform_stack_update(runner, docker, stack_name, compose_path, *pull, *dry).await,
                 ActionRequest::NetTemplateDeploy {
                     name,
                     runner,
@@ -5925,8 +5927,19 @@ pub async fn run_tui(
                             app.stack_update_inflight.remove(stack_name);
                             app.stack_update_error.remove(stack_name);
                             app.set_info(format!("stack update finished for {stack_name}"));
-                            let msg = truncate_msg(&out, 200);
-                            if !msg.trim().is_empty() {
+                            if out.trim().is_empty() {
+                                continue;
+                            }
+                            if out.lines().count() > 1 {
+                                app.log_msg(
+                                    MsgLevel::Info,
+                                    format!("stack update dry-run output for {stack_name}:"),
+                                );
+                                for line in out.lines() {
+                                    app.log_msg(MsgLevel::Info, line.to_string());
+                                }
+                            } else {
+                                let msg = truncate_msg(&out, 200);
                                 app.log_msg(
                                     MsgLevel::Info,
                                     format!("stack update ok for {stack_name}: {msg}"),
@@ -6486,6 +6499,7 @@ async fn perform_stack_update(
     stack_name: &str,
     compose_path: &str,
     pull: bool,
+    dry: bool,
 ) -> anyhow::Result<String> {
     if docker.docker_cmd.is_empty() {
         anyhow::bail!("no server configured");
@@ -6509,6 +6523,15 @@ async fn perform_stack_update(
     let up_cmd = format!(
         "cd {dir_q} && {docker_cmd} compose -f {file_q} up -d --force-recreate"
     );
+    if dry {
+        let mut lines = Vec::new();
+        lines.push(format!("stack update dry-run: {stack_name}"));
+        if pull {
+            lines.push(pull_cmd);
+        }
+        lines.push(up_cmd);
+        return Ok(lines.join("\n"));
+    }
     if pull {
         let _ = runner.run(&pull_cmd).await?;
     }

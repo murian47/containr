@@ -3468,6 +3468,7 @@ fn shell_execute_cmdline(
                     return;
                 }
                 let pull = !args.iter().any(|v| *v == "--no-pull" || *v == "no-pull");
+                let dry = args.iter().any(|v| *v == "--dry" || *v == "dry");
                 let compose_path = match stack_compose_path(app, &target) {
                     Ok(path) => path,
                     Err(err) => {
@@ -3496,10 +3497,14 @@ fn shell_execute_cmdline(
                     docker,
                     compose_path,
                     pull,
+                    dry,
                 });
                 let mut msg = format!("stack update {target}");
                 if pull {
                     msg.push_str(" [pull]");
+                }
+                if dry {
+                    msg.push_str(" [dry]");
                 }
                 app.set_info(msg);
                 app.log_msg(MsgLevel::Info, format!("stack update started: {target}"));
