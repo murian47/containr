@@ -3901,14 +3901,17 @@ fn build_dashboard_image(
         }
     };
 
-    let ratio_color = |ratio: f32| -> Rgba<u8> {
-        if ratio >= 0.85 {
-            err
-        } else if ratio >= 0.70 {
-            warn
-        } else {
-            ok
-        }
+    let lerp = |a: u8, b: u8, t: f32| -> u8 {
+        let t = t.clamp(0.0, 1.0);
+        (a as f32 + (b as f32 - a as f32) * t).round() as u8
+    };
+    let lerp_rgba = |a: Rgba<u8>, b: Rgba<u8>, t: f32| -> Rgba<u8> {
+        Rgba([
+            lerp(a[0], b[0], t),
+            lerp(a[1], b[1], t),
+            lerp(a[2], b[2], t),
+            255,
+        ])
     };
 
     let ratios: Vec<f32> = ratios.iter().map(|r| r.clamp(0.0, 1.0)).collect();
@@ -3926,7 +3929,15 @@ fn build_dashboard_image(
         let y = row_top + (row_h.saturating_sub(bar_h)) / 2;
         fill_rect(margin_x, y, bar_w, bar_h, faint);
         let fill_w = ((bar_w as f32) * ratio).round() as u32;
-        fill_rect(margin_x, y, fill_w, bar_h, ratio_color(*ratio));
+        for xx in 0..fill_w {
+            let t = if bar_w <= 1 { 1.0 } else { (xx as f32) / (bar_w as f32 - 1.0) };
+            let color = if t <= 0.7 {
+                lerp_rgba(ok, warn, t / 0.7)
+            } else {
+                lerp_rgba(warn, err, (t - 0.7) / 0.3)
+            };
+            fill_rect(margin_x + xx, y, 1, bar_h, color);
+        }
     }
 
     img
