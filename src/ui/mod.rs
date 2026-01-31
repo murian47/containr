@@ -1109,7 +1109,7 @@ pub(in crate::ui) enum ActionRequest {
         stack_name: String,
         runner: Runner,
         docker: DockerCfg,
-        compose_path: String,
+        compose_dirs: Vec<String>,
         pull: bool,
         dry: bool,
         force: bool,
@@ -5304,7 +5304,7 @@ pub async fn run_tui(
                     stack_name,
                     runner,
                     docker,
-                    compose_path,
+                    compose_dirs,
                     pull,
                     dry,
                     force,
@@ -5313,7 +5313,7 @@ pub async fn run_tui(
                     runner,
                     docker,
                     stack_name,
-                    compose_path,
+                    compose_dirs,
                     *pull,
                     *dry,
                     *force,
@@ -6459,6 +6459,14 @@ fn shell_single_quote(s: &str) -> String {
     out
 }
 
+fn shell_quote_with_home(s: &str) -> String {
+    if s.starts_with("$HOME/") {
+        format!("\"{s}\"")
+    } else {
+        shell_single_quote(s)
+    }
+}
+
 fn parse_git_status_path(line: &str) -> Option<String> {
     let line = line.trim_end();
     if line.len() < 4 {
@@ -6529,7 +6537,7 @@ async fn perform_stack_update(
     runner: &Runner,
     docker: &DockerCfg,
     stack_name: &str,
-    compose_path: &str,
+    compose_dirs: &[String],
     pull: bool,
     dry: bool,
     force: bool,
@@ -6538,20 +6546,32 @@ async fn perform_stack_update(
     if docker.docker_cmd.is_empty() {
         anyhow::bail!("no server configured");
     }
-    let path = Path::new(compose_path);
-    let dir = path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("stack update: compose path has no parent for {stack_name}"))?;
-    let dir_str = dir.to_string_lossy();
-    if dir_str.trim().is_empty() {
-        anyhow::bail!("stack update: compose dir is empty for {stack_name}");
+    let mut selected_dir: Option<String> = None;
+    for dir in compose_dirs {
+        let dir = dir.trim();
+        if dir.is_empty() {
+            continue;
+        }
+        let ok = match runner {
+            Runner::Local => Path::new(dir).is_dir(),
+            Runner::Ssh(_) => {
+                let dir_q = shell_quote_with_home(dir);
+                runner.run(&format!("test -d {dir_q}")).await.is_ok()
+            }
+        };
+        if ok {
+            selected_dir = Some(dir.to_string());
+            break;
+        }
     }
-    let file = path
-        .file_name()
-        .and_then(|v| v.to_str())
-        .unwrap_or("compose.rendered.yaml");
-    let dir_q = shell_single_quote(&dir_str);
-    let file_q = shell_single_quote(file);
+    let dir = selected_dir.ok_or_else(|| {
+        anyhow::anyhow!(
+            "stack update: compose dir not found for {stack_name} (tried: {})",
+            compose_dirs.join(", ")
+        )
+    })?;
+    let dir_q = shell_quote_with_home(&dir);
+    let file_q = shell_single_quote("compose.rendered.yaml");
     let docker_cmd = docker.docker_cmd.to_shell();
     let pull_cmd = format!("cd {dir_q} && {docker_cmd} compose -f {file_q} pull");
     let mut svc_args: Vec<String> = Vec::new();
@@ -6572,6 +6592,7 @@ async fn perform_stack_update(
     if dry {
         let mut lines = Vec::new();
         lines.push(format!("stack update dry-run: {stack_name}"));
+        lines.push(format!("compose dir: {}", dir));
         if pull {
             lines.push(pull_cmd);
         }

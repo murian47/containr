@@ -11,7 +11,16 @@ fn key_spec_from_event(key: crossterm::event::KeyEvent) -> Option<KeySpec> {
     }
 
     let code = match key.code {
-        KeyCode::Char(c) => KeyCodeNorm::Char(c),
+        KeyCode::Char(c) => {
+            let c = if (mods & 2) != 0 && c.is_ascii_alphabetic() {
+                c.to_ascii_uppercase()
+            } else if (mods & 2) == 0 && c.is_ascii_alphabetic() {
+                c.to_ascii_lowercase()
+            } else {
+                c
+            };
+            KeyCodeNorm::Char(c)
+        }
         KeyCode::F(n) => KeyCodeNorm::F(n),
         KeyCode::Enter => KeyCodeNorm::Enter,
         KeyCode::Esc => KeyCodeNorm::Esc,
