@@ -264,6 +264,8 @@ fn shell_switch_server(
     app.image_action_inflight.clear();
     app.volume_action_inflight.clear();
     app.network_action_inflight.clear();
+    app.stack_update_inflight.clear();
+    app.stack_update_error.clear();
 
     let runner = if s.target == "local" {
         Runner::Local
@@ -1907,6 +1909,24 @@ fn deploy_remote_net_dir_for(name: &str) -> String {
     format!(".config/containr/networks/{name}")
 }
 
+fn stack_compose_path(app: &App, stack_name: &str) -> anyhow::Result<String> {
+    let stack_name = stack_name.trim();
+    anyhow::ensure!(!stack_name.is_empty(), "stack name is empty");
+    let runner = current_runner_from_app(app);
+    let remote_dir = match runner {
+        Runner::Local => {
+            let home = std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME is not set"))?;
+            format!("{home}/.config/containr/apps/{stack_name}")
+        }
+        Runner::Ssh(_) => deploy_remote_dir_for(stack_name),
+    };
+    let compose_path = format!("{remote_dir}/compose.rendered.yaml");
+    if matches!(runner, Runner::Local) && !Path::new(&compose_path).exists() {
+        anyhow::bail!("compose.rendered.yaml not found for stack {stack_name}");
+    }
+    Ok(compose_path)
+}
+
 fn delete_template(app: &mut App, name: &str) -> anyhow::Result<()> {
     let name = name.trim();
     anyhow::ensure!(!name.is_empty(), "template name is empty");
@@ -3435,8 +3455,58 @@ fn shell_execute_cmdline(
                 }
                 crate::ui::state::actions::exec_stack_action(app, ContainerAction::Remove, Some(&target), action_req_tx);
             }
+            "update" => {
+                let target = name
+                    .map(|s| s.to_string())
+                    .or_else(|| app.selected_stack_entry().map(|s| s.name.clone()));
+                let Some(target) = target else {
+                    app.set_warn("no stack selected");
+                    return;
+                };
+                if app.stack_update_inflight.contains_key(&target) {
+                    app.set_warn(format!("stack '{target}' is already updating"));
+                    return;
+                }
+                let pull = !args.iter().any(|v| *v == "--no-pull" || *v == "no-pull");
+                let compose_path = match stack_compose_path(app, &target) {
+                    Ok(path) => path,
+                    Err(err) => {
+                        app.set_warn(format!("stack update: {err}"));
+                        return;
+                    }
+                };
+                let docker = DockerCfg {
+                    docker_cmd: current_docker_cmd_from_app(app),
+                };
+                if docker.docker_cmd.is_empty() {
+                    app.set_warn("no server configured");
+                    return;
+                }
+                let runner = current_runner_from_app(app);
+                app.stack_update_inflight.insert(
+                    target.clone(),
+                    DeployMarker {
+                        started: Instant::now(),
+                    },
+                );
+                app.stack_update_error.remove(&target);
+                let _ = action_req_tx.send(ActionRequest::StackUpdate {
+                    stack_name: target.clone(),
+                    runner,
+                    docker,
+                    compose_path,
+                    pull,
+                });
+                let mut msg = format!("stack update {target}");
+                if pull {
+                    msg.push_str(" [pull]");
+                }
+                app.set_info(msg);
+                app.log_msg(MsgLevel::Info, format!("stack update started: {target}"));
+                return;
+            }
             _ => {
-        app.set_warn("usage: :stack [start|stop|restart|rm|check] [name] | :stacks running|all");
+        app.set_warn("usage: :stack [start|stop|restart|rm|check|update] [name] | :stacks running|all");
             }
         }
         return;
@@ -5769,8 +5839,22 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
                             .add_modifier(Modifier::BOLD)
                     };
                     let glyph = if *expanded { "▾" } else { "▸" };
-                    let (upd_text, upd_style) =
-                        image_update_indicator(app, resolve_stack_update_state(app, name), bg);
+                    let (upd_text, upd_style) = if let Some(marker) =
+                        app.stack_update_inflight.get(name)
+                    {
+                        let text = loading_spinner(Some(marker.started));
+                        (
+                            text.to_string(),
+                            bg.patch(app.theme.text_warn.to_style()),
+                        )
+                    } else if app.stack_update_error.contains_key(name) {
+                        (
+                            "!".to_string(),
+                            bg.patch(app.theme.text_error.to_style()),
+                        )
+                    } else {
+                        image_update_indicator(app, resolve_stack_update_state(app, name), bg)
+                    };
                     rows.push(
                         Row::new(vec![
                             Cell::from(format!("{glyph} {name}")).style(st),

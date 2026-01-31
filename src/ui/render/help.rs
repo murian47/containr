@@ -315,13 +315,18 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(h("Stacks"));
     out.push(item(
         "Stacks",
-        ":stack/:stk (start|stop|restart|rm|check) [name]",
+        ":stack/:stk (start|stop|restart|rm|check|update) [name]",
         "Run action for selected stack (or by name)",
     ));
     out.push(item(
         "Stacks",
         ":stack/:stk check [name]",
         "Check image updates for stack containers (manual)",
+    ));
+    out.push(item(
+        "Stacks",
+        ":stack/:stk update [name]",
+        "Update stack (MVP: pull + recreate all services)",
     ));
     out.push(item(
         "Stacks",

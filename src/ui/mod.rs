@@ -1092,6 +1092,13 @@ pub(in crate::ui) enum ActionRequest {
         template_id: String,
         template_commit: Option<String>,
     },
+    StackUpdate {
+        stack_name: String,
+        runner: Runner,
+        docker: DockerCfg,
+        compose_path: String,
+        pull: bool,
+    },
     NetTemplateDeploy {
         name: String,
         runner: Runner,
@@ -1176,10 +1183,12 @@ struct App {
     image_action_inflight: HashMap<String, SimpleMarker>,
     volume_action_inflight: HashMap<String, SimpleMarker>,
     network_action_inflight: HashMap<String, SimpleMarker>,
+    stack_update_inflight: HashMap<String, DeployMarker>,
     container_action_error: HashMap<String, LastActionError>,
     image_action_error: HashMap<String, LastActionError>,
     volume_action_error: HashMap<String, LastActionError>,
     network_action_error: HashMap<String, LastActionError>,
+    stack_update_error: HashMap<String, LastActionError>,
     template_action_error: HashMap<String, LastActionError>,
     net_template_action_error: HashMap<String, LastActionError>,
     inspect: InspectState,
@@ -1718,10 +1727,12 @@ impl App {
             image_action_inflight: HashMap::new(),
             volume_action_inflight: HashMap::new(),
             network_action_inflight: HashMap::new(),
+            stack_update_inflight: HashMap::new(),
             container_action_error: HashMap::new(),
             image_action_error: HashMap::new(),
             volume_action_error: HashMap::new(),
             network_action_error: HashMap::new(),
+            stack_update_error: HashMap::new(),
             template_action_error: HashMap::new(),
             net_template_action_error: HashMap::new(),
             inspect: InspectState {
@@ -5273,6 +5284,13 @@ pub async fn run_tui(
                     template_commit.as_deref(),
                 )
                 .await,
+                ActionRequest::StackUpdate {
+                    stack_name,
+                    runner,
+                    docker,
+                    compose_path,
+                    pull,
+                } => perform_stack_update(runner, docker, stack_name, compose_path, *pull).await,
                 ActionRequest::NetTemplateDeploy {
                     name,
                     runner,
@@ -5903,6 +5921,18 @@ pub async fn run_tui(
                                 }
                             }
                         }
+                        ActionRequest::StackUpdate { stack_name, .. } => {
+                            app.stack_update_inflight.remove(stack_name);
+                            app.stack_update_error.remove(stack_name);
+                            app.set_info(format!("stack update finished for {stack_name}"));
+                            let msg = truncate_msg(&out, 200);
+                            if !msg.trim().is_empty() {
+                                app.log_msg(
+                                    MsgLevel::Info,
+                                    format!("stack update ok for {stack_name}: {msg}"),
+                                );
+                            }
+                        }
                         ActionRequest::NetTemplateDeploy { name, .. } => {
                             app.templates_state
                                 .net_template_deploy_inflight
@@ -6059,6 +6089,20 @@ pub async fn run_tui(
                                 },
                             );
                             app.set_error(format!("deploy failed for {name}: {:#}", e));
+                            continue;
+                        }
+                        ActionRequest::StackUpdate { stack_name, .. } => {
+                            app.stack_update_inflight.remove(stack_name);
+                            app.stack_update_error.insert(
+                                stack_name.clone(),
+                                LastActionError {
+                                    at: now_local(),
+                                    action: "update".to_string(),
+                                    kind: classify_action_error(&format!("{:#}", e)),
+                                    message: truncate_msg(&format!("{:#}", e), 240),
+                                },
+                            );
+                            app.set_error(format!("stack update failed for {stack_name}: {:#}", e));
                             continue;
                         }
                         ActionRequest::NetTemplateDeploy { name, .. } => {
@@ -6429,6 +6473,42 @@ async fn perform_template_deploy(
     );
     runner.run(&mkdir_cmd).await?;
     runner.copy_file_to(rendered_path.as_ref(), &remote_compose).await?;
+    if pull {
+        let _ = runner.run(&pull_cmd).await?;
+    }
+    let out = runner.run(&up_cmd).await?;
+    Ok(out)
+}
+
+async fn perform_stack_update(
+    runner: &Runner,
+    docker: &DockerCfg,
+    stack_name: &str,
+    compose_path: &str,
+    pull: bool,
+) -> anyhow::Result<String> {
+    if docker.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let path = Path::new(compose_path);
+    let dir = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("stack update: compose path has no parent for {stack_name}"))?;
+    let dir_str = dir.to_string_lossy();
+    if dir_str.trim().is_empty() {
+        anyhow::bail!("stack update: compose dir is empty for {stack_name}");
+    }
+    let file = path
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or("compose.rendered.yaml");
+    let dir_q = shell_single_quote(&dir_str);
+    let file_q = shell_single_quote(file);
+    let docker_cmd = docker.docker_cmd.to_shell();
+    let pull_cmd = format!("cd {dir_q} && {docker_cmd} compose -f {file_q} pull");
+    let up_cmd = format!(
+        "cd {dir_q} && {docker_cmd} compose -f {file_q} up -d --force-recreate"
+    );
     if pull {
         let _ = runner.run(&pull_cmd).await?;
     }
