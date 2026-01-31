@@ -1774,6 +1774,7 @@ impl App {
             },
             dashboard: DashboardState {
                 loading: true,
+                last_disk_count: 0,
                 ..DashboardState::default()
             },
             dashboard_image: dashboard_picker.map(|p| init_dashboard_image(p, &theme)),
@@ -3749,11 +3750,23 @@ struct DashboardSnapshot {
     collected_at: OffsetDateTime,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 struct DashboardState {
     loading: bool,
     error: Option<String>,
     snap: Option<DashboardSnapshot>,
+    last_disk_count: usize,
+}
+
+impl Default for DashboardState {
+    fn default() -> Self {
+        Self {
+            loading: false,
+            error: None,
+            snap: None,
+            last_disk_count: 0,
+        }
+    }
 }
 
 struct DashboardImageState {
@@ -5604,6 +5617,12 @@ pub async fn run_tui(
                 Ok(snap) => {
                     app.dashboard.error = None;
                     app.dashboard.snap = Some(snap);
+                    app.dashboard.last_disk_count = app
+                        .dashboard
+                        .snap
+                        .as_ref()
+                        .map(|s| s.disks.len())
+                        .unwrap_or(0);
                 }
                 Err(e) => {
                     let msg = format!("{:#}", e);

@@ -279,7 +279,12 @@ fn shell_switch_server(
     app.start_loading(true);
     app.dashboard.loading = true;
     app.dashboard.error = None;
-    app.dashboard.snap = None;
+    app.dashboard.last_disk_count = app
+        .dashboard
+        .snap
+        .as_ref()
+        .map(|s| s.disks.len())
+        .unwrap_or(0);
     let _ = conn_tx.send(Connection {
         runner,
         docker: DockerCfg {
@@ -314,6 +319,12 @@ fn shell_refresh(
     }
     app.start_loading(true);
     app.dashboard.loading = true;
+    app.dashboard.last_disk_count = app
+        .dashboard
+        .snap
+        .as_ref()
+        .map(|s| s.disks.len())
+        .unwrap_or(0);
     let _ = refresh_tx.send(());
     let _ = dash_refresh_tx.send(());
 }
@@ -6527,7 +6538,9 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
         .column_spacing(0);
         f.render_widget(metrics, metric_parts[0]);
 
-        let disk_rows = if let Some(s) = snap { s.disks.len().max(1) } else { 1 };
+        let last = app.dashboard.last_disk_count.max(1);
+        let cur = snap.map(|s| s.disks.len().max(1)).unwrap_or(1);
+        let disk_rows = last.max(cur);
         let bar_rows = 2 + disk_rows;
         if (bar_rows as u16) <= metric_parts[1].height {
             let image_area = ratatui::layout::Rect {
