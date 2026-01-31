@@ -3148,6 +3148,14 @@ fn shell_execute_cmdline(
                 app.network_action_error.clear();
                 app.template_action_error.clear();
                 app.net_template_action_error.clear();
+                app.conn_error = None;
+                app.last_error = None;
+                app.dashboard.error = None;
+                app.logs.error = None;
+                app.inspect.error = None;
+                app.refresh_error_streak = 0;
+                app.refresh_pause_reason = None;
+                app.mark_messages_seen();
                 app.set_info("cleared all action error markers");
                 return;
             }
