@@ -5241,7 +5241,8 @@ fn draw_shell_header(
         || !app.templates_state.template_deploy_inflight.is_empty()
         || !app.templates_state.net_template_deploy_inflight.is_empty()
         || !app.image_updates_inflight.is_empty();
-    let refresh_label = format!("⟳ {}s", app.refresh_secs.max(1));
+    let refresh_icon = if app.ascii_only { "r" } else { "⏱" };
+    let refresh_label = format!("{refresh_icon} {}s", app.refresh_secs.max(1));
     let commit_label = if commands::git_cmd::git_available() && app.git_autocommit {
         "  Commit: auto"
     } else {
