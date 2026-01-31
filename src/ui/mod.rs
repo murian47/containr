@@ -46,7 +46,7 @@ use render::highlight::{
 };
 use render::utils::{
     expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
-    theme_color_rgba, write_text_file,
+    theme_color, theme_color_rgba, write_text_file,
 };
 use render::text::{short_commit, slice_window, truncate_end, window_hscroll};
 use render::scroll::{draw_shell_scrollbar_h, draw_shell_scrollbar_v};

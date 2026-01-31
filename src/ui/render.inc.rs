@@ -6409,9 +6409,21 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     let mv = v;
     let header_bg = theme::parse_color(&app.theme.header.bg);
     let bar_empty = bg.fg(header_bg);
-    let bar_ok = bg.patch(app.theme.text_ok.to_style());
-    let bar_warn = bg.patch(app.theme.text_warn.to_style());
-    let bar_err = bg.patch(app.theme.text_error.to_style());
+    let bar_ok = if app.kitty_graphics {
+        bg.fg(theme_color(&app.theme.text_ok.fg))
+    } else {
+        bg.patch(app.theme.text_ok.to_style())
+    };
+    let bar_warn = if app.kitty_graphics {
+        bg.fg(theme_color(&app.theme.text_warn.fg))
+    } else {
+        bg.patch(app.theme.text_warn.to_style())
+    };
+    let bar_err = if app.kitty_graphics {
+        bg.fg(theme_color(&app.theme.text_error.fg))
+    } else {
+        bg.patch(app.theme.text_error.to_style())
+    };
 
     let metric_row =
         |name: &str, val: String, bar: Vec<Span<'static>>, extra: Option<String>| -> Row<'static> {

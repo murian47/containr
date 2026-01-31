@@ -87,3 +87,7 @@ pub(in crate::ui) fn theme_color_rgba(spec: &str, fallback: Rgba<u8>) -> Rgba<u8
     let color = theme::parse_color(spec);
     color_to_rgba(color, fallback)
 }
+
+pub(in crate::ui) fn theme_color(spec: &str) -> Color {
+    theme::parse_color(spec)
+}
