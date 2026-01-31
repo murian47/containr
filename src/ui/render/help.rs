@@ -168,7 +168,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
 
     out.push(h("Messages"));
     out.push(item("Global", "^g", "Open full messages view"));
-    out.push(item("Global", ":log dock", "Toggle docked messages panel"));
+    out.push(item(
+        "Global",
+        ":log dock [height]",
+        "Toggle docked messages panel (height 3..12)",
+    ));
     out.push(item("Global", ":messages copy", "Copy selected message"));
     out.push(item("Global", ":messages save <file>", "Save messages to file"));
     out.push(Line::from(""));

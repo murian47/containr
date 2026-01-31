@@ -3099,7 +3099,21 @@ fn shell_execute_cmdline(
                 app.set_warn("usage: :log dock");
                 return;
             }
-            app.log_dock_enabled = !app.log_dock_enabled;
+            let height_raw = it.next().unwrap_or("");
+            if !height_raw.is_empty() {
+                match height_raw.parse::<u16>() {
+                    Ok(h) if (3..=12).contains(&h) => {
+                        app.log_dock_height = h;
+                        app.log_dock_enabled = true;
+                    }
+                    _ => {
+                        app.set_warn("usage: :log dock [3..12]");
+                        return;
+                    }
+                }
+            } else {
+                app.log_dock_enabled = !app.log_dock_enabled;
+            }
             if app.log_dock_enabled {
                 app.shell_msgs.scroll = usize::MAX;
                 app.shell_msgs.hscroll = 0;
