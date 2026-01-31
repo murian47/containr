@@ -40,22 +40,22 @@ pub(crate) fn draw_shell_footer(
 fn footer_hint(view: ShellView) -> &'static str {
     match view {
         ShellView::Dashboard => {
-            " F1 help  b sidebar  ^p layout  ^s start  ^o stop  ^r restart  ^d rm  :q quit"
+            " F1 help  ^b sidebar  ^p layout  ^s start  ^o stop  ^r restart  ^d rm  :q quit"
         }
         ShellView::Stacks => {
-            " F1 help  b sidebar  ^p layout  :q quit"
+            " F1 help  ^b sidebar  ^p layout  :q quit"
         }
         ShellView::Containers => {
-            " F1 help  b sidebar  ^p layout  :q quit"
+            " F1 help  ^b sidebar  ^p layout  :q quit"
         }
         ShellView::Images | ShellView::Volumes | ShellView::Networks => {
-            " F1 help  b sidebar  ^p layout  :q quit"
+            " F1 help  ^b sidebar  ^p layout  :q quit"
         }
         ShellView::Templates => {
-            " F1 help  b sidebar  ^p layout  :q quit"
+            " F1 help  ^b sidebar  ^p layout  :q quit"
         }
         ShellView::Registries => {
-            " F1 help  b sidebar  ^p layout  ^y test  :q quit"
+            " F1 help  ^b sidebar  ^p layout  ^y test  :q quit"
         }
         ShellView::Logs => {
             " F1 help  / search  : cmd  n/N match  m regex  l numbers  q back  :q quit"

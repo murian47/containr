@@ -1775,6 +1775,7 @@ impl App {
             dashboard: DashboardState {
                 loading: true,
                 last_disk_count: 0,
+                suppress_image_frames: 0,
                 ..DashboardState::default()
             },
             dashboard_image: dashboard_picker.map(|p| init_dashboard_image(p, &theme)),
@@ -3756,6 +3757,7 @@ struct DashboardState {
     error: Option<String>,
     snap: Option<DashboardSnapshot>,
     last_disk_count: usize,
+    suppress_image_frames: u8,
 }
 
 impl Default for DashboardState {
@@ -3765,6 +3767,7 @@ impl Default for DashboardState {
             error: None,
             snap: None,
             last_disk_count: 0,
+            suppress_image_frames: 0,
         }
     }
 }

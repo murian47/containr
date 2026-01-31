@@ -6150,7 +6150,12 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
         vertical: 1,
         horizontal: 1,
     });
-    let show_image = app.dashboard_image_enabled() && inner.width >= 60 && inner.height >= 12;
+    let mut show_image = app.dashboard_image_enabled() && inner.width >= 60 && inner.height >= 12;
+    if app.dashboard.suppress_image_frames > 0 {
+        app.dashboard.suppress_image_frames =
+            app.dashboard.suppress_image_frames.saturating_sub(1);
+        show_image = false;
+    }
     let content_area = inner;
     if app.servers.is_empty() && app.current_target.trim().is_empty() {
         let msg = "No server configured. Use :server add to get started.";

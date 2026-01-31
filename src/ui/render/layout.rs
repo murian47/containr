@@ -4,13 +4,16 @@ use crate::ui::{
 };
 use crate::ui::render::theme_selector::draw_theme_selector;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::widgets::{Block, Paragraph, Wrap};
+use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
 pub(in crate::ui) fn draw_shell_body(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     if app.shell_view == ShellView::ThemeSelector {
         draw_theme_selector(f, app, area);
         return;
     }
+    f.render_widget(Clear, area);
+    let bg = app.theme.background.to_style();
+    f.render_widget(ratatui::widgets::Block::default().style(bg), area);
     let dock_allowed = app.log_dock_enabled
         && !matches!(
             app.shell_view,
