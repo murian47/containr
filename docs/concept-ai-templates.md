@@ -1,40 +1,33 @@
-# AI Template Patch: Concept
+# AI Template Agent: Concept (Current)
 
 ## Use-case
-Allow a user to edit an existing compose template via AI. The AI returns a unified diff. containr can show the diff and, if Git is active and the user allows it, apply the patch automatically.
+Allow a user to edit an existing compose template via an external AI agent. The agent runs in an interactive shell, can read the template file directly, and is expected to edit it in place.
 
 ## Preconditions
-- AI provider configured via CLI (for example, `codex exec`).
-- Template exists in the local templates repo.
-- Git integration is optional but required for auto-apply.
+- AI agent configured via environment variable (see Configuration).
+- Template exists in the local templates repo (Git-backed).
+- The user can exit the agent to return to containr.
 
-## Flow (manual apply)
-1) User triggers the AI action (for example `:ai edit`).
-2) containr builds a prompt from `compose.yaml` plus context and runs the CLI.
-3) containr extracts the last unified diff block from the CLI output.
-4) The diff is shown for review.
-5) User confirms -> patch is applied.
-
-## Flow (auto-apply with Git)
-1) User triggers the AI action.
-2) containr runs the CLI and extracts the diff.
-3) containr runs `git apply --check` on the diff.
-4) If OK -> `git apply` automatically.
-5) If check fails -> show diff for manual review.
-6) Optional: offer `git commit` with an AI-suggested message.
+## Flow (interactive agent)
+1) User triggers the AI action from the Templates view (AI menu).
+2) containr opens an interactive shell and runs the configured command.
+3) The agent receives context (which file to edit and what the task is).
+4) The agent edits files in the templates repo directly.
+5) Agent exits -> containr returns and checks for local changes.
+6) Templates list shows modified state based on Git status.
 
 ## Failure cases
-- No diff found -> warn and stop.
-- Diff does not apply -> warn and show diff.
-- CLI error -> report via Messages.
+- No agent configured -> AI menu is hidden (or a warning is shown).
+- Agent exits with non-zero -> log error in Messages.
+- No changes detected -> no modified marker is shown.
 
 ## Configuration
-- `ai.provider = "codex_cli"`
-- `ai.cmd = "codex exec --model gpt-5.2-codex"`
-- `ai.auto_apply = true|false`
+- `CONTAINR_AI_CMD` environment variable, e.g.
+  - `CONTAINR_AI_CMD="codex exec --model gpt-5.2-codex"`
+- The command is run in a shell, stdin receives a task prompt.
 - Secrets via ENV only, not in config.
 
 ## Rationale
-- Diff-first keeps changes explicit and reviewable.
-- Auto-apply only when Git is active and enabled.
-- Works without Git (manual preview/apply).
+- Interactive agent avoids fragile diff parsing.
+- The templates repo is the single source of truth.
+- Git status provides a simple, consistent "modified" signal.

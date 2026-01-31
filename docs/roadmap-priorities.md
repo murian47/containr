@@ -27,11 +27,11 @@ reports `xterm-256color` (e.g. iTerm2 via Profile → Terminal → Report Termin
    - Implement placeholder expansion for command line + keybindings
    - Integrate with new views/context (selection, marks, stack)
 
-4. Theme selection UI + theme regeneration
-   - Add :theme select UI with sidebar list + main preview
+4. Theme regeneration (post schema)
    - Regenerate Ghostty themes only after schema is stable
 
-5. AI support (assistant-driven template creation/editing)
+5. AI support (beyond interactive edits)
+   - Assist with template creation/refactors, summaries, and guidance
 
 ## Rationale
 

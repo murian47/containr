@@ -19,6 +19,7 @@ This list reflects the current implementation and what is planned next.
 - Templates: stacks/networks, add/edit/rm, deploy, generate from stack/container
 - Git integration for templates repo (status/diff/log/commit/pull/push/init/clone)
 - Registries: config/test, age-backed secrets, registry view
+- AI templates: external agent runner for interactive edits (CONTAINR_AI_CMD)
 
 ## Partial / Limited
 
@@ -28,7 +29,7 @@ This list reflects the current implementation and what is planned next.
 ## Planned (Roadmap)
 
 - Update/rollback UI + registry auth via keyring (age fallback)
-- AI-assisted template creation/editing
+- AI-assisted template creation/editing (beyond interactive edits)
 
 ## Deferred
 

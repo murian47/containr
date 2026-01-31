@@ -14,6 +14,12 @@ Ziel ist, zusaetzlich zu Monitoring/Aufraeumen auch Stacks/Compose-Projekte zu e
 - Portainer-kompatible Projekt/Stack-Verwaltung durch passende Labels.
 - Kein integrierter Editor: Bearbeitung erfolgt ueber `$EDITOR`.
 
+## Ist-Stand (Kurz)
+- Templates, Git-Integration und Deploy sind implementiert (lokales Repo + SSH Deploy).
+- Remote-Layout unter `$HOME/.config/<program>/apps/...` wird genutzt.
+- Template-Details zeigen Git-Commit (local) und deployed commit; Liste zeigt Status.
+- Update/Rollback und Deployment-History sind noch nicht vollstaendig umgesetzt.
+
 ## Grundannahmen / Rechte
 
 - Auf Remote-Servern koennen wir nur sicher im Home-Verzeichnis des SSH-Users schreiben.

@@ -8,6 +8,11 @@ Goal: decouple UI (ratatui) from domain logic so we can maintain TUI easily and 
 - UI renders *state*; services/controllers mutate state via events/messages.
 - Avoid “half moves”: migrate a feature end-to-end before tackling the next.
 
+## Ist-Stand (Kurz)
+- Erste Render-Helper wurden ausgelagert (format/utility).
+- UI und Domain sind noch stark vermischt (App mutiert direkt; viele UI-Types im State).
+- Service/Controller/Event-Architektur ist noch nicht eingefuehrt.
+
 ## Phase 1: Stabilize TUI Structure
 1) Finish render decomposition: lists, details, overlays, helpers already split; keep shrinking `render.inc.rs` into focused modules without changing behavior.
 2) Isolate UI state vs. domain data in `App`: mark UI-only fields (scroll, focus, selection) vs. domain (containers, stacks, templates, registries, actions, errors).
