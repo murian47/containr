@@ -26,11 +26,42 @@ fn draw_shell(f: &mut ratatui::Frame, app: &mut App, refresh: Duration) {
 
 
 fn shell_cycle_focus(app: &mut App) {
-    app.shell_focus = match app.shell_focus {
-        ShellFocus::Sidebar => ShellFocus::List,
-        ShellFocus::List => ShellFocus::Details,
-        ShellFocus::Details => ShellFocus::Sidebar,
-    };
+    let mut order: Vec<ShellFocus> = Vec::new();
+    if !app.shell_sidebar_hidden {
+        order.push(ShellFocus::Sidebar);
+    }
+    order.push(ShellFocus::List);
+    let has_details = matches!(
+        app.shell_view,
+        ShellView::Stacks
+            | ShellView::Containers
+            | ShellView::Images
+            | ShellView::Volumes
+            | ShellView::Networks
+            | ShellView::Templates
+            | ShellView::Registries
+    );
+    if has_details {
+        order.push(ShellFocus::Details);
+    }
+    let dock_allowed = app.log_dock_enabled
+        && !matches!(
+            app.shell_view,
+            ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages | ShellView::ThemeSelector
+        );
+    if dock_allowed {
+        order.push(ShellFocus::Dock);
+    }
+    if order.is_empty() {
+        app.shell_focus = ShellFocus::List;
+        return;
+    }
+    let idx = order
+        .iter()
+        .position(|f| *f == app.shell_focus)
+        .unwrap_or(0);
+    let next = (idx + 1) % order.len();
+    app.shell_focus = order[next];
 }
 
 
@@ -2740,6 +2771,13 @@ fn cmdline_completion_candidates(app: &App, ctx: &CmdlineCompletionContext) -> (
                 Vec::new()
             }
         }
+        "log" => {
+            if arg_index == 0 {
+                vec!["dock"].into_iter().map(|s| s.to_string()).collect()
+            } else {
+                Vec::new()
+            }
+        }
         "ack" => {
             if arg_index == 0 {
                 vec!["all".to_string()]
@@ -3052,6 +3090,24 @@ fn shell_execute_cmdline(
                 app.shell_focus = ShellFocus::List;
                 app.shell_msgs.scroll = usize::MAX;
                 app.shell_msgs.hscroll = 0;
+            }
+            return;
+        }
+        "log" => {
+            let sub = it.next().unwrap_or("");
+            if sub != "dock" {
+                app.set_warn("usage: :log dock");
+                return;
+            }
+            app.log_dock_enabled = !app.log_dock_enabled;
+            if app.log_dock_enabled {
+                app.shell_msgs.scroll = usize::MAX;
+                app.shell_msgs.hscroll = 0;
+            }
+            if app.shell_view == ShellView::Messages {
+                shell_back_from_full(app);
+            } else if !app.log_dock_enabled && app.shell_focus == ShellFocus::Dock {
+                app.shell_focus = ShellFocus::List;
             }
             return;
         }
@@ -4536,6 +4592,33 @@ fn handle_shell_key(
                     }
                 }
             }
+        }
+    }
+
+    if app.log_dock_enabled
+        && app.shell_focus == ShellFocus::Dock
+        && !matches!(
+            app.shell_view,
+            ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages | ShellView::ThemeSelector
+        )
+    {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(1)
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(1)
+            }
+            KeyCode::PageUp => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(10),
+            KeyCode::PageDown => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(10),
+            KeyCode::Left => app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_sub(4),
+            KeyCode::Right => app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_add(4),
+            KeyCode::Home => app.shell_msgs.scroll = 0,
+            KeyCode::End => app.shell_msgs.scroll = usize::MAX,
+            _ => {}
+        }
+        if !matches!(key.code, KeyCode::Tab) {
+            return;
         }
     }
 
@@ -7204,6 +7287,29 @@ fn format_session_ts(at: OffsetDateTime) -> String {
 fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
     let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
+    draw_shell_messages_list(f, app, area, bg);
+}
+
+pub(in crate::ui) fn draw_shell_messages_dock(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
+    let bg = if app.shell_focus == ShellFocus::Dock {
+        app.theme.panel_focused.to_style()
+    } else {
+        app.theme.panel.to_style()
+    };
+    f.render_widget(Block::default().style(bg), area);
+    draw_shell_messages_list(f, app, area, bg);
+}
+
+fn draw_shell_messages_list(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+    bg: Style,
+) {
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 0,
         horizontal: 1,
@@ -7232,6 +7338,12 @@ fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui
     }
     let top = cursor.saturating_sub(view_h / 2).min(max_scroll);
 
+    let lnw = if app.logs.show_line_numbers {
+        total_msgs.max(1).to_string().len()
+    } else {
+        0
+    };
+
     // Clamp horizontal scroll to the selected message width.
     if let Some(m) = app.session_msgs.get(cursor) {
         let lvl = match m.level {
@@ -7240,7 +7352,12 @@ fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui
             MsgLevel::Error => "ERROR",
         };
         let ts = format_session_ts(m.at);
-        let fixed_len = format!("{ts} {lvl} ").chars().count();
+        let num_w = if app.logs.show_line_numbers {
+            lnw + 1
+        } else {
+            0
+        };
+        let fixed_len = num_w + format!("{ts} {lvl} ").chars().count();
         let msg_w = w.saturating_sub(fixed_len).max(1);
         let max_h = m.text.chars().count().saturating_sub(msg_w);
         app.shell_msgs.hscroll = app.shell_msgs.hscroll.min(max_h);
@@ -7249,7 +7366,13 @@ fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui
     }
 
     let mut items: Vec<ListItem> = Vec::new();
-    for m in app.session_msgs.iter().skip(top).take(view_h) {
+    for (idx, m) in app
+        .session_msgs
+        .iter()
+        .enumerate()
+        .skip(top)
+        .take(view_h)
+    {
         let lvl = match m.level {
             MsgLevel::Info => "INFO ",
             MsgLevel::Warn => "WARN ",
@@ -7262,19 +7385,20 @@ fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui
         };
         let ts = format_session_ts(m.at);
         let ts_style = bg.patch(app.theme.text_faint.to_style());
-        let fixed = format!("{ts} {lvl} ");
-        let fixed_len = fixed.chars().count();
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        if app.logs.show_line_numbers {
+            let ln = format!("{:>lnw$} ", idx + 1);
+            spans.push(Span::styled(ln, ts_style));
+        }
+        spans.push(Span::styled(ts, ts_style));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(lvl.to_string(), lvl_style));
+        spans.push(Span::raw(" "));
+        let fixed_len = spans.iter().map(|s| s.content.chars().count()).sum::<usize>();
         let msg_w = w.saturating_sub(fixed_len).max(1);
         let msg = window_hscroll(&m.text, app.shell_msgs.hscroll, msg_w);
-
-        let line = Line::from(vec![
-            Span::styled(ts, ts_style),
-            Span::raw(" "),
-            Span::styled(lvl.to_string(), lvl_style),
-            Span::raw(" "),
-            Span::styled(msg, bg),
-        ]);
-        items.push(ListItem::new(line));
+        spans.push(Span::styled(msg, bg));
+        items.push(ListItem::new(Line::from(spans)));
     }
     if items.is_empty() {
         items.push(ListItem::new(Line::from("")));

@@ -1,6 +1,6 @@
 use crate::ui::{
     App, ShellSplitMode, ShellView, draw_shell_main_details, draw_shell_main_list,
-    draw_shell_sidebar,
+    draw_shell_messages_dock, draw_shell_sidebar,
 };
 use crate::ui::render::theme_selector::draw_theme_selector;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -11,8 +11,13 @@ pub(in crate::ui) fn draw_shell_body(f: &mut ratatui::Frame, app: &mut App, area
         draw_theme_selector(f, app, area);
         return;
     }
+    let dock_allowed = app.log_dock_enabled
+        && !matches!(
+            app.shell_view,
+            ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages
+        );
     if app.shell_sidebar_hidden {
-        draw_shell_main(f, app, area);
+        draw_shell_main_with_optional_dock(f, app, area, dock_allowed);
         return;
     }
     let cols = Layout::default()
@@ -23,7 +28,37 @@ pub(in crate::ui) fn draw_shell_body(f: &mut ratatui::Frame, app: &mut App, area
         ])
         .split(area);
     draw_shell_sidebar(f, app, cols[0]);
-    draw_shell_main(f, app, cols[1]);
+    draw_shell_main_with_optional_dock(f, app, cols[1], dock_allowed);
+}
+
+fn draw_shell_main_with_optional_dock(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: Rect,
+    dock_allowed: bool,
+) {
+    if !dock_allowed {
+        draw_shell_main(f, app, area);
+        return;
+    }
+    let dock_h = app
+        .log_dock_height
+        .min(area.height.saturating_sub(2).max(1));
+    if area.height < dock_h + 2 {
+        draw_shell_main(f, app, area);
+        return;
+    }
+    let parts = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(dock_h),
+        ])
+        .split(area);
+    draw_shell_main(f, app, parts[0]);
+    draw_shell_hr(f, app, parts[1]);
+    draw_shell_messages_dock(f, app, parts[2]);
 }
 
 pub(in crate::ui) fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area: Rect) {

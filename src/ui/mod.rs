@@ -555,6 +555,7 @@ enum ShellFocus {
     Sidebar,
     List,
     Details,
+    Dock,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1230,6 +1231,8 @@ struct App {
     session_msgs: Vec<SessionMsg>,
     messages_seen_len: usize,
     shell_msgs: ShellMessagesState,
+    log_dock_enabled: bool,
+    log_dock_height: u16,
 
     keymap: Vec<KeyBinding>,
     keymap_parsed: HashMap<(KeyScope, KeySpec), String>,
@@ -1279,6 +1282,10 @@ impl App {
         let text = text.into();
         let at = now_local();
         self.session_msgs.push(SessionMsg { at, level, text });
+        if self.log_dock_enabled || self.shell_view == ShellView::Messages {
+            self.shell_msgs.scroll = usize::MAX;
+            self.shell_msgs.hscroll = 0;
+        }
     }
 
     fn resolve_registry_auths(&mut self) {
@@ -1841,6 +1848,8 @@ impl App {
                 hscroll: 0,
                 return_view: ShellView::Dashboard,
             },
+            log_dock_enabled: false,
+            log_dock_height: 5,
 
             keymap,
             keymap_parsed: HashMap::new(),

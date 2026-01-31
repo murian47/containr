@@ -166,6 +166,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Global", ":theme rm[!] <name>", "Delete theme (! skips confirmation)"));
     out.push(Line::from(""));
 
+    out.push(h("Messages"));
+    out.push(item("Global", "^g", "Open full messages view"));
+    out.push(item("Global", ":log dock", "Toggle docked messages panel"));
+    out.push(item("Global", ":messages copy", "Copy selected message"));
+    out.push(item("Global", ":messages save <file>", "Save messages to file"));
+    out.push(Line::from(""));
+
     out.push(h("Git"));
     out.push(item("Git", ":git templates status", "Show repo status (short)"));
     out.push(item("Git", ":git templates diff", "Show repo diff"));
@@ -210,7 +217,7 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Switch between stack templates and network templates",
     ));
     out.push(item("Templates", "^t", "Toggle stacks/networks (default binding)"));
-    out.push(item("Templates", "^a", "Open AI prompt view (default binding)"));
+    out.push(item("Templates", "^a", "Run configured AI agent (default binding)"));
     out.push(item(
         "Templates",
         ":template/:tpl add <name>",
