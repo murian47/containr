@@ -203,6 +203,8 @@ pub struct ContainrConfig {
     pub image_update_debug: bool,
     #[serde(default)]
     pub image_update_autocheck: bool,
+    #[serde(default = "default_kitty_graphics")]
+    pub kitty_graphics: bool,
     #[serde(default)]
     pub log_dock_enabled: bool,
     #[serde(default = "default_log_dock_height")]
@@ -306,6 +308,10 @@ fn default_log_dock_height() -> u16 {
     5
 }
 
+fn default_kitty_graphics() -> bool {
+    true
+}
+
 impl Default for ContainrConfig {
     fn default() -> Self {
         Self {
@@ -326,6 +332,7 @@ impl Default for ContainrConfig {
             image_update_concurrency: default_image_update_concurrency(),
             image_update_debug: false,
             image_update_autocheck: false,
+            kitty_graphics: default_kitty_graphics(),
             log_dock_enabled: false,
             log_dock_height: default_log_dock_height(),
         }

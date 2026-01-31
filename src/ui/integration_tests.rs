@@ -58,6 +58,7 @@ fn mk_integration_app(templates_dir: PathBuf) -> App {
         4,
         false,
         false,
+        true,
         false,
         5,
         RegistriesConfig::default(),

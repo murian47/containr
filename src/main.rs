@@ -51,6 +51,22 @@ struct Args {
         help = "Force ASCII-only UI rendering (disable Unicode line art)"
     )]
     ascii_only: bool,
+
+    #[arg(
+        long,
+        default_value_t = false,
+        conflicts_with = "no_kitty_graphics",
+        help = "Enable Kitty graphics (overrides config)"
+    )]
+    kitty_graphics: bool,
+
+    #[arg(
+        long,
+        default_value_t = false,
+        conflicts_with = "kitty_graphics",
+        help = "Disable Kitty graphics (overrides config)"
+    )]
+    no_kitty_graphics: bool,
 }
 
 #[tokio::main]
@@ -211,6 +227,14 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let refresh_secs = args.refresh_secs.unwrap_or(refresh_secs).max(1);
+    let kitty_graphics = if args.kitty_graphics {
+        true
+    } else if args.no_kitty_graphics {
+        false
+    } else {
+        config.kitty_graphics
+    };
+
     ui::run_tui(
         runner,
         cfg,
@@ -232,6 +256,7 @@ async fn main() -> anyhow::Result<()> {
         image_update_concurrency,
         image_update_debug,
         image_update_autocheck,
+        kitty_graphics,
         config.log_dock_enabled,
         config.log_dock_height,
     )

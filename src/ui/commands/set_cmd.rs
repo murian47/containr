@@ -164,9 +164,32 @@ pub fn handle_set(
             }
             true
         }
+        "kitty_graphics" => {
+            let Some(v) = rest.first().copied() else {
+                app.set_warn("usage: :set kitty_graphics <on|off>");
+                return true;
+            };
+            match parse_toggle(v) {
+                Some(flag) => {
+                    if !app.set_kitty_graphics(flag) {
+                        if flag {
+                            if app.ascii_only {
+                                app.set_warn("kitty_graphics is disabled when ascii_only is set");
+                            } else {
+                                app.set_warn("kitty graphics unavailable in this terminal");
+                            }
+                        }
+                    } else {
+                        app.persist_config();
+                    }
+                }
+                None => app.set_warn("kitty_graphics must be on/off"),
+            }
+            true
+        }
         _ => {
             app.set_warn(
-                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries> | :set editor <command> | :set git_autocommit <on|off> | :set git_autocommit_confirm <on|off> | :set image_update_concurrency <n> | :set image_update_debug <on|off> | :set image_update_autocheck <on|off>",
+                "usage: :set refresh <seconds> | :set logtail <lines> | :set history <entries> | :set editor <command> | :set git_autocommit <on|off> | :set git_autocommit_confirm <on|off> | :set image_update_concurrency <n> | :set image_update_debug <on|off> | :set image_update_autocheck <on|off> | :set kitty_graphics <on|off>",
             );
             true
         }

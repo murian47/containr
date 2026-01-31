@@ -1198,6 +1198,7 @@ struct App {
     ip_refresh_needed: bool,
     should_quit: bool,
     ascii_only: bool,
+    kitty_graphics: bool,
 
     theme_name: String,
     theme: theme::ThemeSpec,
@@ -1642,6 +1643,7 @@ impl App {
         image_update_concurrency: usize,
         image_update_debug: bool,
         image_update_autocheck: bool,
+        kitty_graphics: bool,
         log_dock_enabled: bool,
         log_dock_height: u16,
         registries_cfg: config::RegistriesConfig,
@@ -1778,12 +1780,17 @@ impl App {
                 suppress_image_frames: 0,
                 ..DashboardState::default()
             },
-            dashboard_image: dashboard_picker.map(|p| init_dashboard_image(p, &theme)),
+            dashboard_image: if kitty_graphics {
+                dashboard_picker.map(|p| init_dashboard_image(p, &theme))
+            } else {
+                None
+            },
 
             ip_cache: HashMap::new(),
             ip_refresh_needed: true,
             should_quit: false,
             ascii_only: false,
+            kitty_graphics,
             theme_name,
             theme,
             header_logo_seed,
@@ -2003,10 +2010,35 @@ impl App {
     }
 
     fn dashboard_image_enabled(&self) -> bool {
+        if !self.kitty_graphics {
+            return false;
+        }
         self.dashboard_image
             .as_ref()
             .map(|state| state.enabled)
             .unwrap_or(false)
+    }
+
+    fn set_kitty_graphics(&mut self, enabled: bool) -> bool {
+        if enabled {
+            if self.ascii_only {
+                return false;
+            }
+            if self.dashboard_image.is_none() {
+                let picker = Picker::from_query_stdio().ok();
+                if let Some(p) = picker {
+                    self.dashboard_image = Some(init_dashboard_image(p, &self.theme));
+                } else {
+                    return false;
+                }
+            }
+            self.kitty_graphics = true;
+            self.reset_dashboard_image();
+        } else {
+            self.kitty_graphics = false;
+            self.dashboard_image = None;
+        }
+        true
     }
 
     fn update_dashboard_image(&mut self, area: ratatui::layout::Rect) {
@@ -4851,13 +4883,14 @@ pub async fn run_tui(
     image_update_concurrency: usize,
     image_update_debug: bool,
     image_update_autocheck: bool,
+    kitty_graphics: bool,
     log_dock_enabled: bool,
     log_dock_height: u16,
 ) -> anyhow::Result<()> {
     const SLEEP_GAP_SECS: u64 = 120;
     const ERROR_PAUSE_THRESHOLD: u32 = 3;
     let mut terminal = setup_terminal().context("failed to setup terminal")?;
-    let dashboard_picker = if ascii_only {
+    let dashboard_picker = if ascii_only || !kitty_graphics {
         None
     } else {
         Picker::from_query_stdio().ok()
@@ -4889,6 +4922,7 @@ pub async fn run_tui(
         image_update_concurrency,
         image_update_debug,
         image_update_autocheck,
+        kitty_graphics,
         log_dock_enabled,
         log_dock_height,
         registries_cfg,

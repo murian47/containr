@@ -105,6 +105,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":set image_update_autocheck <on|off>",
         "Auto-check updates after template deploy (only with --pull)",
     ));
+    out.push(item(
+        "Global",
+        ":set kitty_graphics <on|off>",
+        "Enable Kitty graphics in dashboard (requires Kitty-compatible terminal)",
+    ));
     out.push(Line::from(""));
 
     out.push(h("Keymap"));

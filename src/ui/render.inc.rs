@@ -361,6 +361,7 @@ impl App {
             image_update_concurrency: self.image_update_concurrency,
             image_update_debug: self.image_update_debug,
             image_update_autocheck: self.image_update_autocheck,
+            kitty_graphics: self.kitty_graphics,
             log_dock_enabled: self.log_dock_enabled,
             log_dock_height: self.log_dock_height,
         };
@@ -2722,6 +2723,7 @@ fn cmdline_completion_candidates(app: &App, ctx: &CmdlineCompletionContext) -> (
                     "image_update_concurrency",
                     "image_update_debug",
                     "image_update_autocheck",
+                    "kitty_graphics",
                 ]
                 .into_iter()
                 .map(|s| s.to_string())
@@ -2732,6 +2734,7 @@ fn cmdline_completion_candidates(app: &App, ctx: &CmdlineCompletionContext) -> (
                     | "git_autocommit_confirm"
                     | "image_update_debug"
                     | "image_update_autocheck"
+                    | "kitty_graphics"
             ) && arg_index == 1
             {
                 vec!["on", "off", "true", "false"]
