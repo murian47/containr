@@ -309,8 +309,9 @@ struct TemplatesState {
     templates_refresh_after_edit: Option<String>,
     template_deploy_inflight: HashMap<String, DeployMarker>,
     git_head: Option<String>,
-    git_remote: GitRemoteStatus,
+    git_remote_templates: HashMap<String, GitRemoteStatus>,
     dirty_templates: HashSet<String>,
+    untracked_templates: HashSet<String>,
 
     net_templates: Vec<NetTemplateEntry>,
     net_templates_selected: usize,
@@ -319,6 +320,8 @@ struct TemplatesState {
     net_templates_refresh_after_edit: Option<String>,
     net_template_deploy_inflight: HashMap<String, DeployMarker>,
     dirty_net_templates: HashSet<String>,
+    untracked_net_templates: HashSet<String>,
+    git_remote_net_templates: HashMap<String, GitRemoteStatus>,
     ai_edit_snapshot: Option<TemplateEditSnapshot>,
 }
 
@@ -1984,8 +1987,10 @@ impl App {
                 templates_refresh_after_edit: None,
                 template_deploy_inflight: HashMap::new(),
                 git_head: None,
-                git_remote: GitRemoteStatus::Unknown,
+                git_remote_templates: HashMap::new(),
+                git_remote_net_templates: HashMap::new(),
                 dirty_templates: HashSet::new(),
+                untracked_templates: HashSet::new(),
                 net_templates: Vec::new(),
                 net_templates_selected: 0,
                 net_templates_error: None,
@@ -1993,6 +1998,7 @@ impl App {
                 net_templates_refresh_after_edit: None,
                 net_template_deploy_inflight: HashMap::new(),
                 dirty_net_templates: HashSet::new(),
+                untracked_net_templates: HashSet::new(),
                 ai_edit_snapshot: None,
             },
             theme_refresh_after_edit: None,
@@ -2355,17 +2361,15 @@ impl App {
     fn refresh_template_git_status(&mut self) {
         self.templates_state.dirty_templates.clear();
         self.templates_state.dirty_net_templates.clear();
-        self.templates_state.git_remote = GitRemoteStatus::Unknown;
+        self.templates_state.untracked_templates.clear();
+        self.templates_state.untracked_net_templates.clear();
+        self.templates_state.git_remote_templates.clear();
+        self.templates_state.git_remote_net_templates.clear();
         let dir = self.templates_state.dir.clone();
         if !commands::git_cmd::is_git_repo(&dir) {
             return;
         }
-        if let Ok(status) = commands::git_cmd::run_git(&dir, &["status", "-sb"]) {
-            if let Some(line) = status.lines().next() {
-                self.templates_state.git_remote = parse_git_remote_status(line);
-            }
-        }
-        let out = match commands::git_cmd::run_git(&dir, &["status", "--porcelain"]) {
+        let out = match commands::git_cmd::run_git(&dir, &["status", "--porcelain", "-uall"]) {
             Ok(out) => out,
             Err(e) => {
                 self.log_msg(MsgLevel::Warn, format!("git status failed: {:#}", e));
@@ -2373,12 +2377,16 @@ impl App {
             }
         };
         for line in out.lines() {
+            let untracked = line.starts_with("??");
             let path = parse_git_status_path(line);
             let Some(path) = path else { continue };
             if let Some(rest) = path.strip_prefix("stacks/") {
                 if let Some(name) = rest.split('/').next() {
                     if !name.trim().is_empty() {
                         self.templates_state.dirty_templates.insert(name.to_string());
+                        if untracked {
+                            self.templates_state.untracked_templates.insert(name.to_string());
+                        }
                     }
                 }
             } else if let Some(rest) = path.strip_prefix("networks/") {
@@ -2387,8 +2395,59 @@ impl App {
                         self.templates_state
                             .dirty_net_templates
                             .insert(name.to_string());
+                        if untracked {
+                            self.templates_state
+                                .untracked_net_templates
+                                .insert(name.to_string());
+                        }
                     }
                 }
+            }
+        }
+
+        if commands::git_cmd::run_git(&dir, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).is_err() {
+            return;
+        }
+
+        let stacks_dir = dir.join("stacks");
+        if let Ok(entries) = fs::read_dir(&stacks_dir) {
+            for ent in entries.flatten() {
+                let Ok(ft) = ent.file_type() else {
+                    continue;
+                };
+                if !ft.is_dir() {
+                    continue;
+                }
+                let name = ent.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let rel = format!("stacks/{name}");
+                let status = git_remote_status_for_path(&dir, &rel);
+                self.templates_state
+                    .git_remote_templates
+                    .insert(name, status);
+            }
+        }
+
+        let nets_dir = dir.join("networks");
+        if let Ok(entries) = fs::read_dir(&nets_dir) {
+            for ent in entries.flatten() {
+                let Ok(ft) = ent.file_type() else {
+                    continue;
+                };
+                if !ft.is_dir() {
+                    continue;
+                }
+                let name = ent.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let rel = format!("networks/{name}");
+                let status = git_remote_status_for_path(&dir, &rel);
+                self.templates_state
+                    .git_remote_net_templates
+                    .insert(name, status);
             }
         }
     }
@@ -6638,27 +6697,27 @@ fn parse_git_status_path(line: &str) -> Option<String> {
     }
 }
 
-fn parse_git_remote_status(line: &str) -> GitRemoteStatus {
-    let line = line.trim();
-    if !line.starts_with("##") {
-        return GitRemoteStatus::Unknown;
+fn git_remote_status_for_path(repo: &Path, rel_path: &str) -> GitRemoteStatus {
+    let ahead = commands::git_cmd::run_git(
+        repo,
+        &["log", "--oneline", "@{u}..", "--", rel_path],
+    )
+    .ok()
+    .map(|out| !out.trim().is_empty())
+    .unwrap_or(false);
+    let behind = commands::git_cmd::run_git(
+        repo,
+        &["log", "--oneline", "..@{u}", "--", rel_path],
+    )
+    .ok()
+    .map(|out| !out.trim().is_empty())
+    .unwrap_or(false);
+    match (ahead, behind) {
+        (false, false) => GitRemoteStatus::UpToDate,
+        (true, false) => GitRemoteStatus::Ahead,
+        (false, true) => GitRemoteStatus::Behind,
+        (true, true) => GitRemoteStatus::Diverged,
     }
-    let rest = line.trim_start_matches('#').trim();
-    if !rest.contains("...") {
-        return GitRemoteStatus::Unknown;
-    }
-    if let Some((_, bracket)) = rest.split_once('[') {
-        let bracket = bracket.trim_end_matches(']').to_ascii_lowercase();
-        let ahead = bracket.contains("ahead");
-        let behind = bracket.contains("behind");
-        return match (ahead, behind) {
-            (true, true) => GitRemoteStatus::Diverged,
-            (true, false) => GitRemoteStatus::Ahead,
-            (false, true) => GitRemoteStatus::Behind,
-            _ => GitRemoteStatus::UpToDate,
-        };
-    }
-    GitRemoteStatus::UpToDate
 }
 
 fn file_content_hash(path: &Path) -> Option<u64> {

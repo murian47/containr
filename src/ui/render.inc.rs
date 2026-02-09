@@ -476,10 +476,11 @@ impl App {
         }
         self.prune_rate_limits();
         let state = LocalState {
-            version: 5,
+            version: 6,
             image_updates: self.image_updates.clone(),
             rate_limits: self.rate_limits.clone(),
             template_deploys: self.template_deploys.clone(),
+            net_template_deploys: self.net_template_deploys.clone(),
             registry_tests: self.registry_tests.clone(),
         };
         match serde_json::to_string_pretty(&state) {
@@ -1098,6 +1099,37 @@ fn write_stack_template_compose(
     Ok(compose_path)
 }
 
+fn write_net_template_cfg(
+    templates_dir: &PathBuf,
+    name: &str,
+    cfg: &str,
+) -> anyhow::Result<PathBuf> {
+    let name = name.trim();
+    anyhow::ensure!(!name.is_empty(), "template name is empty");
+    anyhow::ensure!(
+        name.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'),
+        "template name must be [A-Za-z0-9._-]"
+    );
+    anyhow::ensure!(
+        !name.starts_with('.'),
+        "template name must not start with '.'"
+    );
+    anyhow::ensure!(name != "." && name != "..", "invalid template name");
+
+    fs::create_dir_all(templates_dir)?;
+    let dir = templates_dir.join(name);
+    anyhow::ensure!(
+        !dir.exists(),
+        "template already exists: {}",
+        dir.display()
+    );
+    fs::create_dir_all(&dir)?;
+    let cfg_path = dir.join("network.json");
+    fs::write(&cfg_path, cfg)?;
+    Ok(cfg_path)
+}
+
 async fn export_stack_template(
     runner: &Runner,
     docker: &DockerCfg,
@@ -1152,6 +1184,110 @@ async fn export_stack_template(
     let compose = build_compose_yaml(name, stack_name.as_deref(), source, &inspects, &networks);
     write_stack_template_compose(templates_dir, name, &compose)?;
     Ok(warnings.join("\n"))
+}
+
+#[derive(serde::Serialize)]
+struct NetworkTemplateSpecWrite {
+    #[serde(default)]
+    description: Option<String>,
+    name: String,
+    #[serde(default)]
+    driver: Option<String>,
+    #[serde(default)]
+    parent: Option<String>,
+    #[serde(default, rename = "ipvlan_mode")]
+    ipvlan_mode: Option<String>,
+    #[serde(default)]
+    internal: Option<bool>,
+    #[serde(default)]
+    attachable: Option<bool>,
+    #[serde(default)]
+    ipv4: Option<NetworkTemplateIpv4>,
+    #[serde(default)]
+    options: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    labels: Option<BTreeMap<String, String>>,
+}
+
+async fn export_net_template(
+    runner: &Runner,
+    docker: &DockerCfg,
+    name: &str,
+    source: &str,
+    network_id: &str,
+    templates_dir: &PathBuf,
+) -> anyhow::Result<String> {
+    let network_id = network_id.trim();
+    anyhow::ensure!(!network_id.is_empty(), "no network selected");
+    let raw = docker::fetch_network_inspect(runner, docker, network_id).await?;
+    let net: NetworkInspect =
+        serde_json::from_str(&raw).context("network inspect was not valid JSON")?;
+
+    let driver = net
+        .driver
+        .clone()
+        .unwrap_or_else(|| "bridge".to_string());
+    let mut options_map: HashMap<String, String> = net.options.clone().unwrap_or_default();
+    let mut parent = None;
+    let mut ipvlan_mode = None;
+    if driver == "ipvlan" {
+        if let Some(value) = options_map.remove("parent") {
+            if !value.trim().is_empty() {
+                parent = Some(value);
+            }
+        }
+        if let Some(value) = options_map.remove("ipvlan_mode") {
+            if !value.trim().is_empty() {
+                ipvlan_mode = Some(value);
+            }
+        }
+    }
+    let options = if options_map.is_empty() {
+        None
+    } else {
+        let mut out = BTreeMap::new();
+        for (k, v) in options_map {
+            out.insert(k, v);
+        }
+        Some(out)
+    };
+
+    let labels = net.labels.as_ref().map(filter_labels).filter(|m| !m.is_empty());
+    let mut ipv4 = None;
+    if let Some(ipam) = net.ipam.as_ref() {
+        if let Some(cfgs) = ipam.config.as_ref() {
+            for cfg in cfgs {
+                let Some(subnet) = cfg.subnet.as_ref() else {
+                    continue;
+                };
+                if subnet.contains(':') {
+                    continue;
+                }
+                ipv4 = Some(NetworkTemplateIpv4 {
+                    subnet: Some(subnet.clone()),
+                    gateway: cfg.gateway.clone(),
+                    ip_range: cfg.ip_range.clone(),
+                });
+                break;
+            }
+        }
+    }
+
+    let spec = NetworkTemplateSpecWrite {
+        description: Some(format!("Imported from {source}")),
+        name: net.name,
+        driver: Some(driver),
+        parent,
+        ipvlan_mode,
+        internal: net.internal,
+        attachable: net.attachable,
+        ipv4,
+        options,
+        labels,
+    };
+    let cfg = serde_json::to_string_pretty(&spec)?;
+    write_net_template_cfg(templates_dir, name, &cfg)?;
+    Ok(String::new())
 }
 
 fn build_compose_yaml(
@@ -2783,6 +2919,7 @@ fn cmdline_completion_candidates(app: &App, ctx: &CmdlineCompletionContext) -> (
                     "from",
                     "from-stack",
                     "from-container",
+                    "from-network",
                     "kind",
                     "toggle",
                 ]
@@ -2812,7 +2949,7 @@ fn cmdline_completion_candidates(app: &App, ctx: &CmdlineCompletionContext) -> (
             } else if matches!(sub, "rm" | "del" | "delete") && arg_index == 1 {
                 cmdline_template_names(app)
             } else if sub == "from" && arg_index == 1 {
-                vec!["stack", "container"]
+                vec!["stack", "container", "network"]
                     .into_iter()
                     .map(|s| s.to_string())
                     .collect()
@@ -4224,12 +4361,14 @@ fn shell_deploy_net_template(
     let docker = DockerCfg {
         docker_cmd: current_docker_cmd_from_app(app),
     };
+    let server_name = app.active_server.clone().unwrap_or_default();
     let _ = action_req_tx.send(ActionRequest::NetTemplateDeploy {
         name: tpl.name.clone(),
         runner,
         docker,
         local_cfg: tpl.cfg_path.clone(),
         force,
+        server_name,
     });
     app.templates_state.net_template_deploy_inflight.insert(
         tpl.name.clone(),
@@ -6968,32 +7107,44 @@ fn draw_shell_stack_templates_table(
 
     let now = Instant::now();
     let mut max_state = "STATE".chars().count();
-    let git_status_cell = |dirty: bool| -> Cell<'static> {
+    let active_server = app.active_server.as_deref();
+    let git_status_cell =
+        |dirty: bool, status: GitRemoteStatus, untracked: bool| -> Cell<'static> {
         let left = if dirty { "!" } else { "✓" };
         let left_style = if dirty {
             bg.patch(app.theme.text_warn.to_style())
         } else {
             bg.patch(app.theme.text_ok.to_style())
         };
-        let (right, right_style) = match app.templates_state.git_remote {
-            GitRemoteStatus::UpToDate => ("✓", bg.patch(app.theme.text_ok.to_style())),
-            GitRemoteStatus::Ahead => ("↑", bg.patch(app.theme.text_info.to_style())),
-            GitRemoteStatus::Behind => ("↓", bg.patch(app.theme.text_warn.to_style())),
-            GitRemoteStatus::Diverged => ("!", bg.patch(app.theme.text_error.to_style())),
-            GitRemoteStatus::Unknown => ("·", bg.patch(app.theme.text_dim.to_style())),
+        let (right, right_style) = if untracked {
+            (" ", bg)
+        } else {
+            match status {
+                GitRemoteStatus::UpToDate => ("✓", bg.patch(app.theme.text_ok.to_style())),
+                GitRemoteStatus::Ahead => ("↑", bg.patch(app.theme.text_info.to_style())),
+                GitRemoteStatus::Behind => ("↓", bg.patch(app.theme.text_warn.to_style())),
+                GitRemoteStatus::Diverged => ("!", bg.patch(app.theme.text_error.to_style())),
+                GitRemoteStatus::Unknown => ("·", bg.patch(app.theme.text_dim.to_style())),
+            }
         };
         Cell::from(Line::from(vec![
             Span::styled(left, left_style),
             Span::styled(right, right_style),
         ]))
     };
-    let active_server = app.active_server.as_deref();
     let rows: Vec<Row> = app
         .templates_state
         .templates
         .iter()
         .map(|t| {
             let dirty = app.templates_state.dirty_templates.contains(&t.name);
+            let untracked = app.templates_state.untracked_templates.contains(&t.name);
+            let git_status = app
+                .templates_state
+                .git_remote_templates
+                .get(&t.name)
+                .copied()
+                .unwrap_or(GitRemoteStatus::Unknown);
             let (deployed_any, deployed_on_active) = if let Some(id) = t.template_id.as_ref() {
                 if let Some(list) = app.template_deploys.get(id) {
                     let any = !list.is_empty();
@@ -7036,7 +7187,7 @@ fn draw_shell_stack_templates_table(
                 Cell::from(t.name.clone()),
                 Cell::from(if t.has_compose { "yes" } else { "no" }),
                 Cell::from(state).style(state_style),
-                git_status_cell(dirty),
+                git_status_cell(dirty, git_status, untracked),
                 Cell::from(t.desc.clone()),
             ])
             .style(row_style)
@@ -7200,19 +7351,25 @@ fn draw_shell_net_templates_table(
 
     let now = Instant::now();
     let mut max_state = "STATE".chars().count();
-    let git_status_cell = |dirty: bool| -> Cell<'static> {
+    let active_server = app.active_server.as_deref();
+    let git_status_cell =
+        |dirty: bool, status: GitRemoteStatus, untracked: bool| -> Cell<'static> {
         let left = if dirty { "!" } else { "✓" };
         let left_style = if dirty {
             bg.patch(app.theme.text_warn.to_style())
         } else {
             bg.patch(app.theme.text_ok.to_style())
         };
-        let (right, right_style) = match app.templates_state.git_remote {
-            GitRemoteStatus::UpToDate => ("✓", bg.patch(app.theme.text_ok.to_style())),
-            GitRemoteStatus::Ahead => ("↑", bg.patch(app.theme.text_info.to_style())),
-            GitRemoteStatus::Behind => ("↓", bg.patch(app.theme.text_warn.to_style())),
-            GitRemoteStatus::Diverged => ("!", bg.patch(app.theme.text_error.to_style())),
-            GitRemoteStatus::Unknown => ("·", bg.patch(app.theme.text_dim.to_style())),
+        let (right, right_style) = if untracked {
+            (" ", bg)
+        } else {
+            match status {
+                GitRemoteStatus::UpToDate => ("✓", bg.patch(app.theme.text_ok.to_style())),
+                GitRemoteStatus::Ahead => ("↑", bg.patch(app.theme.text_info.to_style())),
+                GitRemoteStatus::Behind => ("↓", bg.patch(app.theme.text_warn.to_style())),
+                GitRemoteStatus::Diverged => ("!", bg.patch(app.theme.text_error.to_style())),
+                GitRemoteStatus::Unknown => ("·", bg.patch(app.theme.text_dim.to_style())),
+            }
         };
         Cell::from(Line::from(vec![
             Span::styled(left, left_style),
@@ -7225,6 +7382,26 @@ fn draw_shell_net_templates_table(
         .iter()
         .map(|t| {
             let dirty = app.templates_state.dirty_net_templates.contains(&t.name);
+            let untracked = app
+                .templates_state
+                .untracked_net_templates
+                .contains(&t.name);
+            let git_status = app
+                .templates_state
+                .git_remote_net_templates
+                .get(&t.name)
+                .copied()
+                .unwrap_or(GitRemoteStatus::Unknown);
+            let (deployed_any, deployed_on_active) =
+                if let Some(list) = app.net_template_deploys.get(&t.name) {
+                    let any = !list.is_empty();
+                    let on_active = active_server
+                        .map(|srv| list.iter().any(|e| e.server_name == srv))
+                        .unwrap_or(any);
+                    (any, on_active)
+                } else {
+                    (false, false)
+                };
             let (state, state_style) = if let Some(m) =
                 app.templates_state.net_template_deploy_inflight.get(&t.name)
             {
@@ -7239,17 +7416,30 @@ fn draw_shell_net_templates_table(
                     ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
                 };
                 (action_error_label(err).to_string(), st)
+            } else if deployed_any {
+                ("deployed".to_string(), Style::default())
             } else {
                 (String::new(), Style::default())
+            };
+            let row_style = if deployed_on_active
+                || app
+                    .templates_state
+                    .net_template_deploy_inflight
+                    .contains_key(&t.name)
+            {
+                Style::default()
+            } else {
+                bg.patch(app.theme.text_dim.to_style()).add_modifier(Modifier::DIM)
             };
             max_state = max_state.max(state.chars().count());
             Row::new(vec![
                 Cell::from(t.name.clone()),
                 Cell::from(if t.has_cfg { "yes" } else { "no" }),
                 Cell::from(state).style(state_style),
-                git_status_cell(dirty),
+                git_status_cell(dirty, git_status, untracked),
                 Cell::from(t.desc.clone()),
             ])
+            .style(row_style)
         })
         .collect();
     let state_w = max_state.clamp(10, 22) as u16;
