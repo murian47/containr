@@ -266,6 +266,7 @@ fn shell_switch_server(
     app.network_action_inflight.clear();
     app.stack_update_inflight.clear();
     app.stack_update_error.clear();
+    app.stack_update_containers.clear();
 
     let runner = if s.target == "local" {
         Runner::Local
@@ -1909,6 +1910,48 @@ fn deploy_remote_net_dir_for(name: &str) -> String {
     format!(".config/containr/networks/{name}")
 }
 
+fn stack_compose_dirs(app: &App, stack_name: &str, template_name: Option<&str>) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let stack_name = stack_name.trim();
+    if let Some(name) = template_name {
+        let name = name.trim();
+        if !name.is_empty() && name != stack_name {
+            names.push(name.to_string());
+        }
+    }
+    if !stack_name.is_empty() {
+        names.push(stack_name.to_string());
+    }
+    names.dedup();
+    let runner = current_runner_from_app(app);
+    let mut out: Vec<String> = Vec::new();
+    for name in names {
+        let path = match runner {
+            Runner::Local => {
+                let home = std::env::var("HOME").unwrap_or_default();
+                format!("{home}/.config/containr/apps/{name}")
+            }
+            Runner::Ssh(_) => format!("$HOME/{}", deploy_remote_dir_for(&name)),
+        };
+        out.push(path);
+    }
+    out
+}
+
+fn template_name_from_stack(app: &App, stack_name: &str) -> Option<String> {
+    let id = app
+        .containers
+        .iter()
+        .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(stack_name))
+        .filter_map(|c| template_id_from_labels(&c.labels))
+        .next()?;
+    app.templates_state
+        .templates
+        .iter()
+        .find(|t| t.template_id.as_deref() == Some(id.as_str()))
+        .map(|t| t.name.clone())
+}
+
 fn label_value_from_list(labels: &str, key: &str) -> Option<String> {
     for part in labels.split(',') {
         let part = part.trim();
@@ -1974,13 +2017,12 @@ fn shell_stack_update(
         app.set_warn(format!("stack '{target}' is already updating"));
         return;
     }
-    let compose_path = match stack_compose_path(app, &target) {
-        Ok(path) => path,
-        Err(err) => {
-            app.set_warn(format!("stack update: {err}"));
-            return;
-        }
-    };
+    let tpl_name = template_name_from_stack(app, &target);
+    let compose_dirs = stack_compose_dirs(app, &target, tpl_name.as_deref());
+    if compose_dirs.is_empty() {
+        app.set_warn("stack update: no compose dirs");
+        return;
+    }
     let docker = DockerCfg {
         docker_cmd: current_docker_cmd_from_app(app),
     };
@@ -2011,6 +2053,13 @@ fn shell_stack_update(
         app.set_warn("stack update: no services found");
         return;
     }
+    app.stack_update_containers.insert(
+        target.clone(),
+        services
+            .iter()
+            .map(|svc| svc.container_id.clone())
+            .collect(),
+    );
     app.stack_update_inflight.insert(
         target.clone(),
         DeployMarker {
@@ -2022,7 +2071,7 @@ fn shell_stack_update(
         stack_name: target.clone(),
         runner,
         docker,
-        compose_path,
+        compose_dirs,
         pull: true,
         dry: false,
         force,
@@ -2034,24 +2083,6 @@ fn shell_stack_update(
     }
     app.set_info(msg);
     app.log_msg(MsgLevel::Info, format!("stack update started: {target}"));
-}
-
-fn stack_compose_path(app: &App, stack_name: &str) -> anyhow::Result<String> {
-    let stack_name = stack_name.trim();
-    anyhow::ensure!(!stack_name.is_empty(), "stack name is empty");
-    let runner = current_runner_from_app(app);
-    let remote_dir = match runner {
-        Runner::Local => {
-            let home = std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME is not set"))?;
-            format!("{home}/.config/containr/apps/{stack_name}")
-        }
-        Runner::Ssh(_) => format!("$HOME/{}", deploy_remote_dir_for(stack_name)),
-    };
-    let compose_path = format!("{remote_dir}/compose.rendered.yaml");
-    if matches!(runner, Runner::Local) && !Path::new(&compose_path).exists() {
-        anyhow::bail!("compose.rendered.yaml not found for stack {stack_name}");
-    }
-    Ok(compose_path)
 }
 
 fn delete_template(app: &mut App, name: &str) -> anyhow::Result<()> {
@@ -3634,13 +3665,12 @@ fn shell_execute_cmdline(
                     app.set_warn(format!("stack '{target}' is already updating"));
                     return;
                 }
-                let compose_path = match stack_compose_path(app, &target) {
-                    Ok(path) => path,
-                    Err(err) => {
-                        app.set_warn(format!("stack update: {err}"));
-                        return;
-                    }
-                };
+                let tpl_name = template_name_from_stack(app, &target);
+                let compose_dirs = stack_compose_dirs(app, &target, tpl_name.as_deref());
+                if compose_dirs.is_empty() {
+                    app.set_warn("stack update: no compose dirs");
+                    return;
+                }
                 let docker = DockerCfg {
                     docker_cmd: current_docker_cmd_from_app(app),
                 };
@@ -3671,6 +3701,13 @@ fn shell_execute_cmdline(
                     app.set_warn("stack update: no services found");
                     return;
                 }
+                app.stack_update_containers.insert(
+                    target.clone(),
+                    services
+                        .iter()
+                        .map(|svc| svc.container_id.clone())
+                        .collect(),
+                );
                 app.stack_update_inflight.insert(
                     target.clone(),
                     DeployMarker {
@@ -3682,7 +3719,7 @@ fn shell_execute_cmdline(
                     stack_name: target.clone(),
                     runner,
                     docker,
-                    compose_path,
+                    compose_dirs,
                     pull,
                     dry,
                     force: all,
@@ -5519,6 +5556,7 @@ fn draw_shell_header(
         || !app.network_action_inflight.is_empty()
         || !app.templates_state.template_deploy_inflight.is_empty()
         || !app.templates_state.net_template_deploy_inflight.is_empty()
+        || !app.stack_update_inflight.is_empty()
         || !app.image_updates_inflight.is_empty();
     let refresh_icon = if app.ascii_only { "r" } else { "⏱" };
     let refresh_label = format!("{refresh_icon} {}s", app.refresh_secs.max(1));
@@ -5985,14 +6023,18 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
             .get(&c.id)
             .map(|(ip, _)| ip.as_str())
             .unwrap_or("-");
-        let status = if let Some(marker) = app.action_inflight.get(&c.id) {
+        let status = if app.is_stack_update_container(&c.id) {
+            "Updating...".to_string()
+        } else if let Some(marker) = app.action_inflight.get(&c.id) {
             action_status_prefix(marker.action).to_string()
         } else if let Some(err) = app.container_action_error.get(&c.id) {
             action_error_label(err).to_string()
         } else {
             c.status.clone()
         };
-        let status_style = if app.action_inflight.contains_key(&c.id) {
+        let status_style = if app.is_stack_update_container(&c.id) {
+            bg.patch(app.theme.text_warn.to_style())
+        } else if app.action_inflight.contains_key(&c.id) {
             bg.patch(app.theme.text_warn.to_style())
         } else if let Some(err) = app.container_action_error.get(&c.id) {
             match err.kind {
@@ -6045,15 +6087,12 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
                             .add_modifier(Modifier::BOLD)
                     };
                     let glyph = if *expanded { "▾" } else { "▸" };
-                    let (upd_text, upd_style) = if let Some(marker) =
-                        app.stack_update_inflight.get(name)
-                    {
-                        let text = loading_spinner(Some(marker.started));
-                        (
-                            text.to_string(),
-                            bg.patch(app.theme.text_warn.to_style()),
-                        )
-                    } else if app.stack_update_error.contains_key(name) {
+                    let mut name_text = format!("{glyph} {name}");
+                    if let Some(marker) = app.stack_update_inflight.get(name) {
+                        let secs = marker.started.elapsed().as_secs();
+                        name_text.push_str(&format!(" (Updating {secs}s)"));
+                    }
+                    let (upd_text, upd_style) = if app.stack_update_error.contains_key(name) {
                         (
                             "!".to_string(),
                             bg.patch(app.theme.text_error.to_style()),
@@ -6063,7 +6102,7 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
                     };
                     rows.push(
                         Row::new(vec![
-                            Cell::from(format!("{glyph} {name}")).style(st),
+                            Cell::from(name_text).style(st),
                             Cell::from(format!("{running}/{total}")).style(st),
                             Cell::from(upd_text).style(upd_style),
                             Cell::from(""),
@@ -7303,7 +7342,13 @@ fn draw_shell_stacks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
                 }
             }
 
-            let name_cell = if state.is_empty() {
+            let name_cell = if let Some(marker) = app.stack_update_inflight.get(&s.name) {
+                let secs = marker.started.elapsed().as_secs();
+                Cell::from(Line::from(vec![
+                    Span::raw(s.name.clone()),
+                    Span::styled(format!(" (Updating {secs}s)"), bg.patch(app.theme.text_warn.to_style())),
+                ]))
+            } else if state.is_empty() {
                 Cell::from(s.name.clone())
             } else {
                 Cell::from(Line::from(vec![

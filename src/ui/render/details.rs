@@ -273,14 +273,18 @@ fn draw_stack_containers_table(
         .skip(scroll)
         .take(view_height)
         .map(|c| {
-            let status = if let Some(marker) = app.action_inflight.get(&c.id) {
+            let status = if app.is_stack_update_container(&c.id) {
+                "Updating...".to_string()
+            } else if let Some(marker) = app.action_inflight.get(&c.id) {
                 action_status_prefix(marker.action).to_string()
             } else if let Some(err) = app.container_action_error.get(&c.id) {
                 action_error_label(err).to_string()
             } else {
                 c.status.clone()
             };
-            let status_style = if app.action_inflight.contains_key(&c.id) {
+            let status_style = if app.is_stack_update_container(&c.id) {
+                bg.patch(app.theme.text_warn.to_style())
+            } else if app.action_inflight.contains_key(&c.id) {
                 bg.patch(app.theme.text_warn.to_style())
             } else if let Some(err) = app.container_action_error.get(&c.id) {
                 match err.kind {

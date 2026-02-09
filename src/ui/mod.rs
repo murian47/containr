@@ -1200,6 +1200,7 @@ struct App {
     volume_action_inflight: HashMap<String, SimpleMarker>,
     network_action_inflight: HashMap<String, SimpleMarker>,
     stack_update_inflight: HashMap<String, DeployMarker>,
+    stack_update_containers: HashMap<String, Vec<String>>,
     container_action_error: HashMap<String, LastActionError>,
     image_action_error: HashMap<String, LastActionError>,
     volume_action_error: HashMap<String, LastActionError>,
@@ -1466,6 +1467,12 @@ impl App {
 
     fn cmd_history_max_effective(&self) -> usize {
         self.cmd_history_max.clamp(1, 5000)
+    }
+
+    fn is_stack_update_container(&self, id: &str) -> bool {
+        self.stack_update_containers
+            .values()
+            .any(|ids| ids.iter().any(|v| v == id))
     }
 
     fn set_cmd_history_entries(&mut self, mut entries: Vec<String>) {
@@ -1744,6 +1751,7 @@ impl App {
             volume_action_inflight: HashMap::new(),
             network_action_inflight: HashMap::new(),
             stack_update_inflight: HashMap::new(),
+            stack_update_containers: HashMap::new(),
             container_action_error: HashMap::new(),
             image_action_error: HashMap::new(),
             volume_action_error: HashMap::new(),
@@ -5953,6 +5961,7 @@ pub async fn run_tui(
                         ActionRequest::StackUpdate { stack_name, dry, .. } => {
                             app.stack_update_inflight.remove(stack_name);
                             app.stack_update_error.remove(stack_name);
+                            app.stack_update_containers.remove(stack_name);
                             app.set_info(format!("stack update finished for {stack_name}"));
                             if out.trim().is_empty() {
                                 continue;
@@ -6138,6 +6147,7 @@ pub async fn run_tui(
                         }
                         ActionRequest::StackUpdate { stack_name, .. } => {
                             app.stack_update_inflight.remove(stack_name);
+                            app.stack_update_containers.remove(stack_name);
                             app.stack_update_error.insert(
                                 stack_name.clone(),
                                 LastActionError {
@@ -6599,8 +6609,19 @@ async fn perform_stack_update(
         lines.push(up_cmd);
         return Ok(lines.join("\n"));
     }
+    let mut lines: Vec<String> = Vec::new();
+    lines.push(format!("stack update: {stack_name}"));
+    lines.push(format!("compose dir: {}", dir));
     if pull {
-        let _ = runner.run(&pull_cmd).await?;
+        let pull_out = runner.run(&pull_cmd).await?;
+        let pull_msg = pull_out.trim();
+        if pull_msg.is_empty() {
+            lines.push("pull: ok".to_string());
+        } else {
+            lines.push(format!("pull: {}", truncate_msg(pull_msg, 200)));
+        }
+    } else {
+        lines.push("pull: skipped".to_string());
     }
     let mut to_recreate: Vec<String> = Vec::new();
     if force {
@@ -6629,13 +6650,34 @@ async fn perform_stack_update(
             );
             let current = runner.run(&container_cmd).await?.trim().to_string();
             let latest = runner.run(&image_cmd).await?.trim().to_string();
-            if !current.is_empty() && !latest.is_empty() && current != latest {
+            let cur_short = if current.len() > 20 {
+                truncate_msg(&current, 20)
+            } else {
+                current.clone()
+            };
+            let new_short = if latest.len() > 20 {
+                truncate_msg(&latest, 20)
+            } else {
+                latest.clone()
+            };
+            if current.is_empty() || latest.is_empty() {
+                lines.push(format!("svc {}: digest missing", svc.name));
+                continue;
+            }
+            if current != latest {
+                lines.push(format!(
+                    "svc {}: {} -> {} (update)",
+                    svc.name, cur_short, new_short
+                ));
                 to_recreate.push(svc.name.clone());
+            } else {
+                lines.push(format!("svc {}: {} (no change)", svc.name, cur_short));
             }
         }
     }
     if !force && to_recreate.is_empty() {
-        return Ok(format!("stack update: no changes for {stack_name}"));
+        lines.push("result: no changes".to_string());
+        return Ok(lines.join("\n"));
     }
     if !force {
         let mut uniq: Vec<String> = Vec::new();
@@ -6658,8 +6700,24 @@ async fn perform_stack_update(
     let up_cmd = format!(
         "cd {dir_q} && {docker_cmd} compose -f {file_q} up -d --force-recreate{svc_args_str}"
     );
+    if !svc_args_str.is_empty() {
+        let raw = svc_args
+            .iter()
+            .map(|s| s.trim_matches('\''))
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!("recreate: {raw}"));
+    } else {
+        lines.push("recreate: all".to_string());
+    }
     let out = runner.run(&up_cmd).await?;
-    Ok(out)
+    let out_msg = out.trim();
+    if !out_msg.is_empty() {
+        lines.push(format!("compose up: {}", truncate_msg(out_msg, 200)));
+    } else {
+        lines.push("compose up: ok".to_string());
+    }
+    Ok(lines.join("\n"))
 }
 
 async fn perform_net_template_deploy(
