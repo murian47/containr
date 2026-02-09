@@ -216,11 +216,43 @@ pub fn handle_template(
             });
             true
         }
+        "from-network" => {
+            let Some(arg1) = args.get(1).copied() else {
+                begin_export_prompt(app, "from-network");
+                return true;
+            };
+            let (network_id, name, source) = if let Some(name) = args.get(2).copied() {
+                let display = app
+                    .networks
+                    .iter()
+                    .find(|n| n.id == arg1 || n.name == arg1)
+                    .map(|n| n.name.clone())
+                    .unwrap_or_else(|| arg1.to_string());
+                (arg1.to_string(), name, format!("network {display}"))
+            } else {
+                let Some(net) = app.selected_network() else {
+                    app.set_warn("no network selected");
+                    return true;
+                };
+                (net.id.clone(), arg1, format!("network {}", net.name))
+            };
+            let templates_dir = app.net_templates_dir();
+            app.set_info(format!(
+                "exporting network template {name} from {source}"
+            ));
+            let _ = action_req_tx.send(ActionRequest::TemplateFromNetwork {
+                name: name.to_string(),
+                source,
+                network_id,
+                templates_dir,
+            });
+            true
+        }
         "from" => {
             let kind = args.get(1).copied().unwrap_or("");
             let name = args.get(2).copied().unwrap_or("");
             if kind.is_empty() {
-                app.set_warn("usage: :template from (stack|container) <name>");
+                app.set_warn("usage: :template from (stack|container|network) <name>");
                 return true;
             }
             if name.is_empty() {
@@ -248,8 +280,18 @@ pub fn handle_template(
                     );
                     true
                 }
+                "network" => {
+                    let _ = handle_template(
+                        app,
+                        force,
+                        cmdline_full,
+                        &["from-network", name],
+                        action_req_tx,
+                    );
+                    true
+                }
                 _ => {
-                    app.set_warn("usage: :template from (stack|container) <name>");
+                    app.set_warn("usage: :template from (stack|container|network) <name>");
                     true
                 }
             }
@@ -368,7 +410,7 @@ pub fn handle_template(
             true
         }
         _ => {
-            app.set_warn("usage: :template add <name> | :template from (stack|container) <name> | :template deploy[!] [--pull] [--recreate] [name] | :template rm[!] [name] | :templates kind (stacks|networks|toggle)");
+            app.set_warn("usage: :template add <name> | :template from (stack|container|network) <name> | :template from-network <name> [network] | :template deploy[!] [--pull] [--recreate] [name] | :template rm[!] [name] | :templates kind (stacks|networks|toggle)");
             true
         }
     }

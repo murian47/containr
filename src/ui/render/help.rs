@@ -249,6 +249,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     ));
     out.push(item(
         "Templates",
+        ":template/:tpl from-network <id> <name>",
+        "Generate network.json from selected (or provided) network",
+    ));
+    out.push(item(
+        "Templates",
         ":template/:tpl rm [name]",
         "Delete selected template (or by name)",
     ));
