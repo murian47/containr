@@ -6970,6 +6970,25 @@ fn draw_shell_stack_templates_table(
     let local_head = app.templates_state.git_head.as_deref();
     let active_server = app.active_server.as_deref();
     let mut max_state = "STATE".chars().count();
+    let git_status_cell = |dirty: bool| -> Cell<'static> {
+        let left = if dirty { "!" } else { "✓" };
+        let left_style = if dirty {
+            bg.patch(app.theme.text_warn.to_style())
+        } else {
+            bg.patch(app.theme.text_ok.to_style())
+        };
+        let (right, right_style) = match app.templates_state.git_remote {
+            GitRemoteStatus::UpToDate => ("✓", bg.patch(app.theme.text_ok.to_style())),
+            GitRemoteStatus::Ahead => ("↑", bg.patch(app.theme.text_info.to_style())),
+            GitRemoteStatus::Behind => ("↓", bg.patch(app.theme.text_warn.to_style())),
+            GitRemoteStatus::Diverged => ("!", bg.patch(app.theme.text_error.to_style())),
+            GitRemoteStatus::Unknown => ("·", bg.patch(app.theme.text_dim.to_style())),
+        };
+        Cell::from(Line::from(vec![
+            Span::styled(left, left_style),
+            Span::styled(right, right_style),
+        ]))
+    };
     let rows: Vec<Row> = app
         .templates_state
         .templates
@@ -7058,6 +7077,7 @@ fn draw_shell_stack_templates_table(
             Row::new(vec![
                 Cell::from(t.name.clone()),
                 Cell::from(if t.has_compose { "yes" } else { "no" }),
+                git_status_cell(dirty),
                 Cell::from(state).style(state_style),
                 Cell::from(t.desc.clone()),
             ])
@@ -7074,6 +7094,7 @@ fn draw_shell_stack_templates_table(
         [
             Constraint::Length(24),
             Constraint::Length(7),
+            Constraint::Length(3),
             Constraint::Length(state_w),
             Constraint::Min(10),
         ],
@@ -7082,6 +7103,7 @@ fn draw_shell_stack_templates_table(
         Row::new(vec![
             Cell::from("NAME"),
             Cell::from("COMPOSE"),
+            Cell::from("GIT"),
             Cell::from("STATE"),
             Cell::from("DESC"),
         ])
@@ -7219,6 +7241,25 @@ fn draw_shell_net_templates_table(
 
     let now = Instant::now();
     let mut max_state = "STATE".chars().count();
+    let git_status_cell = |dirty: bool| -> Cell<'static> {
+        let left = if dirty { "!" } else { "✓" };
+        let left_style = if dirty {
+            bg.patch(app.theme.text_warn.to_style())
+        } else {
+            bg.patch(app.theme.text_ok.to_style())
+        };
+        let (right, right_style) = match app.templates_state.git_remote {
+            GitRemoteStatus::UpToDate => ("✓", bg.patch(app.theme.text_ok.to_style())),
+            GitRemoteStatus::Ahead => ("↑", bg.patch(app.theme.text_info.to_style())),
+            GitRemoteStatus::Behind => ("↓", bg.patch(app.theme.text_warn.to_style())),
+            GitRemoteStatus::Diverged => ("!", bg.patch(app.theme.text_error.to_style())),
+            GitRemoteStatus::Unknown => ("·", bg.patch(app.theme.text_dim.to_style())),
+        };
+        Cell::from(Line::from(vec![
+            Span::styled(left, left_style),
+            Span::styled(right, right_style),
+        ]))
+    };
     let rows: Vec<Row> = app
         .templates_state
         .net_templates
@@ -7251,6 +7292,7 @@ fn draw_shell_net_templates_table(
             Row::new(vec![
                 Cell::from(t.name.clone()),
                 Cell::from(if t.has_cfg { "yes" } else { "no" }),
+                git_status_cell(dirty),
                 Cell::from(state).style(state_style),
                 Cell::from(t.desc.clone()),
             ])
@@ -7268,6 +7310,7 @@ fn draw_shell_net_templates_table(
         [
             Constraint::Length(24),
             Constraint::Length(7),
+            Constraint::Length(3),
             Constraint::Length(state_w),
             Constraint::Min(10),
         ],
@@ -7276,6 +7319,7 @@ fn draw_shell_net_templates_table(
         Row::new(vec![
             Cell::from("NAME"),
             Cell::from("CFG"),
+            Cell::from("GIT"),
             Cell::from("STATE"),
             Cell::from("DESC"),
         ])

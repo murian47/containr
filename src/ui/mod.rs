@@ -309,6 +309,7 @@ struct TemplatesState {
     templates_refresh_after_edit: Option<String>,
     template_deploy_inflight: HashMap<String, DeployMarker>,
     git_head: Option<String>,
+    git_remote: GitRemoteStatus,
     dirty_templates: HashSet<String>,
 
     net_templates: Vec<NetTemplateEntry>,
@@ -478,6 +479,15 @@ fn cmdline_is_destructive(raw: &str) -> bool {
 enum TemplatesKind {
     Stacks,
     Networks,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GitRemoteStatus {
+    Unknown,
+    UpToDate,
+    Ahead,
+    Behind,
+    Diverged,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1911,6 +1921,7 @@ impl App {
                 templates_refresh_after_edit: None,
                 template_deploy_inflight: HashMap::new(),
                 git_head: None,
+                git_remote: GitRemoteStatus::Unknown,
                 dirty_templates: HashSet::new(),
                 net_templates: Vec::new(),
                 net_templates_selected: 0,
@@ -2280,9 +2291,15 @@ impl App {
     fn refresh_template_git_status(&mut self) {
         self.templates_state.dirty_templates.clear();
         self.templates_state.dirty_net_templates.clear();
+        self.templates_state.git_remote = GitRemoteStatus::Unknown;
         let dir = self.templates_state.dir.clone();
         if !commands::git_cmd::is_git_repo(&dir) {
             return;
+        }
+        if let Ok(status) = commands::git_cmd::run_git(&dir, &["status", "-sb"]) {
+            if let Some(line) = status.lines().next() {
+                self.templates_state.git_remote = parse_git_remote_status(line);
+            }
         }
         let out = match commands::git_cmd::run_git(&dir, &["status", "--porcelain"]) {
             Ok(out) => out,
@@ -6494,6 +6511,29 @@ fn parse_git_status_path(line: &str) -> Option<String> {
     } else {
         Some(path.to_string())
     }
+}
+
+fn parse_git_remote_status(line: &str) -> GitRemoteStatus {
+    let line = line.trim();
+    if !line.starts_with("##") {
+        return GitRemoteStatus::Unknown;
+    }
+    let rest = line.trim_start_matches('#').trim();
+    if !rest.contains("...") {
+        return GitRemoteStatus::Unknown;
+    }
+    if let Some((_, bracket)) = rest.split_once('[') {
+        let bracket = bracket.trim_end_matches(']').to_ascii_lowercase();
+        let ahead = bracket.contains("ahead");
+        let behind = bracket.contains("behind");
+        return match (ahead, behind) {
+            (true, true) => GitRemoteStatus::Diverged,
+            (true, false) => GitRemoteStatus::Ahead,
+            (false, true) => GitRemoteStatus::Behind,
+            _ => GitRemoteStatus::UpToDate,
+        };
+    }
+    GitRemoteStatus::UpToDate
 }
 
 fn file_content_hash(path: &Path) -> Option<u64> {
