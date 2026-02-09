@@ -6967,8 +6967,6 @@ fn draw_shell_stack_templates_table(
     }
 
     let now = Instant::now();
-    let local_head = app.templates_state.git_head.as_deref();
-    let active_server = app.active_server.as_deref();
     let mut max_state = "STATE".chars().count();
     let git_status_cell = |dirty: bool| -> Cell<'static> {
         let left = if dirty { "!" } else { "✓" };
@@ -6989,12 +6987,26 @@ fn draw_shell_stack_templates_table(
             Span::styled(right, right_style),
         ]))
     };
+    let active_server = app.active_server.as_deref();
     let rows: Vec<Row> = app
         .templates_state
         .templates
         .iter()
         .map(|t| {
             let dirty = app.templates_state.dirty_templates.contains(&t.name);
+            let (deployed_any, deployed_on_active) = if let Some(id) = t.template_id.as_ref() {
+                if let Some(list) = app.template_deploys.get(id) {
+                    let any = !list.is_empty();
+                    let on_active = active_server
+                        .map(|srv| list.iter().any(|e| e.server_name == srv))
+                        .unwrap_or(any);
+                    (any, on_active)
+                } else {
+                    (false, false)
+                }
+            } else {
+                (false, false)
+            };
             let (state, state_style) = if let Some(m) =
                 app.templates_state.template_deploy_inflight.get(&t.name)
             {
@@ -7009,78 +7021,25 @@ fn draw_shell_stack_templates_table(
                     ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
                 };
                 (action_error_label(err).to_string(), st)
-            } else if let Some(id) = t.template_id.as_ref() {
-                if let Some(list) = app.template_deploys.get(id) {
-                    if let Some(entry) = active_server
-                        .and_then(|srv| list.iter().find(|e| e.server_name == srv))
-                        .or_else(|| list.first())
-                    {
-                        if dirty {
-                            (
-                                "deployed (modified)".to_string(),
-                                Style::default().patch(app.theme.text_warn.to_style()),
-                            )
-                        } else {
-                            let deployed = entry
-                                .commit
-                                .as_deref()
-                                .map(short_commit)
-                                .unwrap_or_else(|| "deployed".to_string());
-                            if let Some(local) = local_head {
-                                if let Some(commit) = entry.commit.as_deref() {
-                                    let local_short = short_commit(local);
-                                    let deployed_short = short_commit(commit);
-                                    if local_short != deployed_short {
-                                        (
-                                            format!(
-                                                "deployed {deployed_short} (local {local_short})"
-                                            ),
-                                            Style::default(),
-                                        )
-                                    } else {
-                                        (format!("deployed {deployed_short}"), Style::default())
-                                    }
-                                } else {
-                                    (deployed, Style::default())
-                                }
-                            } else {
-                                (deployed, Style::default())
-                            }
-                        }
-                    } else if dirty {
-                        (
-                            "modified".to_string(),
-                            Style::default().patch(app.theme.text_warn.to_style()),
-                        )
-                    } else {
-                        (String::new(), Style::default())
-                    }
-                } else if dirty {
-                    (
-                        "modified".to_string(),
-                        Style::default().patch(app.theme.text_warn.to_style()),
-                    )
-                } else {
-                    (String::new(), Style::default())
-                }
+            } else if deployed_any {
+                ("deployed".to_string(), Style::default())
             } else {
-                if dirty {
-                    (
-                        "modified".to_string(),
-                        Style::default().patch(app.theme.text_warn.to_style()),
-                    )
-                } else {
-                    (String::new(), Style::default())
-                }
+                (String::new(), Style::default())
+            };
+            let row_style = if deployed_on_active || app.templates_state.template_deploy_inflight.contains_key(&t.name) {
+                Style::default()
+            } else {
+                bg.patch(app.theme.text_dim.to_style()).add_modifier(Modifier::DIM)
             };
             max_state = max_state.max(state.chars().count());
             Row::new(vec![
                 Cell::from(t.name.clone()),
                 Cell::from(if t.has_compose { "yes" } else { "no" }),
-                git_status_cell(dirty),
                 Cell::from(state).style(state_style),
+                git_status_cell(dirty),
                 Cell::from(t.desc.clone()),
             ])
+            .style(row_style)
         })
         .collect();
     let state_w = max_state.clamp(10, 22) as u16;
@@ -7094,8 +7053,8 @@ fn draw_shell_stack_templates_table(
         [
             Constraint::Length(24),
             Constraint::Length(7),
-            Constraint::Length(3),
             Constraint::Length(state_w),
+            Constraint::Length(3),
             Constraint::Min(10),
         ],
     )
@@ -7103,8 +7062,8 @@ fn draw_shell_stack_templates_table(
         Row::new(vec![
             Cell::from("NAME"),
             Cell::from("COMPOSE"),
-            Cell::from("GIT"),
             Cell::from("STATE"),
+            Cell::from("GIT"),
             Cell::from("DESC"),
         ])
         .style(shell_header_style(app)),
@@ -7280,11 +7239,6 @@ fn draw_shell_net_templates_table(
                     ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
                 };
                 (action_error_label(err).to_string(), st)
-            } else if dirty {
-                (
-                    "modified".to_string(),
-                    Style::default().patch(app.theme.text_warn.to_style()),
-                )
             } else {
                 (String::new(), Style::default())
             };
@@ -7292,8 +7246,8 @@ fn draw_shell_net_templates_table(
             Row::new(vec![
                 Cell::from(t.name.clone()),
                 Cell::from(if t.has_cfg { "yes" } else { "no" }),
-                git_status_cell(dirty),
                 Cell::from(state).style(state_style),
+                git_status_cell(dirty),
                 Cell::from(t.desc.clone()),
             ])
         })
@@ -7310,8 +7264,8 @@ fn draw_shell_net_templates_table(
         [
             Constraint::Length(24),
             Constraint::Length(7),
-            Constraint::Length(3),
             Constraint::Length(state_w),
+            Constraint::Length(3),
             Constraint::Min(10),
         ],
     )
@@ -7319,8 +7273,8 @@ fn draw_shell_net_templates_table(
         Row::new(vec![
             Cell::from("NAME"),
             Cell::from("CFG"),
-            Cell::from("GIT"),
             Cell::from("STATE"),
+            Cell::from("GIT"),
             Cell::from("DESC"),
         ])
         .style(shell_header_style(app)),
