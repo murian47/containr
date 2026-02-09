@@ -48,7 +48,7 @@ use render::utils::{
     expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
     theme_color, theme_color_rgba, write_text_file,
 };
-use render::text::{short_commit, slice_window, truncate_end, window_hscroll};
+use render::text::{slice_window, truncate_end, window_hscroll};
 use render::scroll::{draw_shell_scrollbar_h, draw_shell_scrollbar_v};
 use render::stacks::stack_name_from_labels;
 
@@ -840,7 +840,7 @@ struct NetTemplateEntry {
     desc: String,
 }
 
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct NetworkTemplateIpv4 {
     subnet: Option<String>,
     gateway: Option<String>,
@@ -848,7 +848,7 @@ struct NetworkTemplateIpv4 {
     ip_range: Option<String>,
 }
 
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct NetworkTemplateSpec {
     name: String,
     #[allow(dead_code)]
@@ -930,6 +930,8 @@ struct LocalState {
     rate_limits: HashMap<String, RateLimitEntry>,
     #[serde(default)]
     template_deploys: HashMap<String, Vec<TemplateDeployEntry>>,
+    #[serde(default)]
+    net_template_deploys: HashMap<String, Vec<TemplateDeployEntry>>,
     #[serde(default)]
     registry_tests: HashMap<String, RegistryTestEntry>,
 }
@@ -1014,6 +1016,7 @@ fn load_local_state(
     HashMap<String, ImageUpdateEntry>,
     HashMap<String, RateLimitEntry>,
     HashMap<String, Vec<TemplateDeployEntry>>,
+    HashMap<String, Vec<TemplateDeployEntry>>,
     HashMap<String, RegistryTestEntry>,
 ) {
     let path = image_updates_path();
@@ -1070,12 +1073,58 @@ fn load_local_state(
             }
         }
     }
+    let mut net_template_deploys: HashMap<String, Vec<TemplateDeployEntry>> = HashMap::new();
+    if let Some(v) = value.as_ref().and_then(|v| v.get("net_template_deploys")) {
+        if let Some(obj) = v.as_object() {
+            for (key, entry) in obj {
+                if entry.is_array() {
+                    if let Ok(list) = serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
+                    {
+                        if !list.is_empty() {
+                            net_template_deploys.insert(key.clone(), list);
+                        }
+                    }
+                    continue;
+                }
+                if let Ok(single) = serde_json::from_value::<TemplateDeployEntry>(entry.clone()) {
+                    net_template_deploys.insert(key.clone(), vec![single]);
+                    continue;
+                }
+                let server_name = entry
+                    .get("server_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let timestamp = entry
+                    .get("timestamp")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                if !server_name.trim().is_empty() && timestamp > 0 {
+                    net_template_deploys.insert(
+                        key.clone(),
+                        vec![TemplateDeployEntry {
+                            server_name,
+                            timestamp,
+                            commit: None,
+                        }],
+                    );
+                }
+            }
+        }
+    }
     let registry_tests = value
         .as_ref()
         .and_then(|v| v.get("registry_tests"))
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    (path, image_updates, rate_limits, template_deploys, registry_tests)
+    (
+        path,
+        image_updates,
+        rate_limits,
+        template_deploys,
+        net_template_deploys,
+        registry_tests,
+    )
 }
 
 fn truncate_msg(s: &str, max: usize) -> String {
@@ -1131,6 +1180,13 @@ pub(in crate::ui) enum ActionRequest {
         docker: DockerCfg,
         local_cfg: PathBuf,
         force: bool,
+        server_name: String,
+    },
+    TemplateFromNetwork {
+        name: String,
+        source: String,
+        network_id: String,
+        templates_dir: PathBuf,
     },
     TemplateFromStack {
         name: String,
@@ -1281,6 +1337,7 @@ struct App {
     image_updates_path: PathBuf,
     rate_limits: HashMap<String, RateLimitEntry>,
     template_deploys: HashMap<String, Vec<TemplateDeployEntry>>,
+    net_template_deploys: HashMap<String, Vec<TemplateDeployEntry>>,
     unknown_template_ids_warned: HashSet<String>,
     registries_cfg: config::RegistriesConfig,
     registry_auths: HashMap<String, RegistryAuthResolved>,
@@ -1701,8 +1758,14 @@ impl App {
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_nanos() as u64
             ^ (std::process::id() as u64);
-        let (image_updates_path, mut image_updates, mut rate_limits, template_deploys, registry_tests) =
-            load_local_state();
+        let (
+            image_updates_path,
+            mut image_updates,
+            mut rate_limits,
+            template_deploys,
+            net_template_deploys,
+            registry_tests,
+        ) = load_local_state();
         let now = now_unix();
         image_updates.retain(|_, v| now.saturating_sub(v.checked_at) <= IMAGE_UPDATE_TTL_SECS);
         rate_limits.retain(|_, v| {
@@ -1947,6 +2010,7 @@ impl App {
             image_updates_path,
             rate_limits,
             template_deploys,
+            net_template_deploys,
             unknown_template_ids_warned: HashSet::new(),
             registries_cfg,
             registry_auths: HashMap::new(),
@@ -5351,6 +5415,7 @@ pub async fn run_tui(
                     docker,
                     local_cfg,
                     force,
+                    ..
                 } => perform_net_template_deploy(runner, docker, name, local_cfg, *force).await,
                 ActionRequest::TemplateFromStack {
                     name,
@@ -5380,6 +5445,20 @@ pub async fn run_tui(
                     source,
                     None,
                     std::slice::from_ref(container_id),
+                    templates_dir,
+                )
+                .await,
+                ActionRequest::TemplateFromNetwork {
+                    name,
+                    source,
+                    network_id,
+                    templates_dir,
+                } => export_net_template(
+                    &conn.runner,
+                    &conn.docker,
+                    name,
+                    source,
+                    network_id,
                     templates_dir,
                 )
                 .await,
@@ -6004,7 +6083,7 @@ pub async fn run_tui(
                                 );
                             }
                         }
-                        ActionRequest::NetTemplateDeploy { name, .. } => {
+                        ActionRequest::NetTemplateDeploy { name, server_name, .. } => {
                             app.templates_state
                                 .net_template_deploy_inflight
                                 .remove(name);
@@ -6015,6 +6094,44 @@ pub async fn run_tui(
                                 ));
                             } else {
                                 app.set_info(format!("deployed network template {name}"));
+                                if !server_name.trim().is_empty() {
+                                    let entry = TemplateDeployEntry {
+                                        server_name: server_name.clone(),
+                                        timestamp: now_unix(),
+                                        commit: None,
+                                    };
+                                    app.net_template_deploys
+                                        .entry(name.to_string())
+                                        .or_default()
+                                        .push(entry);
+                                    app.save_local_state();
+                                }
+                            }
+                        }
+                        ActionRequest::TemplateFromNetwork { name, .. } => {
+                            app.refresh_net_templates();
+                            if let Some(idx) = app
+                                .templates_state
+                                .net_templates
+                                .iter()
+                                .position(|t| t.name == *name)
+                            {
+                                app.templates_state.net_templates_selected = idx;
+                            }
+                            app.set_info(format!("saved network template {name}"));
+                            if let Some(server_name) = app.active_server.clone() {
+                                if !server_name.trim().is_empty() {
+                                    let entry = TemplateDeployEntry {
+                                        server_name,
+                                        timestamp: now_unix(),
+                                        commit: None,
+                                    };
+                                    app.net_template_deploys
+                                        .entry(name.to_string())
+                                        .or_default()
+                                        .push(entry);
+                                    app.save_local_state();
+                                }
                             }
                         }
                         ActionRequest::TemplateFromStack { name, stack_name, .. } => {
@@ -6110,6 +6227,7 @@ pub async fn run_tui(
                         req,
                         ActionRequest::TemplateFromStack { .. }
                             | ActionRequest::TemplateFromContainer { .. }
+                            | ActionRequest::TemplateFromNetwork { .. }
                     ) && !out.trim().is_empty()
                     {
                         for line in out.lines() {
@@ -6199,6 +6317,13 @@ pub async fn run_tui(
                         }
                         ActionRequest::TemplateFromContainer { name, .. } => {
                             app.set_error(format!("template export failed for {name}: {:#}", e));
+                            continue;
+                        }
+                        ActionRequest::TemplateFromNetwork { name, .. } => {
+                            app.set_error(format!(
+                                "network template export failed for {name}: {:#}",
+                                e
+                            ));
                             continue;
                         }
                         ActionRequest::ImageUpdateCheck { image, .. } => {
