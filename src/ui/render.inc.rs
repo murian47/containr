@@ -2863,10 +2863,24 @@ fn cmdline_completion_candidates(app: &App, ctx: &CmdlineCompletionContext) -> (
         }
         "image" | "img" => {
             if arg_index == 0 {
-                vec!["untag", "rm", "remove", "delete"]
+                vec!["push", "untag", "rm", "remove", "delete"]
                     .into_iter()
                     .map(|s| s.to_string())
                     .collect()
+            } else if sub == "push" {
+                if ctx.token_prefix.starts_with('-') {
+                    vec!["--registry", "--repo", "--tag", "--image"]
+                        .into_iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                } else if let Some(prev) = ctx.tokens_before.get(cmd_idx + arg_index) {
+                    match prev.as_str() {
+                        "--registry" => cmdline_registry_hosts(app),
+                        _ => Vec::new(),
+                    }
+                } else {
+                    Vec::new()
+                }
             } else {
                 Vec::new()
             }
@@ -2981,11 +2995,11 @@ fn cmdline_completion_candidates(app: &App, ctx: &CmdlineCompletionContext) -> (
         }
         "registry" | "reg" => {
             if arg_index == 0 {
-                vec!["add", "rm", "remove", "del", "set", "test", "list"]
+                vec!["add", "rm", "remove", "del", "set", "test", "default", "list"]
                     .into_iter()
                     .map(|s| s.to_string())
                     .collect()
-            } else if matches!(sub, "rm" | "remove" | "del" | "test") && arg_index == 1 {
+            } else if matches!(sub, "rm" | "remove" | "del" | "test" | "default") && arg_index == 1 {
                 cmdline_registry_hosts(app)
             } else if sub == "set" {
                 if arg_index == 1 {
@@ -4260,6 +4274,20 @@ fn shell_execute_action(
                     } else {
                         app.set_warn("no template selected");
                     }
+                }
+            }
+        }
+        ShellAction::TemplateRedeploy => {
+            match app.templates_state.kind {
+                TemplatesKind::Stacks => {
+                    if let Some(name) = app.selected_template().map(|t| t.name.clone()) {
+                        shell_deploy_template(app, &name, true, true, action_req_tx);
+                    } else {
+                        app.set_warn("no template selected");
+                    }
+                }
+                TemplatesKind::Networks => {
+                    app.set_warn("redeploy is only available for stack templates");
                 }
             }
         }
@@ -7271,6 +7299,20 @@ fn draw_shell_registries_table(
         .iter()
         .map(|r| {
             let host = r.host.clone();
+            let is_default = app
+                .registries_cfg
+                .default_registry
+                .as_ref()
+                .map(|h| h.eq_ignore_ascii_case(&host))
+                .unwrap_or(false);
+            let def = if is_default {
+                Cell::from(Span::styled(
+                    "✓",
+                    bg.patch(app.theme.text_ok.to_style()),
+                ))
+            } else {
+                Cell::from("")
+            };
             let auth = registry_auth_label(&r.auth).to_string();
             let user = r.username.clone().unwrap_or_else(|| "-".to_string());
             let secret = if r.secret.as_ref().map(|s| s.trim()).unwrap_or("").is_empty() {
@@ -7283,6 +7325,7 @@ fn draw_shell_registries_table(
                 Cell::from(auth),
                 Cell::from(user),
                 Cell::from(secret),
+                def,
             ])
         })
         .collect();
@@ -7298,6 +7341,7 @@ fn draw_shell_registries_table(
             Constraint::Length(10),
             Constraint::Length(16),
             Constraint::Length(7),
+            Constraint::Length(7),
         ],
     )
     .header(
@@ -7306,6 +7350,7 @@ fn draw_shell_registries_table(
             Cell::from("AUTH"),
             Cell::from("USER"),
             Cell::from("SECRET"),
+            Cell::from("DEFAULT"),
         ])
         .style(shell_header_style(app)),
     )

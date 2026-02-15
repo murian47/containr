@@ -311,6 +311,7 @@ fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
     // Images.
     let i = KeyScope::View(ShellView::Images);
     add(i, "C-i", ":inspect");
+    add(i, "C-u", ":image untag");
     add(i, "C-d", ":image rm");
 
     // Networks.
@@ -328,6 +329,7 @@ fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
     add(t, "C-e", ":template edit");
     add(t, "C-n", ":template new");
     add(t, "C-y", ":template deploy");
+    add(t, "C-S-Y", ":template deploy --recreate --pull");
     add(t, "C-d", ":template rm");
     add(t, "C-t", ":templates toggle");
     add(t, "C-a", ":ai");

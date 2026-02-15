@@ -245,6 +245,8 @@ pub struct RegistriesConfig {
     pub age_identity: String,
     #[serde(default)]
     pub registries: Vec<RegistryEntry>,
+    #[serde(default)]
+    pub default_registry: Option<String>,
 }
 
 fn default_registries_version() -> u32 {
@@ -257,6 +259,7 @@ impl Default for RegistriesConfig {
             version: default_registries_version(),
             age_identity: String::new(),
             registries: Vec::new(),
+            default_registry: None,
         }
     }
 }

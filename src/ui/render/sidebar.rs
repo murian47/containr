@@ -68,6 +68,7 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
                 ShellAction::TemplateNew,
                 ShellAction::TemplateDelete,
                 ShellAction::TemplateDeploy,
+                ShellAction::TemplateRedeploy,
             ]);
             out
         }

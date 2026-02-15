@@ -264,6 +264,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     ));
     out.push(item(
         "Templates",
+        "^Y",
+        "Redeploy selected template (pull + force recreate)",
+    ));
+    out.push(item(
+        "Templates",
         ":ai",
         "Run the configured AI agent for the selected template",
     ));
@@ -283,6 +288,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Set age identity path for encrypted secrets",
     ));
     out.push(item("Registries", ":registry add <host>", "Add registry entry"));
+    out.push(item(
+        "Registries",
+        ":registry default [host|none]",
+        "Set or clear default registry",
+    ));
     out.push(item(
         "Registries",
         ":registry set <host> auth <anonymous|basic|bearer|github>",
@@ -360,6 +370,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(Line::from(""));
 
     out.push(h("Images"));
+    out.push(item(
+        "Images",
+        ":image/:img push [--registry <host>] [--repo <repo>] [--tag <tag>] [--image <ref>]",
+        "Tag + push selected image to a registry",
+    ));
     out.push(item(
         "Images",
         ":image/:img untag",

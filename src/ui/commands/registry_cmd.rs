@@ -162,12 +162,51 @@ pub fn handle_registry(
                 return true;
             }
             app.registries_cfg.registries.remove(idx);
+            if app
+                .registries_cfg
+                .default_registry
+                .as_ref()
+                .map(|h| h.eq_ignore_ascii_case(&host))
+                .unwrap_or(false)
+            {
+                app.registries_cfg.default_registry = None;
+            }
             if app.registries_selected >= app.registries_cfg.registries.len() {
                 app.registries_selected = app.registries_cfg.registries.len().saturating_sub(1);
             }
             app.registries_details_scroll = 0;
             app.persist_registries();
             app.set_info(format!("registry removed: {host}"));
+            true
+        }
+        "default" => {
+            let host = if let Some(raw) = args.get(1).copied() {
+                if matches!(raw, "none" | "clear" | "unset" | "-") {
+                    String::new()
+                } else {
+                    normalize_host(raw).unwrap_or_default()
+                }
+            } else {
+                app.registries_cfg
+                    .registries
+                    .get(app.registries_selected)
+                    .map(|r| r.host.clone())
+                    .unwrap_or_default()
+            };
+            if host.is_empty() {
+                app.registries_cfg.default_registry = None;
+                app.persist_registries();
+                app.set_info("registry default cleared");
+                return true;
+            }
+            let Some(idx) = registry_index(app, &host) else {
+                app.set_warn("registry not found");
+                return true;
+            };
+            let host = app.registries_cfg.registries[idx].host.clone();
+            app.registries_cfg.default_registry = Some(host.clone());
+            app.persist_registries();
+            app.set_info(format!("registry default set: {host}"));
             true
         }
         "set" => {
@@ -366,7 +405,7 @@ pub fn handle_registry(
             true
         }
         _ => {
-            app.set_warn("usage: :registry <add|rm[!]|set|test|list>");
+            app.set_warn("usage: :registry <add|rm[!]|set|test|default|list>");
             true
         }
     }

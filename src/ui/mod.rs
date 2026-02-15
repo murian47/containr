@@ -627,6 +627,7 @@ enum ShellAction {
     TemplateNew,
     TemplateDelete,
     TemplateDeploy,
+    TemplateRedeploy,
 }
 
 impl ShellAction {
@@ -651,6 +652,7 @@ impl ShellAction {
             ShellAction::TemplateNew => "New",
             ShellAction::TemplateDelete => "Delete",
             ShellAction::TemplateDeploy => "Deploy",
+            ShellAction::TemplateRedeploy => "Redeploy",
         }
     }
 
@@ -677,6 +679,7 @@ impl ShellAction {
             ShellAction::TemplateNew => "^n",
             ShellAction::TemplateDelete => "^d",
             ShellAction::TemplateDeploy => "^y",
+            ShellAction::TemplateRedeploy => "^Y",
         }
     }
 }
@@ -1216,6 +1219,13 @@ pub(in crate::ui) enum ActionRequest {
         marker_key: String,
         id: String,
     },
+    ImagePush {
+        marker_key: String,
+        source_ref: String,
+        target_ref: String,
+        registry_host: String,
+        auth: Option<RegistryAuthResolved>,
+    },
     VolumeRemove {
         name: String,
     },
@@ -1511,6 +1521,25 @@ impl App {
                 }
                 Ok(auth)
             }
+        }
+    }
+
+    fn registry_default_host(&self) -> Option<String> {
+        let default = self
+            .registries_cfg
+            .default_registry
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())?;
+        if self
+            .registries_cfg
+            .registries
+            .iter()
+            .any(|r| r.host.eq_ignore_ascii_case(default))
+        {
+            Some(default.to_string())
+        } else {
+            None
         }
     }
 
@@ -5530,6 +5559,21 @@ pub async fn run_tui(
                 ActionRequest::ImageForceRemove { id, .. } => {
                     docker::image_remove_force(&conn.runner, &conn.docker, id).await
                 }
+                ActionRequest::ImagePush {
+                    source_ref,
+                    target_ref,
+                    registry_host,
+                    auth,
+                    ..
+                } => perform_image_push(
+                    &conn.runner,
+                    &conn.docker,
+                    source_ref,
+                    target_ref,
+                    registry_host,
+                    auth.as_ref(),
+                )
+                .await,
                 ActionRequest::VolumeRemove { name } => {
                     docker::volume_remove(&conn.runner, &conn.docker, name).await
                 }
@@ -6272,6 +6316,18 @@ pub async fn run_tui(
                         ActionRequest::ImageForceRemove { marker_key, .. } => {
                             app.image_action_error.remove(marker_key);
                         }
+                        ActionRequest::ImagePush { marker_key, .. } => {
+                            app.image_action_inflight.remove(marker_key);
+                            app.image_action_error.remove(marker_key);
+                            if out.trim().is_empty() {
+                                app.set_info("image push finished");
+                            } else {
+                                app.set_info("image push finished (see log)");
+                                for line in out.lines() {
+                                    app.log_msg(MsgLevel::Info, line.to_string());
+                                }
+                            }
+                        }
                         ActionRequest::VolumeRemove { name } => {
                             app.volume_action_error.remove(name);
                         }
@@ -6426,6 +6482,18 @@ pub async fn run_tui(
                                 LastActionError {
                                     at: now_local(),
                                     action: "rm".to_string(),
+                                    kind: classify_action_error(&format!("{:#}", e)),
+                                    message: truncate_msg(&format!("{:#}", e), 240),
+                                },
+                            );
+                        }
+                        ActionRequest::ImagePush { marker_key, .. } => {
+                            app.image_action_inflight.remove(marker_key);
+                            app.image_action_error.insert(
+                                marker_key.clone(),
+                                LastActionError {
+                                    at: now_local(),
+                                    action: "push".to_string(),
                                     kind: classify_action_error(&format!("{:#}", e)),
                                     message: truncate_msg(&format!("{:#}", e), 240),
                                 },
@@ -6753,7 +6821,9 @@ async fn perform_template_deploy(
     let remote_dir_q = shell_single_quote(&remote_dir);
     let docker_cmd = docker.docker_cmd.to_shell();
     let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
-    let pull_cmd = format!("cd {remote_dir_q} && {docker_cmd} compose pull");
+    let pull_cmd = format!(
+        "cd {remote_dir_q} && {docker_cmd} compose -f compose.rendered.yaml pull"
+    );
     let recreate_flag = if force_recreate { " --force-recreate" } else { "" };
     let up_cmd = format!(
         "cd {remote_dir_q} && {docker_cmd} compose -f compose.rendered.yaml up -d{recreate_flag}"
@@ -6940,6 +7010,73 @@ async fn perform_stack_update(
         lines.push(format!("compose up: {}", truncate_msg(out_msg, 200)));
     } else {
         lines.push("compose up: ok".to_string());
+    }
+    Ok(lines.join("\n"))
+}
+
+async fn perform_image_push(
+    runner: &Runner,
+    docker: &DockerCfg,
+    source_ref: &str,
+    target_ref: &str,
+    registry_host: &str,
+    auth: Option<&RegistryAuthResolved>,
+) -> anyhow::Result<String> {
+    if docker.docker_cmd.is_empty() {
+        anyhow::bail!("no server configured");
+    }
+    let docker_cmd = docker.docker_cmd.to_shell();
+    let mut lines: Vec<String> = Vec::new();
+    lines.push(format!("image push: {source_ref} -> {target_ref}"));
+    if let Some(auth) = auth {
+        if !matches!(auth.auth, config::RegistryAuth::Anonymous) {
+            let secret = auth
+                .secret
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("registry secret missing for {registry_host}"))?;
+            let username = auth
+                .username
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .or_else(|| match auth.auth {
+                    config::RegistryAuth::BearerToken => Some("token".to_string()),
+                    config::RegistryAuth::GithubPat => Some("token".to_string()),
+                    _ => None,
+                })
+                .ok_or_else(|| anyhow::anyhow!("registry username missing for {registry_host}"))?;
+            let pass_q = shell_single_quote(secret);
+            let user_q = shell_single_quote(&username);
+            let host_q = shell_single_quote(registry_host);
+            let login_cmd = format!(
+                "printf %s {pass_q} | {docker_cmd} login -u {user_q} --password-stdin {host_q}"
+            );
+            let out = runner.run(&login_cmd).await?;
+            if !out.trim().is_empty() {
+                lines.push(format!("login: {}", truncate_msg(out.trim(), 200)));
+            } else {
+                lines.push("login: ok".to_string());
+            }
+        } else {
+            lines.push("login: skipped".to_string());
+        }
+    } else {
+        lines.push("login: skipped".to_string());
+    }
+    let src_q = shell_single_quote(source_ref);
+    let dst_q = shell_single_quote(target_ref);
+    let tag_cmd = format!("{docker_cmd} image tag {src_q} {dst_q}");
+    runner.run(&tag_cmd).await?;
+    lines.push("tag: ok".to_string());
+    let push_cmd = format!("{docker_cmd} image push {dst_q}");
+    let out = runner.run(&push_cmd).await?;
+    if !out.trim().is_empty() {
+        lines.push(format!("push: {}", truncate_msg(out.trim(), 200)));
+    } else {
+        lines.push("push: ok".to_string());
     }
     Ok(lines.join("\n"))
 }
