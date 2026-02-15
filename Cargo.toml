@@ -1,6 +1,6 @@
 [package]
 name = "containr"
-version = "0.4.97"
+version = "0.4.100"
 edition = "2024"
 
 [dependencies]

@@ -2185,7 +2185,7 @@ fn shell_stack_update(
         services.retain(|name, _| allow.contains(name));
     }
     let services: Vec<StackUpdateService> = services.into_values().collect();
-    if services.is_empty() {
+    if services.is_empty() && !force {
         app.set_warn("stack update: no services found");
         return;
     }
@@ -3668,7 +3668,7 @@ fn shell_execute_cmdline(
     if cmd == "stack" || cmd == "stacks" || cmd == "stk" {
         let sub = it.next().unwrap_or("");
         let args: Vec<&str> = it.collect();
-        let name = args.first().copied();
+        let name = args.iter().copied().find(|v| !v.starts_with('-'));
         if sub.is_empty() {
             shell_set_main_view(app, ShellView::Stacks);
             shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Stacks));
@@ -3834,7 +3834,7 @@ fn shell_execute_cmdline(
                     services.retain(|name, _| allow.contains(name));
                 }
                 let services: Vec<StackUpdateService> = services.into_values().collect();
-                if services.is_empty() {
+                if services.is_empty() && !all {
                     app.set_warn("stack update: no services found");
                     return;
                 }
