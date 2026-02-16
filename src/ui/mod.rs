@@ -12,6 +12,7 @@
 
 mod commands;
 mod render;
+mod views;
 mod state;
 pub mod theme;
 
