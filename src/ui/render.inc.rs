@@ -267,6 +267,9 @@ fn shell_switch_server(
     app.stack_update_inflight.clear();
     app.stack_update_error.clear();
     app.stack_update_containers.clear();
+    app.stacks.clear();
+    app.stacks_selected = 0;
+    app.stack_collapsed.clear();
 
     let runner = if s.target == "local" {
         Runner::Local
