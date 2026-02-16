@@ -5873,42 +5873,42 @@ pub(in crate::ui) fn draw_shell_main_list(
             if let Some(area) = banner_area {
                 draw_rate_limit_banner(f, app, banner, area);
             }
-            draw_shell_dashboard(f, app, content_area);
+            crate::ui::views::dashboard::render_dashboard(f, app, content_area);
         }
         ShellView::Stacks => {
             draw_shell_title(f, app, "Stacks", app.stacks.len(), title_area);
             if let Some(area) = banner_area {
                 draw_rate_limit_banner(f, app, banner, area);
             }
-            draw_shell_stacks_table(f, app, content_area);
+            crate::ui::views::stacks::render_stacks(f, app, content_area);
         }
         ShellView::Containers => {
             draw_shell_title(f, app, "Containers", app.containers.len(), title_area);
             if let Some(area) = banner_area {
                 draw_rate_limit_banner(f, app, banner, area);
             }
-            draw_shell_containers_table(f, app, content_area);
+            crate::ui::views::containers::render_containers(f, app, content_area);
         }
         ShellView::Images => {
             draw_shell_title(f, app, "Images", app.images_visible_len(), title_area);
             if let Some(area) = banner_area {
                 draw_rate_limit_banner(f, app, banner, area);
             }
-            draw_shell_images_table(f, app, content_area);
+            crate::ui::views::images::render_images(f, app, content_area);
         }
         ShellView::Volumes => {
             draw_shell_title(f, app, "Volumes", app.volumes_visible_len(), title_area);
             if let Some(area) = banner_area {
                 draw_rate_limit_banner(f, app, banner, area);
             }
-            draw_shell_volumes_table(f, app, content_area);
+            crate::ui::views::volumes::render_volumes(f, app, content_area);
         }
         ShellView::Networks => {
             draw_shell_title(f, app, "Networks", app.networks.len(), title_area);
             if let Some(area) = banner_area {
                 draw_rate_limit_banner(f, app, banner, area);
             }
-            draw_shell_networks_table(f, app, content_area);
+            crate::ui::views::networks::render_networks(f, app, content_area);
         }
         ShellView::Templates => match app.templates_state.kind {
             TemplatesKind::Stacks => {
@@ -5922,7 +5922,7 @@ pub(in crate::ui) fn draw_shell_main_list(
                 if let Some(area) = banner_area {
                     draw_rate_limit_banner(f, app, banner, area);
                 }
-                draw_shell_templates_table(f, app, content_area);
+                crate::ui::views::templates::render_templates(f, app, content_area);
             }
             TemplatesKind::Networks => {
                 draw_shell_title(
@@ -5935,7 +5935,7 @@ pub(in crate::ui) fn draw_shell_main_list(
                 if let Some(area) = banner_area {
                     draw_rate_limit_banner(f, app, banner, area);
                 }
-                draw_shell_templates_table(f, app, content_area);
+                crate::ui::views::templates::render_templates(f, app, content_area);
             }
         },
         ShellView::Registries => {
@@ -5949,23 +5949,23 @@ pub(in crate::ui) fn draw_shell_main_list(
             if let Some(area) = banner_area {
                 draw_rate_limit_banner(f, app, banner, area);
             }
-            draw_shell_registries_table(f, app, content_area);
+            crate::ui::views::registries::render_registries(f, app, content_area);
         }
         ShellView::Logs => {
             draw_shell_title(f, app, "Logs", app.logs_total_lines(), title_area);
-            draw_shell_logs_view(f, app, content_area);
+            crate::ui::views::logs::render_logs(f, app, content_area);
         }
         ShellView::Inspect => {
             draw_shell_title(f, app, "Inspect", app.inspect.lines.len(), title_area);
-            draw_shell_inspect_view(f, app, content_area);
+            crate::ui::views::inspect::render_inspect(f, app, content_area);
         }
         ShellView::Help => {
             draw_shell_title(f, app, "Help", 0, title_area);
-            draw_shell_help_view(f, app, content_area);
+            crate::ui::views::help::render_help(f, app, content_area);
         }
         ShellView::Messages => {
             draw_shell_title(f, app, "Messages", app.session_msgs.len(), title_area);
-            draw_shell_messages_view(f, app, content_area);
+            crate::ui::views::messages::render_messages(f, app, content_area);
         }
         ShellView::ThemeSelector => {
             draw_shell_title(f, app, "Themes", 0, title_area);
