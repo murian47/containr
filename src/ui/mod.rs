@@ -22,10 +22,7 @@ use render::details::draw_shell_main_details;
 use render::sidebar::{
     draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
-use render::format::{
-    bar_spans_gradient, bar_spans_threshold, dot_spinner, format_bytes_short, loading_spinner,
-    spinner_char, split_at_chars, truncate_start,
-};
+use render::format::{dot_spinner, loading_spinner, spinner_char, split_at_chars, truncate_start};
 use crate::domain::image_refs::{image_registry_for_ref, normalize_image_ref};
 use crate::ui::state::image_updates::{
     resolve_image_update_state, resolve_stack_update_state, resolve_image_ref_for_updates,
@@ -47,7 +44,7 @@ use render::highlight::{
 };
 use render::utils::{
     expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
-    theme_color, theme_color_rgba, write_text_file,
+    theme_color_rgba, write_text_file,
 };
 use render::text::{slice_window, truncate_end, window_hscroll};
 use render::scroll::{draw_shell_scrollbar_h, draw_shell_scrollbar_v};
@@ -69,7 +66,7 @@ use crossterm::{
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
@@ -78,7 +75,6 @@ use ratatui::{
 };
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::StatefulProtocol;
-use ratatui_image::{Resize, StatefulImage};
 use image::{DynamicImage, Rgba, RgbaImage};
 use reqwest::{Client, StatusCode, Url};
 use reqwest::header::WWW_AUTHENTICATE;
@@ -7278,7 +7274,7 @@ fn current_docker_cmd_from_app(app: &App) -> DockerCmd {
     DockerCmd::default()
 }
 
-fn current_server_label(app: &App) -> String {
+pub(in crate::ui) fn current_server_label(app: &App) -> String {
     if let Some(name) = app.active_server.as_deref() {
         return name.to_string();
     }
