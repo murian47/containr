@@ -224,7 +224,7 @@ fn default_registry_auth() -> RegistryAuth {
     RegistryAuth::Anonymous
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RegistryEntry {
     pub host: String,
     #[serde(default = "default_registry_auth")]
@@ -234,7 +234,25 @@ pub struct RegistryEntry {
     #[serde(default)]
     pub secret: Option<String>,
     #[serde(default)]
+    pub secret_keyring: Option<String>,
+    #[serde(default)]
     pub test_repo: Option<String>,
+}
+
+impl std::fmt::Debug for RegistryEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegistryEntry")
+            .field("host", &self.host)
+            .field("auth", &self.auth)
+            .field("username", &self.username)
+            .field("secret", &self.secret.as_ref().map(|_| "****"))
+            .field(
+                "secret_keyring",
+                &self.secret_keyring.as_ref().map(|name| format!("key:{name}")),
+            )
+            .field("test_repo", &self.test_repo)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -371,6 +389,7 @@ pub fn load_registries(config_path: &Path) -> anyhow::Result<RegistriesConfig> {
             auth: RegistryAuth::Anonymous,
             username: None,
             secret: None,
+            secret_keyring: None,
             test_repo: None,
         });
         let _ = save_registries(&path, &cfg);

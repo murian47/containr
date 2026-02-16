@@ -1385,6 +1385,22 @@ struct ShellConfirm {
 }
 
 impl App {
+    fn registry_env_secret(&self, key: &str) -> anyhow::Result<String> {
+        let env_key = key.trim();
+        if env_key.is_empty() {
+            anyhow::bail!("empty env key");
+        }
+        std::env::var(env_key).map_err(|e| anyhow::anyhow!("env {env_key} not set: {e}"))
+    }
+
+    fn registry_keyring_secret(&self, key: &str) -> anyhow::Result<String> {
+        let entry = keyring::Entry::new("containr", key)
+            .map_err(|e| anyhow::anyhow!("keyring init failed: {e}"))?;
+        entry
+            .get_password()
+            .map_err(|e| anyhow::anyhow!("keyring read failed: {e}"))
+    }
+
     fn log_msg(&mut self, level: MsgLevel, text: impl Into<String>) {
         let text = text.into();
         let at = now_local();
@@ -1422,7 +1438,26 @@ impl App {
             }
             let mut secret_plain: Option<String> = None;
             if !matches!(entry.auth, config::RegistryAuth::Anonymous) {
-                if let Some(secret) = entry.secret.as_ref().map(|s| s.trim().to_string()) {
+                if let Some(key_name) = entry
+                    .secret_keyring
+                    .as_ref()
+                    .and_then(|s| Some(s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+                {
+                    match self.registry_keyring_secret(&key_name) {
+                        Ok(s) => secret_plain = Some(s),
+                        Err(e) => {
+                            self.log_msg(
+                                MsgLevel::Warn,
+                                format!("registry keyring read failed for {host}: {:#}", e),
+                            );
+                            // Fallback: ENV mit gleichem Namen versuchen, damit bestehende Setups nicht brechen
+                            if let Ok(s) = self.registry_env_secret(&key_name) {
+                                secret_plain = Some(s);
+                            }
+                        }
+                    }
+                } else if let Some(secret) = entry.secret.as_ref().map(|s| s.trim().to_string()) {
                     if identities.is_empty() {
                         self.log_msg(
                             MsgLevel::Warn,
@@ -4255,7 +4290,9 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
             t.trim(),
             OS | KERNEL | ARCH | UPTIME | CORES | LOAD | MEM | DISK | NICS | ENGINE
         ) {
-            sec.entry(cur.expect("cur set")).or_default();
+            if let Some(k) = cur {
+                sec.entry(k).or_default();
+            }
             continue;
         }
         if let Some(k) = cur {
@@ -5265,24 +5302,34 @@ pub async fn run_tui(
             let mut child_opt = Some(child);
             let output = tokio::select! {
               out = async {
-                let child = child_opt.take().expect("child already taken");
-                child.wait_with_output().await
+                if let Some(child) = child_opt.take() {
+                    child.wait_with_output().await
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "overview child already consumed",
+                    ))
+                }
               } => out,
-              changed = conn_rx.changed() => {
+              changed_res = conn_rx.changed() => {
                 // Server switch: kill the in-flight SSH command to avoid waiting
                 // for slow "docker stats" on the old server.
-                if changed.is_ok() {
-                  if let Some(mut child) = child_opt.take() {
-                    let _ = child.kill().await;
-                    let _ = child.wait().await;
+                match changed_res {
+                  Ok(_) => {
+                    if let Some(mut child) = child_opt.take() {
+                      let _ = child.kill().await;
+                      let _ = child.wait().await;
+                    }
+                    continue;
                   }
-                  continue;
+                  Err(_) => {
+                    if let Some(mut child) = child_opt.take() {
+                      let _ = child.kill().await;
+                      let _ = child.wait().await;
+                    }
+                    break;
+                  }
                 }
-                if let Some(mut child) = child_opt.take() {
-                  let _ = child.kill().await;
-                  let _ = child.wait().await;
-                }
-                break;
               }
             };
 

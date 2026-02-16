@@ -1,6 +1,6 @@
 [package]
 name = "containr"
-version = "0.4.109"
+version = "0.4.113"
 edition = "2024"
 
 [dependencies]
@@ -20,6 +20,7 @@ tempfile = "3.10.1"
 time = { version = "0.3.37", features = ["formatting", "local-offset"] }
 tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "time", "process", "sync"] }
 uuid = { version = "1.12.1", features = ["v4"] }
+keyring = "2.3.3"
 
 [features]
 integration = []

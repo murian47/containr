@@ -133,6 +133,7 @@ pub fn handle_registry(
                 auth: RegistryAuth::Anonymous,
                 username: None,
                 secret: None,
+                secret_keyring: None,
                 test_repo: None,
             });
             sort_registries(app);
