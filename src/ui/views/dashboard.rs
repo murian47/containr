@@ -3,7 +3,12 @@
 
 #![allow(dead_code)]
 
-/// Wrapper für zukünftige Auslagerung.
-pub fn render_dashboard_placeholder() {
-    // Intentionally empty – wird in Phase 2/3 mit Logik gefüllt.
+use ratatui::layout::Rect;
+use ratatui::Frame;
+
+use crate::ui::{draw_shell_dashboard, App};
+
+/// Thin wrapper to call existing render logic (Phase 1).
+pub fn render_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
+    draw_shell_dashboard(f, app, area);
 }

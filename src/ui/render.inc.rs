@@ -6122,7 +6122,11 @@ fn shell_header_style(app: &App) -> Style {
     app.theme.table_header.to_style()
 }
 
-fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_containers_table(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     // Reuse existing container row computation logic, but render without outer borders.
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
@@ -6333,7 +6337,11 @@ fn draw_shell_containers_table(f: &mut ratatui::Frame, app: &mut App, area: rata
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_images_table(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -6467,7 +6475,11 @@ fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-fn draw_shell_volumes_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_volumes_table(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -6548,7 +6560,11 @@ fn draw_shell_volumes_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_networks_table(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -6642,7 +6658,11 @@ fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatu
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_dashboard(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -7100,7 +7120,7 @@ fn draw_shell_dashboard(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     }
 }
 
-fn draw_shell_stack_templates_table(
+pub(in crate::ui) fn draw_shell_stack_templates_table(
     f: &mut ratatui::Frame,
     app: &mut App,
     area: ratatui::layout::Rect,
@@ -7254,7 +7274,11 @@ fn draw_shell_stack_templates_table(
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-fn draw_shell_templates_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_templates_table(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     match app.templates_state.kind {
         TemplatesKind::Stacks => draw_shell_stack_templates_table(f, app, area),
         TemplatesKind::Networks => draw_shell_net_templates_table(f, app, area),
@@ -7270,7 +7294,7 @@ fn registry_auth_label(auth: &config::RegistryAuth) -> &'static str {
     }
 }
 
-fn draw_shell_registries_table(
+pub(in crate::ui) fn draw_shell_registries_table(
     f: &mut ratatui::Frame,
     app: &mut App,
     area: ratatui::layout::Rect,
@@ -7361,7 +7385,7 @@ fn draw_shell_registries_table(
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-fn draw_shell_net_templates_table(
+pub(in crate::ui) fn draw_shell_net_templates_table(
     f: &mut ratatui::Frame,
     app: &mut App,
     area: ratatui::layout::Rect,
@@ -7521,7 +7545,11 @@ fn draw_shell_net_templates_table(
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-fn draw_shell_stacks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_stacks_table(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -7629,7 +7657,11 @@ fn draw_shell_stacks_table(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
 }
 
 
-fn draw_shell_logs_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_logs_view(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     // Reuse the underlying log renderer, but in a borderless main view.
     let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
@@ -7778,7 +7810,11 @@ fn draw_shell_logs_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::la
     );
 }
 
-fn draw_shell_inspect_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_inspect_view(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     // Reuse inspect tree lines computed in app.inspect.lines.
     let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
@@ -7876,7 +7912,11 @@ fn draw_shell_inspect_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui:
     );
 }
 
-fn draw_shell_help_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_help_view(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -7912,7 +7952,11 @@ fn format_session_ts(at: OffsetDateTime) -> String {
         .unwrap_or_else(|_| at.unix_timestamp().to_string())
 }
 
-fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: ratatui::layout::Rect) {
+pub(in crate::ui) fn draw_shell_messages_view(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
     let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
     draw_shell_messages_list(f, app, area, bg);
