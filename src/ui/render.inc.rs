@@ -65,44 +65,6 @@ fn shell_cycle_focus(app: &mut App) {
 }
 
 
-fn shell_set_main_view(app: &mut App, view: ShellView) {
-    app.shell_view = view;
-    if !matches!(
-        view,
-        ShellView::Inspect
-            | ShellView::Logs
-            | ShellView::Help
-            | ShellView::Messages
-    ) {
-        app.shell_last_main_view = view;
-    }
-    if view == ShellView::Messages {
-        app.mark_messages_seen();
-    }
-    app.shell_focus = ShellFocus::List;
-    app.active_view = match view {
-        ShellView::Dashboard => app.active_view,
-        ShellView::Stacks => ActiveView::Stacks,
-        ShellView::Containers => ActiveView::Containers,
-        ShellView::Images => ActiveView::Images,
-        ShellView::Volumes => ActiveView::Volumes,
-        ShellView::Networks => ActiveView::Networks,
-        ShellView::Templates => app.active_view,
-        ShellView::Registries => app.active_view,
-        ShellView::ThemeSelector => app.active_view,
-        ShellView::Inspect | ShellView::Logs | ShellView::Help | ShellView::Messages => {
-            app.active_view
-        }
-    };
-    if view == ShellView::Templates {
-        app.refresh_templates();
-        app.refresh_net_templates();
-    }
-    if let Some(mode) = app.get_view_split_mode(view) {
-        app.shell_split_mode = mode;
-    }
-}
-
 fn shell_first_container_id(app: &mut App) -> Option<String> {
     if let Some(c) = app.selected_container() {
         return Some(c.id.clone());
@@ -131,7 +93,7 @@ fn shell_first_container_id(app: &mut App) -> Option<String> {
 
 fn shell_enter_logs(app: &mut App, logs_req_tx: &mpsc::UnboundedSender<(String, usize)>) {
     // Logs are container-only; always use the containers selection.
-    shell_set_main_view(app, ShellView::Containers);
+    app.set_main_view(ShellView::Containers);
     app.shell_view = ShellView::Logs;
     app.shell_focus = ShellFocus::List;
 
@@ -245,104 +207,6 @@ fn shell_back_from_full(app: &mut App) {
         app.shell_focus = ShellFocus::List;
         shell_sidebar_select_item(app, ShellSidebarItem::Module(app.shell_view));
     }
-}
-
-fn shell_switch_server(
-    app: &mut App,
-    idx: usize,
-    conn_tx: &watch::Sender<Connection>,
-    refresh_tx: &mpsc::UnboundedSender<()>,
-    dash_refresh_tx: &mpsc::UnboundedSender<()>,
-    dash_all_enabled_tx: &watch::Sender<bool>,
-) {
-    let Some(s) = app.servers.get(idx).cloned() else {
-        return;
-    };
-    app.server_selected = idx;
-    app.server_all_selected = false;
-    app.active_server = Some(s.name.clone());
-    app.clear_all_marks();
-    app.action_inflight.clear();
-    app.image_action_inflight.clear();
-    app.volume_action_inflight.clear();
-    app.network_action_inflight.clear();
-    app.stack_update_inflight.clear();
-    app.stack_update_error.clear();
-    app.stack_update_containers.clear();
-
-    let runner = if s.target == "local" {
-        Runner::Local
-    } else {
-        Runner::Ssh(Ssh {
-            target: s.target.clone(),
-            identity: s.identity.clone(),
-            port: s.port,
-        })
-    };
-    app.current_target = runner.key();
-    app.clear_conn_error();
-    app.start_loading(true);
-    app.dashboard.loading = true;
-    app.dashboard.error = None;
-    app.dashboard.snap = None;
-    app.reset_dashboard_image();
-    app.dashboard.last_disk_count = app
-        .dashboard
-        .snap
-        .as_ref()
-        .map(|s| s.disks.len())
-        .unwrap_or(0);
-    let _ = conn_tx.send(Connection {
-        runner,
-        docker: DockerCfg {
-            docker_cmd: s.docker_cmd,
-        },
-    });
-    let _ = dash_all_enabled_tx.send(false);
-
-    // Persist last_server only; no secrets stored.
-    app.persist_config();
-    let _ = refresh_tx.send(());
-    let _ = dash_refresh_tx.send(());
-
-    shell_set_main_view(app, ShellView::Dashboard);
-    shell_sidebar_select_item(app, ShellSidebarItem::Server(idx));
-}
-
-fn shell_switch_server_all(
-    app: &mut App,
-    dash_all_enabled_tx: &watch::Sender<bool>,
-    dash_all_refresh_tx: &mpsc::UnboundedSender<()>,
-) {
-    if app.servers.len() <= 1 {
-        return;
-    }
-    app.server_all_selected = true;
-    app.active_server = None;
-    app.current_target.clear();
-    app.clear_conn_error();
-    app.dashboard.loading = false;
-    let mut hosts: Vec<DashboardHostState> = Vec::new();
-    for s in &app.servers {
-        if let Some(existing) = app.dashboard_all.hosts.iter().find(|h| h.name == s.name) {
-            let mut h = existing.clone();
-            h.loading = true;
-            h.error = None;
-            hosts.push(h);
-        } else {
-            hosts.push(DashboardHostState {
-                name: s.name.clone(),
-                loading: true,
-                error: None,
-                snap: None,
-                latency_ms: None,
-            });
-        }
-    }
-    app.dashboard_all.hosts = hosts;
-    let _ = dash_all_enabled_tx.send(true);
-    let _ = dash_all_refresh_tx.send(());
-    shell_set_main_view(app, ShellView::Dashboard);
 }
 
 fn shell_refresh(
@@ -3758,7 +3622,7 @@ fn shell_execute_cmdline(
         let args: Vec<&str> = it.collect();
         let name = args.iter().copied().find(|v| !v.starts_with('-'));
         if sub.is_empty() {
-            shell_set_main_view(app, ShellView::Stacks);
+            app.set_main_view(ShellView::Stacks);
             shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Stacks));
             return;
         }
@@ -4143,62 +4007,15 @@ fn shell_execute_cmdline(
 
     if cmd == "dashboard" {
         let args: Vec<&str> = it.collect();
-        let mode = args.first().copied().unwrap_or("toggle");
-        match mode {
-            "all" => {
-                shell_switch_server_all(app, dash_all_enabled_tx, dash_all_refresh_tx);
-            }
-            "single" | "server" => {
-                if !app.servers.is_empty() {
-                    let idx = app.server_selected.min(app.servers.len().saturating_sub(1));
-                    shell_switch_server(
-                        app,
-                        idx,
-                        conn_tx,
-                        refresh_tx,
-                        dash_refresh_tx,
-                        dash_all_enabled_tx,
-                    );
-                }
-            }
-            "simulate-error" => {
-                let target = args.get(1).copied();
-                let mut applied = false;
-                for host in &mut app.dashboard_all.hosts {
-                    if target.is_none() || target == Some(host.name.as_str()) {
-                        host.error = Some("simulated error".to_string());
-                        host.loading = false;
-                        applied = true;
-                        if target.is_some() {
-                            break;
-                        }
-                    }
-                }
-                if !applied {
-                    app.set_warn("dashboard simulate-error: no matching host");
-                }
-            }
-            "toggle" => {
-                if app.server_all_selected {
-                    if !app.servers.is_empty() {
-                        let idx = app.server_selected.min(app.servers.len().saturating_sub(1));
-                        shell_switch_server(
-                            app,
-                            idx,
-                            conn_tx,
-                            refresh_tx,
-                            dash_refresh_tx,
-                            dash_all_enabled_tx,
-                        );
-                    }
-                } else {
-                    shell_switch_server_all(app, dash_all_enabled_tx, dash_all_refresh_tx);
-                }
-            }
-            _ => {
-                app.set_warn("usage: :dashboard (all|single|toggle|simulate-error [name])");
-            }
-        }
+        let _ = commands::dashboard_cmd::handle_dashboard(
+            app,
+            &args,
+            conn_tx,
+            refresh_tx,
+            dash_refresh_tx,
+            dash_all_refresh_tx,
+            dash_all_enabled_tx,
+        );
         return;
     }
 
@@ -5337,8 +5154,7 @@ fn handle_shell_key(
                     ch = ch.to_ascii_uppercase();
                 }
                 if ch == hint {
-                    shell_switch_server(
-                        app,
+                    app.switch_server(
                         i,
                         conn_tx,
                         refresh_tx,
@@ -5363,7 +5179,7 @@ fn handle_shell_key(
                     ShellView::Registries,
                 ] {
                     if ch_lc == shell_module_shortcut(v) {
-                        shell_set_main_view(app, v);
+                        app.set_main_view(v);
                         shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
                         return;
                     }
@@ -5384,8 +5200,7 @@ fn handle_shell_key(
                 };
                 match it {
                     ShellSidebarItem::Server(i) => {
-                        shell_switch_server(
-                            app,
+                        app.switch_server(
                             i,
                             conn_tx,
                             refresh_tx,
@@ -5397,7 +5212,7 @@ fn handle_shell_key(
                         ShellView::Inspect => shell_enter_inspect(app, inspect_req_tx),
                         ShellView::Logs => shell_enter_logs(app, logs_req_tx),
                         _ => {
-                            shell_set_main_view(app, v);
+                            app.set_main_view(v);
                             shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
                         }
                     },

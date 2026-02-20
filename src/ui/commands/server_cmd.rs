@@ -3,7 +3,7 @@
 use super::super::{
     App, Connection, ShellFocus, ShellInteractive, ShellView, build_server_shortcuts,
     ensure_unique_server_name, find_server_by_name, parse_kv_args, shell_begin_confirm,
-    shell_escape_sh_arg, shell_switch_server,
+    shell_escape_sh_arg,
 };
 use crate::config::ServerEntry;
 use std::fmt::Write as _;
@@ -105,8 +105,7 @@ pub fn handle_server(
                 app.set_warn(format!("unknown server: {name}"));
                 return true;
             };
-            shell_switch_server(
-                app,
+            app.switch_server(
                 idx,
                 conn_tx,
                 refresh_tx,
@@ -135,8 +134,7 @@ pub fn handle_server(
                 app.active_server = None;
                 app.server_selected = 0;
                 if !app.servers.is_empty() {
-                    shell_switch_server(
-                        app,
+                    app.switch_server(
                         0,
                         conn_tx,
                         refresh_tx,

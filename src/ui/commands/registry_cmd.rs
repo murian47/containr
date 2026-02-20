@@ -2,14 +2,14 @@
 
 use super::super::{
     ActionRequest, App, ShellSidebarItem, ShellView, expand_user_path, ensure_age_identity,
-    encrypt_age_secret, shell_begin_confirm, shell_set_main_view, shell_sidebar_select_item,
+    encrypt_age_secret, shell_begin_confirm, shell_sidebar_select_item,
 };
 use crate::config::{RegistryAuth, RegistryEntry};
 use std::fs;
 use tokio::sync::mpsc;
 
 fn focus_registries(app: &mut App) {
-    shell_set_main_view(app, ShellView::Registries);
+    app.set_main_view(ShellView::Registries);
     shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Registries));
 }
 

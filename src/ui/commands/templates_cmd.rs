@@ -2,7 +2,7 @@
 
 use super::super::{
     ActionRequest, App, ShellSidebarItem, ShellView, TemplatesKind, shell_begin_confirm,
-    shell_set_main_view, shell_sidebar_select_item,
+    shell_sidebar_select_item,
 };
 use tokio::sync::mpsc;
 
@@ -49,7 +49,7 @@ fn set_templates_kind(app: &mut App, v: &str) -> bool {
     } else {
         app.refresh_net_templates();
     }
-    shell_set_main_view(app, ShellView::Templates);
+    app.set_main_view(ShellView::Templates);
     shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
     true
 }
@@ -95,7 +95,7 @@ pub fn handle_template(
         }
         "toggle" => set_templates_kind(app, "toggle"),
         "edit" => {
-            shell_set_main_view(app, ShellView::Templates);
+            app.set_main_view(ShellView::Templates);
             shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
             super::super::shell_edit_selected_template(app);
             true
@@ -121,7 +121,7 @@ pub fn handle_template(
                         {
                             app.templates_state.templates_selected = idx;
                         }
-                        shell_set_main_view(app, ShellView::Templates);
+                        app.set_main_view(ShellView::Templates);
                         shell_sidebar_select_item(
                             app,
                             ShellSidebarItem::Module(ShellView::Templates),
@@ -141,7 +141,7 @@ pub fn handle_template(
                         {
                             app.templates_state.net_templates_selected = idx;
                         }
-                        shell_set_main_view(app, ShellView::Templates);
+                        app.set_main_view(ShellView::Templates);
                         shell_sidebar_select_item(
                             app,
                             ShellSidebarItem::Module(ShellView::Templates),
@@ -374,7 +374,7 @@ pub fn handle_template(
                     Ok(()) => {
                         app.refresh_templates();
                         app.set_info(format!("deleted template {name}"));
-                        shell_set_main_view(app, ShellView::Templates);
+                        app.set_main_view(ShellView::Templates);
                         shell_sidebar_select_item(
                             app,
                             ShellSidebarItem::Module(ShellView::Templates),
@@ -392,7 +392,7 @@ pub fn handle_template(
                     Ok(()) => {
                         app.refresh_net_templates();
                         app.set_info(format!("deleted network template {name}"));
-                        shell_set_main_view(app, ShellView::Templates);
+                        app.set_main_view(ShellView::Templates);
                         shell_sidebar_select_item(
                             app,
                             ShellSidebarItem::Module(ShellView::Templates),
@@ -427,7 +427,7 @@ pub fn handle_nettemplate(
     match sub {
         "edit" => {
             app.templates_state.kind = TemplatesKind::Networks;
-            shell_set_main_view(app, ShellView::Templates);
+            app.set_main_view(ShellView::Templates);
             shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
             super::super::shell_edit_selected_net_template(app);
             true
@@ -465,7 +465,7 @@ pub fn handle_nettemplate(
                         app.templates_state.net_templates_selected = idx;
                     }
                     app.templates_state.kind = TemplatesKind::Networks;
-                    shell_set_main_view(app, ShellView::Templates);
+                    app.set_main_view(ShellView::Templates);
                     shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
                     super::super::shell_edit_selected_net_template(app);
                 }
@@ -503,7 +503,7 @@ pub fn handle_nettemplate(
                     app.refresh_net_templates();
                     app.set_info(format!("deleted network template {name}"));
                     app.templates_state.kind = TemplatesKind::Networks;
-                    shell_set_main_view(app, ShellView::Templates);
+                    app.set_main_view(ShellView::Templates);
                     shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
                     super::super::maybe_autocommit_templates(
                         app,
