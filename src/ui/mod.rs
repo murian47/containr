@@ -2339,6 +2339,70 @@ impl App {
         };
     }
 
+    fn back_from_full_view(&mut self) {
+        if matches!(
+            self.shell_view,
+            ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages
+        ) {
+            // Full-screen views should never keep command-line mode active in the background.
+            self.shell_cmdline.mode = false;
+            self.shell_cmdline.confirm = None;
+            let fallback = if self.shell_last_main_view == ShellView::Messages {
+                ShellView::Dashboard
+            } else {
+                self.shell_last_main_view
+            };
+            self.shell_view = if self.shell_view == ShellView::Help {
+                if self.shell_help.return_view == ShellView::Help {
+                    fallback
+                } else {
+                    self.shell_help.return_view
+                }
+            } else if self.shell_view == ShellView::Messages {
+                if self.shell_msgs.return_view == ShellView::Messages {
+                    fallback
+                } else {
+                    self.shell_msgs.return_view
+                }
+            } else {
+                fallback
+            };
+            self.shell_focus = ShellFocus::List;
+            shell_sidebar_select_item(self, ShellSidebarItem::Module(self.shell_view));
+        }
+    }
+
+    fn refresh_now(
+        &mut self,
+        refresh_tx: &mpsc::UnboundedSender<()>,
+        dash_refresh_tx: &mpsc::UnboundedSender<()>,
+        dash_all_refresh_tx: &mpsc::UnboundedSender<()>,
+        refresh_pause_tx: &watch::Sender<bool>,
+    ) {
+        if self.server_all_selected {
+            for host in &mut self.dashboard_all.hosts {
+                host.loading = true;
+            }
+            let _ = dash_all_refresh_tx.send(());
+            return;
+        }
+        if self.servers.is_empty() && self.current_target.trim().is_empty() {
+            self.set_warn("no server configured");
+            return;
+        }
+        if self.refresh_paused {
+            self.refresh_paused = false;
+            self.refresh_pause_reason = None;
+            let _ = refresh_pause_tx.send(false);
+        }
+        if self.shell_view == ShellView::Dashboard {
+            self.dashboard.loading = true;
+            let _ = dash_refresh_tx.send(());
+        } else {
+            let _ = refresh_tx.send(());
+        }
+    }
+
     fn first_container_id(&mut self) -> Option<String> {
         if let Some(c) = self.selected_container() {
             return Some(c.id.clone());
@@ -7639,7 +7703,7 @@ async fn perform_net_template_deploy(
     Ok(out)
 }
 
-fn current_runner_from_app(app: &App) -> Runner {
+pub(in crate::ui) fn current_runner_from_app(app: &App) -> Runner {
     if let Some(name) = &app.active_server {
         if let Some(s) = app.servers.iter().find(|x| &x.name == name) {
             if s.target == "local" {
@@ -7663,7 +7727,7 @@ fn current_runner_from_app(app: &App) -> Runner {
     }
 }
 
-fn current_docker_cmd_from_app(app: &App) -> DockerCmd {
+pub(in crate::ui) fn current_docker_cmd_from_app(app: &App) -> DockerCmd {
     if let Some(name) = &app.active_server {
         if let Some(s) = app.servers.iter().find(|x| &x.name == name) {
             return s.docker_cmd.clone();
