@@ -11,7 +11,9 @@
 //! - UI code should use semantic theme roles (`theme::ThemeSpec`) instead of hard-coded colors.
 
 mod actions;
+mod app_view;
 mod commands;
+mod helpers;
 mod render;
 mod views;
 mod state;
@@ -39,6 +41,10 @@ use render::inspect::{
 use render::status::action_status_prefix;
 use render::status::action_error_label;
 pub(in crate::ui) use actions::{service_name_from_label_list, stack_compose_dirs, template_name_from_stack};
+pub(in crate::ui) use helpers::{
+    deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, extract_template_id,
+    shell_single_quote,
+};
 use render::highlight::{
     highlight_log_line_literal, highlight_log_line_regex, json_highlight_line, split_yaml_comment,
     yaml_highlight_line,
@@ -2311,159 +2317,17 @@ impl App {
         }
     }
 
-    fn set_main_view(&mut self, view: ShellView) {
-        self.shell_view = view;
-        if !matches!(
-            view,
-            ShellView::Inspect | ShellView::Logs | ShellView::Help | ShellView::Messages
-        ) {
-            self.shell_last_main_view = view;
-        }
-        if view == ShellView::Messages {
-            self.mark_messages_seen();
-        }
-        self.shell_focus = ShellFocus::List;
-        self.active_view = match view {
-            ShellView::Dashboard => self.active_view,
-            ShellView::Stacks => ActiveView::Stacks,
-            ShellView::Containers => ActiveView::Containers,
-            ShellView::Images => ActiveView::Images,
-            ShellView::Volumes => ActiveView::Volumes,
-            ShellView::Networks => ActiveView::Networks,
-            ShellView::Templates => self.active_view,
-            ShellView::Registries => self.active_view,
-            ShellView::Inspect
-            | ShellView::Logs
-            | ShellView::Help
-            | ShellView::Messages
-            | ShellView::ThemeSelector => self.active_view,
-        };
-    }
 
-    fn back_from_full_view(&mut self) {
-        if matches!(
-            self.shell_view,
-            ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages
-        ) {
-            // Full-screen views should never keep command-line mode active in the background.
-            self.shell_cmdline.mode = false;
-            self.shell_cmdline.confirm = None;
-            let fallback = if self.shell_last_main_view == ShellView::Messages {
-                ShellView::Dashboard
-            } else {
-                self.shell_last_main_view
-            };
-            self.shell_view = if self.shell_view == ShellView::Help {
-                if self.shell_help.return_view == ShellView::Help {
-                    fallback
-                } else {
-                    self.shell_help.return_view
-                }
-            } else if self.shell_view == ShellView::Messages {
-                if self.shell_msgs.return_view == ShellView::Messages {
-                    fallback
-                } else {
-                    self.shell_msgs.return_view
-                }
-            } else {
-                fallback
-            };
-            self.shell_focus = ShellFocus::List;
-            shell_sidebar_select_item(self, ShellSidebarItem::Module(self.shell_view));
-        }
-    }
 
-    fn refresh_now(
-        &mut self,
-        refresh_tx: &mpsc::UnboundedSender<()>,
-        dash_refresh_tx: &mpsc::UnboundedSender<()>,
-        dash_all_refresh_tx: &mpsc::UnboundedSender<()>,
-        refresh_pause_tx: &watch::Sender<bool>,
-    ) {
-        if self.server_all_selected {
-            for host in &mut self.dashboard_all.hosts {
-                host.loading = true;
-            }
-            let _ = dash_all_refresh_tx.send(());
-            return;
-        }
-        if self.servers.is_empty() && self.current_target.trim().is_empty() {
-            self.set_warn("no server configured");
-            return;
-        }
-        if self.refresh_paused {
-            self.refresh_paused = false;
-            self.refresh_pause_reason = None;
-            let _ = refresh_pause_tx.send(false);
-        }
-        if self.shell_view == ShellView::Dashboard {
-            self.dashboard.loading = true;
-            let _ = dash_refresh_tx.send(());
-        } else {
-            let _ = refresh_tx.send(());
-        }
-    }
 
-    fn first_container_id(&mut self) -> Option<String> {
-        if let Some(c) = self.selected_container() {
-            return Some(c.id.clone());
-        }
-        if self.active_view != ActiveView::Containers {
-            self.active_view = ActiveView::Containers;
-        }
-        if self.containers.is_empty() {
-            return None;
-        }
-        if self.list_mode == ListMode::Tree {
-            self.ensure_view();
-            if let Some((idx, ViewEntry::Container { id, .. })) = self
-                .view
-                .iter()
-                .enumerate()
-                .find(|(_, e)| matches!(e, ViewEntry::Container { .. }))
-            {
-                self.selected = idx;
-                return Some(id.clone());
-            }
-        }
-        self.selected = self.selected.min(self.containers.len().saturating_sub(1));
-        Some(self.containers.get(self.selected)?.id.clone())
-    }
 
-    fn enter_logs(&mut self, logs_req_tx: &mpsc::UnboundedSender<(String, usize)>) {
-        // Logs are container-only; always use the containers selection.
-        self.set_main_view(ShellView::Containers);
-        self.shell_view = ShellView::Logs;
-        self.shell_focus = ShellFocus::List;
 
-        let Some(id) = self.first_container_id() else {
-            self.logs.loading = false;
-            self.logs.error = Some("no container selected".to_string());
-            self.logs.text = None;
-            return;
-        };
-        self.open_logs_state(id.clone());
-        let _ = logs_req_tx.send((id, self.logs.tail.max(1)));
-    }
 
-    fn enter_inspect(&mut self, inspect_req_tx: &mpsc::UnboundedSender<InspectTarget>) {
-        // Inspect follows the current main view selection.
-        if matches!(self.shell_view, ShellView::Logs | ShellView::Inspect) {
-            self.shell_view = self.shell_last_main_view;
-        }
-        self.shell_view = ShellView::Inspect;
-        self.shell_focus = ShellFocus::List;
 
-        let Some(target) = self.selected_inspect_target() else {
-            self.inspect.loading = false;
-            self.inspect.error = Some("nothing selected".to_string());
-            self.inspect.value = None;
-            self.inspect.lines.clear();
-            return;
-        };
-        self.open_inspect_state(target.clone());
-        let _ = inspect_req_tx.send(target);
-    }
+
+
+
+
 
     fn switch_server(
         &mut self,
@@ -2832,49 +2696,9 @@ impl App {
         }
     }
 
-    fn open_theme_selector(&mut self) {
-        let names = match theme::list_theme_names(&self.config_path) {
-            Ok(mut list) => {
-                if !list.iter().any(|n| n == "default") {
-                    list.insert(0, "default".to_string());
-                }
-                list
-            }
-            Err(e) => {
-                self.set_error(format!("theme list failed: {e:#}"));
-                vec![self.theme_name.clone()]
-            }
-        };
-        let selected = names
-            .iter()
-            .position(|n| n == &self.theme_name)
-            .unwrap_or(0);
 
-        self.theme_selector.names = names;
-        self.theme_selector.selected = selected;
-        self.theme_selector.scroll = 0;
-        self.theme_selector.page_size = 0;
-        self.theme_selector.center_on_open = true;
-        let return_view = if self.shell_view == ShellView::ThemeSelector {
-            self.theme_selector.return_view
-        } else {
-            self.shell_view
-        };
-        self.theme_selector.return_view = return_view;
-        self.theme_selector.base_theme_name = self.theme_name.clone();
-        self.theme_selector.base_theme = self.theme.clone();
-        self.theme_selector.error = None;
-        self.theme_selector.search_mode = false;
-        self.theme_selector.search_input.clear();
-        self.theme_selector.search_cursor = 0;
-        self.theme_selector_update_preview();
-        self.theme_selector_adjust_scroll(true);
 
-        self.shell_cmdline.mode = false;
-        self.shell_cmdline.confirm = None;
-        self.shell_focus = ShellFocus::Sidebar;
-        self.shell_view = ShellView::ThemeSelector;
-    }
+
 
     fn theme_selector_selected_name(&self) -> Option<&str> {
         self.theme_selector
@@ -7229,66 +7053,7 @@ fn run_interactive_local_command(cmd: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(in crate::ui) fn shell_single_quote(s: &str) -> String {
-    // Produce a POSIX-shell-safe single-quoted string literal.
-    // Example: abc'd -> 'abc'"'"'d'
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for ch in s.chars() {
-        if ch == '\'' {
-            out.push_str("'\"'\"'");
-        } else {
-            out.push(ch);
-        }
-    }
-    out.push('\'');
-    out
-}
-
-pub(in crate::ui) fn extract_template_id(path: &PathBuf) -> Option<String> {
-    // Heuristic: find a "# containr_template_id: ..." line near the top of compose.yaml.
-    let data = fs::read_to_string(path).ok()?;
-    for line in data.lines().take(40) {
-        let l = line.trim_start();
-        if !l.starts_with('#') {
-            if !l.is_empty() {
-                break;
-            }
-            continue;
-        }
-        let body = l.trim_start_matches('#').trim_start();
-        let low = body.to_ascii_lowercase();
-        if !low.starts_with("containr_template_id:") {
-            continue;
-        }
-        let value = body["containr_template_id:".len()..].trim();
-        if !value.is_empty() {
-            return Some(value.to_string());
-        }
-    }
-    None
-}
-
-pub(in crate::ui) fn ensure_template_id(path: &PathBuf) -> anyhow::Result<String> {
-    if let Some(existing) = extract_template_id(path) {
-        return Ok(existing);
-    }
-    let id = uuid::Uuid::new_v4().to_string();
-    let data = fs::read_to_string(path).unwrap_or_default();
-    let mut out = String::new();
-    out.push_str(&format!("# containr_template_id: {id}\n"));
-    out.push_str(&data);
-    fs::write(path, out)?;
-    Ok(id)
-}
-
-pub(in crate::ui) fn deploy_remote_dir_for(name: &str) -> String {
-    format!(".config/containr/apps/{name}")
-}
-
-pub(in crate::ui) fn deploy_remote_net_dir_for(name: &str) -> String {
-    format!(".config/containr/networks/{name}")
-}
+// moved to ui/helpers.rs
 
 fn shell_quote_with_home(s: &str) -> String {
     if s.starts_with("$HOME/") {
