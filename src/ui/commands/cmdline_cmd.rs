@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 
-fn parse_cmdline_tokens(input: &str) -> Result<Vec<String>, String> {
+pub(crate) fn parse_cmdline_tokens(input: &str) -> Result<Vec<String>, String> {
     crate::shell_parse::parse_shell_tokens(input)
 }
 

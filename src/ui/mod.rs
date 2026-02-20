@@ -14,6 +14,7 @@ mod actions;
 mod app_view;
 mod commands;
 mod helpers;
+mod templates_ops;
 mod render;
 mod views;
 mod state;
@@ -26,7 +27,7 @@ use render::sidebar::{
     draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
 use render::format::{dot_spinner, loading_spinner, spinner_char, split_at_chars, truncate_start};
-use crate::domain::image_refs::{image_registry_for_ref, normalize_image_ref};
+use crate::domain::image_refs::image_registry_for_ref;
 use crate::ui::state::image_updates::{
     resolve_image_update_state, resolve_stack_update_state, is_rate_limit_error, ImageUpdateView,
 };
@@ -45,8 +46,13 @@ pub(in crate::ui) use helpers::{
     deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, extract_template_id,
     shell_single_quote,
 };
+pub(in crate::ui) use templates_ops::{
+    create_net_template, create_template, delete_net_template, delete_template, export_net_template,
+    export_stack_template, extract_net_template_description, images_from_compose,
+};
+pub(crate) use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
 use render::highlight::{
-    highlight_log_line_literal, highlight_log_line_regex, json_highlight_line, split_yaml_comment,
+    highlight_log_line_literal, highlight_log_line_regex, json_highlight_line,
     yaml_highlight_line,
 };
 use render::utils::{
@@ -97,7 +103,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{HashMap, HashSet},
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
@@ -247,7 +253,6 @@ struct ThemeSelectorState {
     center_on_open: bool,
     return_view: ShellView,
     base_theme_name: String,
-    base_theme: theme::ThemeSpec,
     preview_theme: theme::ThemeSpec,
     error: Option<String>,
     search_mode: bool,
@@ -2029,7 +2034,6 @@ impl App {
                 center_on_open: false,
                 return_view: ShellView::Dashboard,
                 base_theme_name: theme_name_clone,
-                base_theme: theme_clone.clone(),
                 preview_theme: theme_clone,
                 error: None,
                 search_mode: false,
