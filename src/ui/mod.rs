@@ -51,6 +51,7 @@ pub(in crate::ui) use templates_ops::{
     export_net_template, export_stack_template, extract_net_template_description,
     extract_template_description, images_from_compose, maybe_autocommit_templates,
 };
+#[cfg(test)]
 pub(crate) use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
 use render::highlight::{
     highlight_log_line_literal, highlight_log_line_regex, json_highlight_line,
