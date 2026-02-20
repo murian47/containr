@@ -98,6 +98,7 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::sync::Semaphore;
 use tokio::sync::watch;
+use tokio::task::JoinSet;
 use age::Decryptor;
 use age::Encryptor;
 use age::armor::{ArmoredWriter, Format};
@@ -1289,11 +1290,13 @@ struct App {
     servers: Vec<ServerEntry>,
     active_server: Option<String>,
     server_selected: usize,
+    server_all_selected: bool,
     config_path: std::path::PathBuf,
     current_target: String,
 
     logs: LogsState,
     dashboard: DashboardState,
+    dashboard_all: DashboardAllState,
     dashboard_image: Option<DashboardImageState>,
 
     ip_cache: HashMap<String, (String, Instant)>,
@@ -1843,6 +1846,18 @@ impl App {
         });
         let theme_name_clone = theme_name.clone();
         let theme_clone = theme.clone();
+        let dashboard_all = DashboardAllState {
+            hosts: servers
+                .iter()
+                .map(|s| DashboardHostState {
+                    name: s.name.clone(),
+                    loading: false,
+                    error: None,
+                    snap: None,
+                    latency_ms: None,
+                })
+                .collect(),
+        };
         let mut app = Self {
             containers: Vec::new(),
             images: Vec::new(),
@@ -1919,6 +1934,7 @@ impl App {
             servers,
             active_server,
             server_selected,
+            server_all_selected: false,
             config_path,
             current_target: String::new(),
 
@@ -1952,6 +1968,7 @@ impl App {
                 suppress_image_frames: 0,
                 ..DashboardState::default()
             },
+            dashboard_all,
             dashboard_image: if kitty_graphics {
                 dashboard_picker.map(|p| init_dashboard_image(p, &theme))
             } else {
@@ -2093,6 +2110,11 @@ impl App {
             network_details_id: None,
         };
         app.shell_server_shortcuts = build_server_shortcuts(&app.servers);
+        if app.servers.len() > 1 {
+            app.shell_sidebar_selected = app.server_selected.saturating_add(1);
+        } else {
+            app.shell_sidebar_selected = app.server_selected;
+        }
         app.rebuild_keymap();
         if let Some(mode) = app.get_view_split_mode(app.shell_view) {
             app.shell_split_mode = mode;
@@ -2283,6 +2305,8 @@ impl App {
     fn reset_dashboard_image(&mut self) {
         if let Some(state) = &mut self.dashboard_image {
             apply_dashboard_theme(state, &self.theme);
+            state.protocol = None;
+            state.last_key = None;
         }
     }
 
@@ -4006,6 +4030,8 @@ struct DashboardSnapshot {
     arch: String,
     uptime: String,
     engine: String,
+    containers_running: u32,
+    containers_total: u32,
     cpu_cores: u32,
     load1: f32,
     load5: f32,
@@ -4026,6 +4052,20 @@ struct DashboardState {
     snap: Option<DashboardSnapshot>,
     last_disk_count: usize,
     suppress_image_frames: u8,
+}
+
+#[derive(Clone, Debug)]
+struct DashboardHostState {
+    name: String,
+    loading: bool,
+    error: Option<String>,
+    snap: Option<DashboardSnapshot>,
+    latency_ms: Option<u128>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct DashboardAllState {
+    hosts: Vec<DashboardHostState>,
 }
 
 impl Default for DashboardState {
@@ -4195,6 +4235,7 @@ fn dashboard_command(docker_cmd: &DockerCmd) -> String {
     const DISK: &str = "__CONTAINR_DASH_DISK__";
     const NICS: &str = "__CONTAINR_DASH_NICS__";
     const ENGINE: &str = "__CONTAINR_DASH_ENGINE__";
+    const CONTAINERS: &str = "__CONTAINR_DASH_CONTAINERS__";
 
     let docker_fmt = "{{{{.Server.Version}}}}|{{{{.Server.Os}}}}|{{{{.Server.Arch}}}}|{{{{.Server.ApiVersion}}}}";
     let dc = docker_cmd.to_shell();
@@ -4218,7 +4259,8 @@ fn dashboard_command(docker_cmd: &DockerCmd) -> String {
              ip -o -4 addr show dev \"$iface\" 2>/dev/null | awk '{{print $2, $4}}'; \
            done \
          ); \
-         echo {ENGINE}; ( {dc} version --format '{docker_fmt}' 2>/dev/null || {dc} --version 2>/dev/null || true )",
+         echo {ENGINE}; ( {dc} version --format '{docker_fmt}' 2>/dev/null || {dc} --version 2>/dev/null || true ); \
+         echo {CONTAINERS}; ( {dc} ps -q 2>/dev/null | wc -l | tr -d ' ' ); ( {dc} ps -a -q 2>/dev/null | wc -l | tr -d ' ' )",
         OS = OS,
         KERNEL = KERNEL,
         ARCH = ARCH,
@@ -4229,6 +4271,7 @@ fn dashboard_command(docker_cmd: &DockerCmd) -> String {
         DISK = DISK,
         NICS = NICS,
         ENGINE = ENGINE,
+        CONTAINERS = CONTAINERS,
         dc = dc,
         docker_fmt = docker_fmt,
     )
@@ -4265,6 +4308,7 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
     const DISK: &str = "__CONTAINR_DASH_DISK__";
     const NICS: &str = "__CONTAINR_DASH_NICS__";
     const ENGINE: &str = "__CONTAINR_DASH_ENGINE__";
+    const CONTAINERS: &str = "__CONTAINR_DASH_CONTAINERS__";
 
     let mut cur: Option<&'static str> = None;
     let mut sec: HashMap<&'static str, Vec<String>> = HashMap::new();
@@ -4281,11 +4325,12 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
             DISK => Some(DISK),
             NICS => Some(NICS),
             ENGINE => Some(ENGINE),
+            CONTAINERS => Some(CONTAINERS),
             _ => cur,
         };
         if matches!(
             t.trim(),
-            OS | KERNEL | ARCH | UPTIME | CORES | LOAD | MEM | DISK | NICS | ENGINE
+            OS | KERNEL | ARCH | UPTIME | CORES | LOAD | MEM | DISK | NICS | ENGINE | CONTAINERS
         ) {
             if let Some(k) = cur {
                 sec.entry(k).or_default();
@@ -4401,6 +4446,40 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
     let engine_raw = first(ENGINE);
     let engine = engine_raw.trim().to_string();
 
+    let containers_raw = first(CONTAINERS);
+    let mut containers_running = 0u32;
+    let mut containers_total = 0u32;
+    if let Some(lines) = sec.get(CONTAINERS) {
+        let mut nums: Vec<u32> = Vec::new();
+        for l in lines {
+            let t = l.trim();
+            if t.is_empty() {
+                continue;
+            }
+            if let Ok(v) = t.parse::<u32>() {
+                nums.push(v);
+            } else if t.contains('/') {
+                let parts: Vec<&str> = t.split('/').collect();
+                if parts.len() >= 2 {
+                    containers_running = parts[0].trim().parse::<u32>().unwrap_or(0);
+                    containers_total = parts[1].trim().parse::<u32>().unwrap_or(0);
+                    nums.clear();
+                    break;
+                }
+            }
+        }
+        if nums.len() >= 2 {
+            containers_running = nums[0];
+            containers_total = nums[1];
+        }
+    } else if containers_raw.contains('/') {
+        let parts: Vec<&str> = containers_raw.split('/').collect();
+        if parts.len() >= 2 {
+            containers_running = parts[0].trim().parse::<u32>().unwrap_or(0);
+            containers_total = parts[1].trim().parse::<u32>().unwrap_or(0);
+        }
+    }
+
     let mut nics: Vec<NicEntry> = Vec::new();
     if let Some(lines) = sec.get(NICS) {
         for line in lines {
@@ -4430,6 +4509,8 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
         arch,
         uptime,
         engine,
+        containers_running,
+        containers_total,
         cpu_cores,
         load1,
         load5,
@@ -5227,6 +5308,9 @@ pub async fn run_tui(
     let (dash_refresh_tx, mut dash_refresh_rx) = mpsc::unbounded_channel::<()>();
     let (dash_res_tx, mut dash_res_rx) =
         mpsc::unbounded_channel::<(String, anyhow::Result<DashboardSnapshot>)>();
+    let (dash_all_refresh_tx, mut dash_all_refresh_rx) = mpsc::unbounded_channel::<()>();
+    let (dash_all_res_tx, mut dash_all_res_rx) =
+        mpsc::unbounded_channel::<(String, anyhow::Result<DashboardSnapshot>, u128)>();
 
     let (ip_req_tx, mut ip_req_rx) = mpsc::unbounded_channel::<Vec<String>>();
     let (ip_res_tx, mut ip_res_rx) =
@@ -5240,6 +5324,8 @@ pub async fn run_tui(
         runner: runner.clone(),
         docker: cfg.clone(),
     });
+    let (dash_all_enabled_tx, dash_all_enabled_rx) = watch::channel(false);
+    let (_dash_all_servers_tx, dash_all_servers_rx) = watch::channel(app.servers.clone());
 
     let (refresh_interval_tx, refresh_interval_rx) =
         watch::channel(Duration::from_secs(app.refresh_secs.max(1)));
@@ -5452,6 +5538,107 @@ pub async fn run_tui(
             };
 
             let _ = dash_res_tx.send((key, res));
+        }
+    });
+
+    let dash_all_refresh_interval_rx = refresh_interval_tx.subscribe();
+    let dash_all_pause_rx = refresh_pause_tx.subscribe();
+    let dash_all_enabled_rx = dash_all_enabled_rx.clone();
+    let _dash_all_task = tokio::spawn(async move {
+        let mut dash_all_refresh_interval_rx = dash_all_refresh_interval_rx;
+        let mut pause_rx = dash_all_pause_rx;
+        let mut enabled_rx = dash_all_enabled_rx;
+        let mut servers_rx = dash_all_servers_rx;
+        let mut interval = tokio::time::interval(*dash_all_refresh_interval_rx.borrow());
+        loop {
+            tokio::select! {
+              _ = interval.tick() => {}
+              maybe = dash_all_refresh_rx.recv() => {
+                if maybe.is_none() {
+                  break;
+                }
+              }
+              changed = dash_all_refresh_interval_rx.changed() => {
+                if changed.is_err() {
+                  break;
+                }
+                interval = tokio::time::interval(*dash_all_refresh_interval_rx.borrow());
+              }
+              changed = pause_rx.changed() => {
+                if changed.is_err() {
+                  break;
+                }
+              }
+              changed = enabled_rx.changed() => {
+                if changed.is_err() {
+                  break;
+                }
+              }
+              changed = servers_rx.changed() => {
+                if changed.is_err() {
+                  break;
+                }
+              }
+            }
+
+            if *pause_rx.borrow() {
+                continue;
+            }
+            if !*enabled_rx.borrow() {
+                continue;
+            }
+
+            let servers = servers_rx.borrow().clone();
+            let concurrency = 6usize;
+            let sem = Arc::new(Semaphore::new(concurrency));
+            let mut set = JoinSet::new();
+            for s in servers {
+                if s.docker_cmd.is_empty() {
+                    continue;
+                }
+                let sem = sem.clone();
+                let tx = dash_all_res_tx.clone();
+                set.spawn(async move {
+                    let _permit = sem.acquire().await;
+                    let runner = if s.target == "local" {
+                        Runner::Local
+                    } else {
+                        Runner::Ssh(Ssh {
+                            target: s.target.clone(),
+                            identity: s.identity.clone(),
+                            port: s.port,
+                        })
+                    };
+                    let cmd = dashboard_command(&s.docker_cmd);
+                    let start = Instant::now();
+                    let child = match runner.spawn_killable(&cmd) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            let _ = tx.send((s.name.clone(), Err(e), 0));
+                            return;
+                        }
+                    };
+                    let output = child.wait_with_output().await;
+                    let latency_ms = start.elapsed().as_millis();
+                    let res = match output {
+                        Ok(out) => {
+                            if out.status.success() {
+                                let s = String::from_utf8_lossy(&out.stdout).to_string();
+                                parse_dashboard_output(&s)
+                            } else {
+                                let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                                Err(anyhow::anyhow!(
+                                    "ssh failed: {}",
+                                    if stderr.is_empty() { "<no stderr>" } else { &stderr }
+                                ))
+                            }
+                        }
+                        Err(e) => Err(anyhow::anyhow!("failed to run ssh: {}", e)),
+                    };
+                    let _ = tx.send((s.name.clone(), res, latency_ms));
+                });
+            }
+            while set.join_next().await.is_some() {}
         }
     });
 
@@ -5976,6 +6163,27 @@ pub async fn run_tui(
                         app.log_msg(MsgLevel::Warn, format!("dashboard failed: {msg}"));
                     }
                     app.dashboard.error = Some(msg);
+                }
+            }
+        }
+
+        while let Ok((name, res, latency_ms)) = dash_all_res_rx.try_recv() {
+            let host = app
+                .dashboard_all
+                .hosts
+                .iter_mut()
+                .find(|h| h.name == name);
+            if let Some(host) = host {
+                host.loading = false;
+                host.latency_ms = Some(latency_ms);
+                match res {
+                    Ok(snap) => {
+                        host.error = None;
+                        host.snap = Some(snap);
+                    }
+                    Err(e) => {
+                        host.error = Some(format!("{:#}", e));
+                    }
                 }
             }
         }
@@ -6621,6 +6829,8 @@ pub async fn run_tui(
                         &conn_tx,
                         &refresh_tx,
                         &dash_refresh_tx,
+                        &dash_all_refresh_tx,
+                        &dash_all_enabled_tx,
                         &refresh_interval_tx,
                         &refresh_pause_tx,
                         &image_update_limit_tx,
@@ -7275,6 +7485,9 @@ fn current_docker_cmd_from_app(app: &App) -> DockerCmd {
 }
 
 pub(in crate::ui) fn current_server_label(app: &App) -> String {
+    if app.server_all_selected {
+        return "All servers".to_string();
+    }
     if let Some(name) = app.active_server.as_deref() {
         return name.to_string();
     }

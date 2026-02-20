@@ -47,6 +47,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Global", ":refresh", "Trigger immediate refresh"));
     out.push(item(
         "Global",
+        ":dashboard (all|single|toggle)",
+        "Switch dashboard between all servers and single server",
+    ));
+    out.push(item(
+        "Global",
         ":sidebar (toggle|compact)",
         "Show/hide sidebar or compact it",
     ));

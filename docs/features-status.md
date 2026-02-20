@@ -12,6 +12,7 @@ This list reflects the current implementation and what is planned next.
 - Servers: list/use/add/remove, SSH shell (`:server shell`)
 - Views: Dashboard, Containers, Images, Volumes, Networks, Templates, Logs, Inspect, Registries, Stacks
 - List/details split (horizontal/vertical), per-view layout persisted
+- Dashboard: multi-server view via `:dashboard (all|single|toggle)`
 - Containers: start/stop/restart/rm/check, console, bulk selection
 - Stack tree view for containers
 - Logs viewer: search (regex/literal), highlight, save, line numbers, jump-to-line, copy

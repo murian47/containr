@@ -253,11 +253,13 @@ fn shell_switch_server(
     conn_tx: &watch::Sender<Connection>,
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_all_enabled_tx: &watch::Sender<bool>,
 ) {
     let Some(s) = app.servers.get(idx).cloned() else {
         return;
     };
     app.server_selected = idx;
+    app.server_all_selected = false;
     app.active_server = Some(s.name.clone());
     app.clear_all_marks();
     app.action_inflight.clear();
@@ -282,6 +284,8 @@ fn shell_switch_server(
     app.start_loading(true);
     app.dashboard.loading = true;
     app.dashboard.error = None;
+    app.dashboard.snap = None;
+    app.reset_dashboard_image();
     app.dashboard.last_disk_count = app
         .dashboard
         .snap
@@ -294,6 +298,7 @@ fn shell_switch_server(
             docker_cmd: s.docker_cmd,
         },
     });
+    let _ = dash_all_enabled_tx.send(false);
 
     // Persist last_server only; no secrets stored.
     app.persist_config();
@@ -304,12 +309,56 @@ fn shell_switch_server(
     shell_sidebar_select_item(app, ShellSidebarItem::Server(idx));
 }
 
+fn shell_switch_server_all(
+    app: &mut App,
+    dash_all_enabled_tx: &watch::Sender<bool>,
+    dash_all_refresh_tx: &mpsc::UnboundedSender<()>,
+) {
+    if app.servers.len() <= 1 {
+        return;
+    }
+    app.server_all_selected = true;
+    app.active_server = None;
+    app.current_target.clear();
+    app.clear_conn_error();
+    app.dashboard.loading = false;
+    let mut hosts: Vec<DashboardHostState> = Vec::new();
+    for s in &app.servers {
+        if let Some(existing) = app.dashboard_all.hosts.iter().find(|h| h.name == s.name) {
+            let mut h = existing.clone();
+            h.loading = true;
+            h.error = None;
+            hosts.push(h);
+        } else {
+            hosts.push(DashboardHostState {
+                name: s.name.clone(),
+                loading: true,
+                error: None,
+                snap: None,
+                latency_ms: None,
+            });
+        }
+    }
+    app.dashboard_all.hosts = hosts;
+    let _ = dash_all_enabled_tx.send(true);
+    let _ = dash_all_refresh_tx.send(());
+    shell_set_main_view(app, ShellView::Dashboard);
+}
+
 fn shell_refresh(
     app: &mut App,
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_all_refresh_tx: &mpsc::UnboundedSender<()>,
     refresh_pause_tx: &watch::Sender<bool>,
 ) {
+    if app.server_all_selected {
+        for host in &mut app.dashboard_all.hosts {
+            host.loading = true;
+        }
+        let _ = dash_all_refresh_tx.send(());
+        return;
+    }
     if app.servers.is_empty() && app.current_target.trim().is_empty() {
         app.set_warn("no server configured");
         return;
@@ -322,6 +371,8 @@ fn shell_refresh(
     }
     app.start_loading(true);
     app.dashboard.loading = true;
+    app.dashboard.snap = None;
+    app.reset_dashboard_image();
     app.dashboard.last_disk_count = app
         .dashboard
         .snap
@@ -524,7 +575,7 @@ impl App {
         if server.trim().is_empty() {
             return;
         }
-        let mut present: HashMap<String, Option<String>> = HashMap::new();
+        let mut present: HashMap<String, (Option<String>, Vec<String>)> = HashMap::new();
         for c in &self.containers {
             let Some(id) = template_id_from_labels(&c.labels) else {
                 continue;
@@ -533,11 +584,12 @@ impl App {
             present
                 .entry(id)
                 .and_modify(|slot| {
-                    if slot.is_none() && commit.is_some() {
-                        *slot = commit.clone();
+                    if slot.0.is_none() && commit.is_some() {
+                        slot.0 = commit.clone();
                     }
+                    slot.1.push(c.name.clone());
                 })
-                .or_insert(commit);
+                .or_insert_with(|| (commit, vec![c.name.clone()]));
         }
         let present_ids: HashSet<String> = present.keys().cloned().collect();
         let known_ids: HashSet<String> = self
@@ -551,9 +603,23 @@ impl App {
                 continue;
             }
             if self.unknown_template_ids_warned.insert(id.clone()) {
+                let names = present
+                    .get(id)
+                    .map(|(_, names)| names.clone())
+                    .unwrap_or_default();
+                let mut names = names;
+                names.sort();
+                names.dedup();
+                let names_text = if names.is_empty() {
+                    "-".to_string()
+                } else {
+                    names.join(", ")
+                };
                 self.log_msg(
                     MsgLevel::Info,
-                    format!("template id found on server but missing locally: {id}"),
+                    format!(
+                        "template id found on server but missing locally: {id} (containers: {names_text})"
+                    ),
                 );
             }
         }
@@ -580,7 +646,7 @@ impl App {
             }
             let entry = next.entry(id.clone()).or_default();
             if let Some(existing) = entry.iter_mut().find(|e| e.server_name == server) {
-                let commit = present.get(id).and_then(|c| c.clone());
+                let commit = present.get(id).and_then(|c| c.0.clone());
                 if existing.commit != commit {
                     existing.commit = commit;
                     changed = true;
@@ -591,7 +657,7 @@ impl App {
                 entry.push(TemplateDeployEntry {
                     server_name: server.clone(),
                     timestamp: now_unix(),
-                    commit: present.get(id).and_then(|c| c.clone()),
+                    commit: present.get(id).and_then(|c| c.0.clone()),
                 });
                 self.log_msg(
                     MsgLevel::Info,
@@ -3327,6 +3393,8 @@ fn shell_execute_cmdline(
     conn_tx: &watch::Sender<Connection>,
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_all_refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_all_enabled_tx: &watch::Sender<bool>,
     refresh_interval_tx: &watch::Sender<Duration>,
     refresh_pause_tx: &watch::Sender<bool>,
     image_update_limit_tx: &watch::Sender<usize>,
@@ -3573,7 +3641,13 @@ fn shell_execute_cmdline(
                     TemplatesKind::Networks => app.refresh_net_templates(),
                 }
             } else {
-                shell_refresh(app, refresh_tx, dash_refresh_tx, refresh_pause_tx);
+                shell_refresh(
+                    app,
+                    refresh_tx,
+                    dash_refresh_tx,
+                    dash_all_refresh_tx,
+                    refresh_pause_tx,
+                );
             }
             return;
         }
@@ -4062,7 +4136,69 @@ fn shell_execute_cmdline(
             conn_tx,
             refresh_tx,
             dash_refresh_tx,
+            dash_all_enabled_tx,
         );
+        return;
+    }
+
+    if cmd == "dashboard" {
+        let args: Vec<&str> = it.collect();
+        let mode = args.first().copied().unwrap_or("toggle");
+        match mode {
+            "all" => {
+                shell_switch_server_all(app, dash_all_enabled_tx, dash_all_refresh_tx);
+            }
+            "single" | "server" => {
+                if !app.servers.is_empty() {
+                    let idx = app.server_selected.min(app.servers.len().saturating_sub(1));
+                    shell_switch_server(
+                        app,
+                        idx,
+                        conn_tx,
+                        refresh_tx,
+                        dash_refresh_tx,
+                        dash_all_enabled_tx,
+                    );
+                }
+            }
+            "simulate-error" => {
+                let target = args.get(1).copied();
+                let mut applied = false;
+                for host in &mut app.dashboard_all.hosts {
+                    if target.is_none() || target == Some(host.name.as_str()) {
+                        host.error = Some("simulated error".to_string());
+                        host.loading = false;
+                        applied = true;
+                        if target.is_some() {
+                            break;
+                        }
+                    }
+                }
+                if !applied {
+                    app.set_warn("dashboard simulate-error: no matching host");
+                }
+            }
+            "toggle" => {
+                if app.server_all_selected {
+                    if !app.servers.is_empty() {
+                        let idx = app.server_selected.min(app.servers.len().saturating_sub(1));
+                        shell_switch_server(
+                            app,
+                            idx,
+                            conn_tx,
+                            refresh_tx,
+                            dash_refresh_tx,
+                            dash_all_enabled_tx,
+                        );
+                    }
+                } else {
+                    shell_switch_server_all(app, dash_all_enabled_tx, dash_all_refresh_tx);
+                }
+            }
+            _ => {
+                app.set_warn("usage: :dashboard (all|single|toggle|simulate-error [name])");
+            }
+        }
         return;
     }
 
@@ -4464,6 +4600,8 @@ fn handle_shell_key(
     conn_tx: &watch::Sender<Connection>,
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_all_refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_all_enabled_tx: &watch::Sender<bool>,
     refresh_interval_tx: &watch::Sender<Duration>,
     refresh_pause_tx: &watch::Sender<bool>,
     image_update_limit_tx: &watch::Sender<usize>,
@@ -4483,6 +4621,8 @@ fn handle_shell_key(
                         conn_tx,
                         refresh_tx,
                         dash_refresh_tx,
+                        dash_all_refresh_tx,
+                        dash_all_enabled_tx,
                         refresh_interval_tx,
                         refresh_pause_tx,
                         image_update_limit_tx,
@@ -4500,7 +4640,13 @@ fn handle_shell_key(
         && key.modifiers.is_empty()
         && matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R'))
     {
-        shell_refresh(app, refresh_tx, dash_refresh_tx, refresh_pause_tx);
+        shell_refresh(
+            app,
+            refresh_tx,
+            dash_refresh_tx,
+            dash_all_refresh_tx,
+            refresh_pause_tx,
+        );
         return;
     }
 
@@ -4521,6 +4667,8 @@ fn handle_shell_key(
                         conn_tx,
                         refresh_tx,
                         dash_refresh_tx,
+                        dash_all_refresh_tx,
+                        dash_all_enabled_tx,
                         refresh_interval_tx,
                         refresh_pause_tx,
                         image_update_limit_tx,
@@ -4556,6 +4704,8 @@ fn handle_shell_key(
                     conn_tx,
                     refresh_tx,
                     dash_refresh_tx,
+                    dash_all_refresh_tx,
+                    dash_all_enabled_tx,
                     refresh_interval_tx,
                     refresh_pause_tx,
                     image_update_limit_tx,
@@ -5100,6 +5250,8 @@ fn handle_shell_key(
                             conn_tx,
                             refresh_tx,
                             dash_refresh_tx,
+                            dash_all_refresh_tx,
+                            dash_all_enabled_tx,
                             refresh_interval_tx,
                             refresh_pause_tx,
                             image_update_limit_tx,
@@ -5185,7 +5337,14 @@ fn handle_shell_key(
                     ch = ch.to_ascii_uppercase();
                 }
                 if ch == hint {
-                    shell_switch_server(app, i, conn_tx, refresh_tx, dash_refresh_tx);
+                    shell_switch_server(
+                        app,
+                        i,
+                        conn_tx,
+                        refresh_tx,
+                        dash_refresh_tx,
+                        dash_all_enabled_tx,
+                    );
                     return;
                 }
             }
@@ -5225,7 +5384,14 @@ fn handle_shell_key(
                 };
                 match it {
                     ShellSidebarItem::Server(i) => {
-                        shell_switch_server(app, i, conn_tx, refresh_tx, dash_refresh_tx)
+                        shell_switch_server(
+                            app,
+                            i,
+                            conn_tx,
+                            refresh_tx,
+                            dash_refresh_tx,
+                            dash_all_enabled_tx,
+                        )
                     }
                     ShellSidebarItem::Module(v) => match v {
                         ShellView::Inspect => shell_enter_inspect(app, inspect_req_tx),
@@ -5713,9 +5879,7 @@ fn draw_shell_header(
     } else {
         String::new()
     };
-    let global_loading = app.loading
-        || app.dashboard.loading
-        || app.logs.loading
+    let mut global_loading = app.logs.loading
         || app.inspect.loading
         || !app.action_inflight.is_empty()
         || !app.image_action_inflight.is_empty()
@@ -5725,6 +5889,11 @@ fn draw_shell_header(
         || !app.templates_state.net_template_deploy_inflight.is_empty()
         || !app.stack_update_inflight.is_empty()
         || !app.image_updates_inflight.is_empty();
+    if app.server_all_selected {
+        global_loading = global_loading || app.dashboard_all.hosts.iter().any(|h| h.loading);
+    } else {
+        global_loading = global_loading || app.loading || app.dashboard.loading;
+    }
     let refresh_icon = if app.ascii_only { "r" } else { "⏱" };
     let refresh_label = format!("{refresh_icon} {}s", app.refresh_secs.max(1));
     let commit_label = if commands::git_cmd::git_available() && app.git_autocommit {

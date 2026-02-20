@@ -61,6 +61,7 @@ Registries: `~/.config/containr/registries.json` (siehe `docs/registry_auth.md`)
 - `:stack update` / `:stack recreate --pull`
 - `:container start|stop|restart|delete`
 - `:template deploy [--recreate] [--pull]`
+- `:dashboard (all|single|toggle)`
 - `:image check` (TTL 24h) / Marker im UI: grün=ok, gelb=Update, rot=Fehler, blau=Rate-Limit.
 - `:git auto on|off` (Autocommit), Anzeige „Commit: auto/manual“ in Header.
 - `:theme select` für Theme-Liste/Preview.

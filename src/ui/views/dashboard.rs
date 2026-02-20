@@ -17,6 +17,10 @@ pub(in crate::ui) fn render_dashboard_impl(
     app: &mut App,
     area: Rect,
 ) {
+    if app.server_all_selected && app.servers.len() > 1 {
+        render_dashboard_all(f, app, area);
+        return;
+    }
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(ratatui::layout::Margin {
@@ -469,6 +473,226 @@ pub(in crate::ui) fn render_dashboard_impl(
                 .wrap(Wrap { trim: true }),
             chunks[5],
         );
+    }
+}
+
+fn render_dashboard_all(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
+    let bg = app.theme.background.to_style();
+    let card = app.theme.panel.to_style();
+    let accent = Style::default()
+        .fg(theme_color(&app.theme.text_dim.fg))
+        .bg(theme_color(&app.theme.panel.bg));
+    f.render_widget(Block::default().style(bg), area);
+    let inner = area.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+    if app.dashboard_all.hosts.is_empty() {
+        f.render_widget(
+            Paragraph::new("No servers configured.")
+                .style(bg.patch(app.theme.text_dim.to_style()))
+                .alignment(Alignment::Center)
+                .wrap(Wrap { trim: true }),
+            inner,
+        );
+        return;
+    }
+
+    let card_w = 40u16.min(inner.width);
+    let card_h = 8u16.min(inner.height);
+    let gap_x = 2u16;
+    let gap_y = 1u16;
+    let cols = ((inner.width + gap_x) / (card_w + gap_x)).max(1) as usize;
+
+    let ok = card.patch(app.theme.text_ok.to_style());
+    let warn = card.patch(app.theme.text_warn.to_style());
+    let err = card.patch(app.theme.text_error.to_style());
+    let dim = card.patch(app.theme.text_dim.to_style());
+    let faint = card.patch(app.theme.text_faint.to_style());
+
+    for (idx, host) in app.dashboard_all.hosts.iter().enumerate() {
+        let col = (idx % cols) as u16;
+        let row = (idx / cols) as u16;
+        let x = inner.x.saturating_add(col * (card_w + gap_x));
+        let y = inner.y.saturating_add(row * (card_h + gap_y));
+        if x >= inner.x + inner.width || y >= inner.y + inner.height {
+            continue;
+        }
+        let rect = Rect {
+            x,
+            y,
+            width: card_w.min(inner.x + inner.width - x),
+            height: card_h.min(inner.y + inner.height - y),
+        };
+
+        f.render_widget(Block::default().style(card), rect);
+
+        // Left accent bar (thin glyph).
+        if rect.width >= 1 {
+            let accent_rect = Rect {
+                x: rect.x,
+                y: rect.y,
+                width: 1,
+                height: rect.height,
+            };
+            let glyph = if app.ascii_only { "|" } else { "▏" };
+            let lines: Vec<Line> = (0..rect.height)
+                .map(|_| Line::from(Span::styled(glyph, accent)))
+                .collect();
+            f.render_widget(Paragraph::new(lines).style(card), accent_rect);
+        }
+
+        let mut lines: Vec<Line> = Vec::new();
+
+        let (dot, dot_style) = if host.loading {
+            (if app.ascii_only { "." } else { "●" }, warn)
+        } else if host.error.is_some() {
+            (if app.ascii_only { "!" } else { "●" }, err)
+        } else {
+            (if app.ascii_only { "." } else { "●" }, ok)
+        };
+        let latency = host
+            .latency_ms
+            .map(|ms| format!("{ms}ms"))
+            .unwrap_or_else(|| "--".to_string());
+        let title = if app.ascii_only {
+            Line::from(vec![
+                Span::styled(host.name.clone(), card),
+                Span::styled(" . ", dim),
+                Span::styled(latency, dim),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled(host.name.clone(), card),
+                Span::styled(" ", dim),
+                Span::styled(dot, dot_style),
+                Span::styled(" ", dim),
+                Span::styled(latency, dim),
+            ])
+        };
+        lines.push(title);
+
+    let bar_w = rect.width.saturating_sub(12) as usize;
+        let (cpu_ratio, mem_ratio, disk_ratio, load_text, up_text, run_text) =
+            if let Some(snap) = &host.snap {
+            let cpu_ratio = if snap.cpu_cores == 0 {
+                0.0
+            } else {
+                (snap.load1 / (snap.cpu_cores as f32)).clamp(0.0, 1.0)
+            };
+            let mem_ratio = if snap.mem_total_bytes == 0 {
+                0.0
+            } else {
+                (snap.mem_used_bytes as f32) / (snap.mem_total_bytes as f32)
+            };
+            let disk_ratio = if snap.disk_total_bytes == 0 {
+                0.0
+            } else {
+                (snap.disk_used_bytes as f32) / (snap.disk_total_bytes as f32)
+            };
+            let load_text = format!("{:.2} {:.2} {:.2}", snap.load1, snap.load5, snap.load15);
+            let up_text = compact_uptime(&snap.uptime);
+            let run_text = format!("running {}/{}", snap.containers_running, snap.containers_total);
+            (cpu_ratio, mem_ratio, disk_ratio, load_text, up_text, run_text)
+        } else {
+            (
+                0.0,
+                0.0,
+                0.0,
+                "--".to_string(),
+                "--".to_string(),
+                "--".to_string(),
+            )
+        };
+
+        lines.push(Line::from(Span::styled(format!("CTR {run_text}"), dim)));
+
+        let make_bar_line = |label: &str, ratio: f32| -> Line {
+            let pct = (ratio.clamp(0.0, 1.0) * 100.0).round() as u32;
+            let bar = bar_spans_threshold(
+                bar_w.max(6),
+                ratio,
+                app.ascii_only,
+                ok,
+                faint,
+            );
+            let mut spans = Vec::new();
+            spans.push(Span::styled(format!("{label} "), dim));
+            spans.extend(bar);
+            spans.push(Span::styled(format!(" {pct:>3}%"), dim));
+            Line::from(spans)
+        };
+
+        lines.push(make_bar_line("CPU", cpu_ratio));
+        lines.push(make_bar_line("MEM", mem_ratio));
+        lines.push(make_bar_line("DSK", disk_ratio));
+        lines.push(Line::from(Span::styled(format!("Load {load_text}"), dim)));
+        lines.push(Line::from(Span::styled(format!("Up   {up_text}"), dim)));
+
+        let err_text = host
+            .error
+            .as_deref()
+            .unwrap_or("-");
+        let err_text = truncate_end(err_text, rect.width.saturating_sub(6) as usize);
+        let err_style = if host.error.is_some() { err } else { dim };
+        lines.push(Line::from(Span::styled(format!("ERR  {err_text}"), err_style)));
+
+        while lines.len() < rect.height as usize {
+            lines.push(Line::from(Span::styled("".to_string(), card)));
+        }
+
+        let para = Paragraph::new(lines)
+            .style(card)
+            .wrap(Wrap { trim: false });
+        let text_rect = Rect {
+            x: rect.x.saturating_add(1),
+            y: rect.y,
+            width: rect.width.saturating_sub(1),
+            height: rect.height,
+        };
+        f.render_widget(para, text_rect);
+    }
+}
+
+fn compact_uptime(raw: &str) -> String {
+    let mut s = raw.trim().to_string();
+    if let Some(rest) = s.strip_prefix("up ") {
+        s = rest.trim().to_string();
+    }
+    let parts: Vec<String> = s
+        .split(',')
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+    if parts.is_empty() {
+        return s;
+    }
+    let mut out: Vec<String> = Vec::new();
+    for part in parts {
+        let mut it = part.split_whitespace();
+        let Some(num) = it.next() else { continue };
+        let Some(unit) = it.next() else { continue };
+        let short = match unit {
+            "minute" | "minutes" => "m",
+            "hour" | "hours" => "h",
+            "day" | "days" => "d",
+            "week" | "weeks" => "w",
+            "month" | "months" => "mo",
+            "year" | "years" => "y",
+            _ => unit,
+        };
+        out.push(format!("{num}{short}"));
+        if out.len() >= 4 {
+            break;
+        }
+    }
+    if out.is_empty() {
+        s
+    } else {
+        out.join(" ")
     }
 }
 

@@ -17,6 +17,7 @@ pub fn handle_server(
     conn_tx: &watch::Sender<Connection>,
     refresh_tx: &mpsc::UnboundedSender<()>,
     dash_refresh_tx: &mpsc::UnboundedSender<()>,
+    dash_all_enabled_tx: &watch::Sender<bool>,
 ) -> bool {
     let sub = args.first().copied().unwrap_or("");
     match sub {
@@ -104,7 +105,14 @@ pub fn handle_server(
                 app.set_warn(format!("unknown server: {name}"));
                 return true;
             };
-            shell_switch_server(app, idx, conn_tx, refresh_tx, dash_refresh_tx);
+            shell_switch_server(
+                app,
+                idx,
+                conn_tx,
+                refresh_tx,
+                dash_refresh_tx,
+                dash_all_enabled_tx,
+            );
             true
         }
         "rm" => {
@@ -127,7 +135,14 @@ pub fn handle_server(
                 app.active_server = None;
                 app.server_selected = 0;
                 if !app.servers.is_empty() {
-                    shell_switch_server(app, 0, conn_tx, refresh_tx, dash_refresh_tx);
+                    shell_switch_server(
+                        app,
+                        0,
+                        conn_tx,
+                        refresh_tx,
+                        dash_refresh_tx,
+                        dash_all_enabled_tx,
+                    );
                 } else {
                     app.persist_config();
                 }
