@@ -63,3 +63,46 @@ pub(in crate::ui) fn deploy_remote_dir_for(name: &str) -> String {
 pub(in crate::ui) fn deploy_remote_net_dir_for(name: &str) -> String {
     format!(".config/containr/networks/{name}")
 }
+
+pub(in crate::ui) fn parse_kv_args(
+    mut it: impl Iterator<Item = String>,
+) -> (
+    Option<u16>,
+    Option<String>,
+    Option<crate::config::DockerCmd>,
+    Vec<String>,
+) {
+    // Supports: -p <port>  -i <identity>  --cmd <docker_cmd>
+    let mut port: Option<u16> = None;
+    let mut identity: Option<String> = None;
+    let mut docker_cmd: Option<crate::config::DockerCmd> = None;
+    let mut rest: Vec<String> = Vec::new();
+    while let Some(tok) = it.next() {
+        match tok.as_str() {
+            "-p" => {
+                if let Some(v) = it.next() {
+                    port = v.parse::<u16>().ok();
+                }
+            }
+            "-i" => {
+                if let Some(v) = it.next() {
+                    identity = Some(v);
+                }
+            }
+            "--cmd" => {
+                if let Some(v) = it.next() {
+                    let parsed = crate::shell_parse::parse_shell_tokens(&v)
+                        .ok()
+                        .unwrap_or_else(|| vec![v]);
+                    if parsed.is_empty() {
+                        docker_cmd = Some(crate::config::DockerCmd::default());
+                    } else {
+                        docker_cmd = Some(crate::config::DockerCmd::new(parsed));
+                    }
+                }
+            }
+            _ => rest.push(tok),
+        }
+    }
+    (port, identity, docker_cmd, rest)
+}

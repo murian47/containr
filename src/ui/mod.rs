@@ -44,11 +44,12 @@ use render::status::action_error_label;
 pub(in crate::ui) use actions::{service_name_from_label_list, stack_compose_dirs, template_name_from_stack};
 pub(in crate::ui) use helpers::{
     deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, extract_template_id,
-    shell_single_quote,
+    parse_kv_args, shell_single_quote,
 };
 pub(in crate::ui) use templates_ops::{
-    create_net_template, create_template, delete_net_template, delete_template, export_net_template,
-    export_stack_template, extract_net_template_description, images_from_compose,
+    create_net_template, create_template, delete_net_template, delete_template,
+    export_net_template, export_stack_template, extract_net_template_description,
+    extract_template_description, images_from_compose, maybe_autocommit_templates,
 };
 pub(crate) use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
 use render::highlight::{

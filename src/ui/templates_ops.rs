@@ -3,7 +3,7 @@
 use crate::docker::{self, DockerCfg};
 use crate::domain::image_refs::normalize_image_ref;
 use crate::ui::render::highlight::split_yaml_comment;
-use crate::ui::{extract_template_id, App, NetworkTemplateIpv4, Runner};
+use crate::ui::{extract_template_id, App, NetworkTemplateIpv4, Runner, TemplatesKind};
 use anyhow::Context;
 use serde::Deserialize;
 use serde_json::Value;
@@ -1439,6 +1439,43 @@ pub(in crate::ui) fn delete_net_template(app: &mut App, name: &str) -> anyhow::R
     Ok(())
 }
 
+pub(in crate::ui) fn maybe_autocommit_templates(
+    app: &mut App,
+    kind: TemplatesKind,
+    action: &str,
+    name: &str,
+) {
+    crate::ui::render::git::maybe_autocommit_templates(app, kind, action, name)
+}
+
+pub(in crate::ui) fn extract_template_description(path: &PathBuf) -> Option<String> {
+    // Heuristic: find a "# description: ..." (or "# desc: ...") line near the top of compose.yaml.
+    let data = fs::read_to_string(path).ok()?;
+    for line in data.lines().take(40) {
+        let l = line.trim_start();
+        if !l.starts_with('#') {
+            // Stop early once we hit non-comment content.
+            if !l.is_empty() {
+                break;
+            }
+            continue;
+        }
+        let body = l.trim_start_matches('#').trim_start();
+        let low = body.to_ascii_lowercase();
+        let key = if low.starts_with("description:") {
+            "description:"
+        } else if low.starts_with("desc:") {
+            "desc:"
+        } else {
+            continue;
+        };
+        let value = body[key.len()..].trim();
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
 
 pub(in crate::ui) fn extract_net_template_description(path: &PathBuf) -> Option<String> {
     let data = fs::read_to_string(path).ok()?;
