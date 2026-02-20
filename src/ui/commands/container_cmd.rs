@@ -45,7 +45,7 @@ pub fn handle_container(
             }
             let shell = shell.unwrap_or_else(|| "bash".to_string());
             let user = user.as_deref().or(Some("root"));
-            super::super::shell_open_console(app, user, &shell);
+            crate::ui::actions::open_console(app, user, &shell);
         }
         "tree" => {
             app.active_view = ActiveView::Containers;
@@ -88,7 +88,7 @@ pub fn handle_container(
                     }
                 }
             }
-            super::super::shell_check_image_updates(
+            crate::ui::actions::check_image_updates(
                 app,
                 images.into_iter().collect(),
                 action_req_tx,

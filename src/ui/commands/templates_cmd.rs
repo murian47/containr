@@ -98,7 +98,7 @@ pub fn handle_template(
         "edit" => {
             app.set_main_view(ShellView::Templates);
             shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-            super::super::shell_edit_selected_template(app);
+            crate::ui::actions::edit_selected_template(app);
             true
         }
         "new" => {
@@ -127,7 +127,7 @@ pub fn handle_template(
                             app,
                             ShellSidebarItem::Module(ShellView::Templates),
                         );
-                        super::super::shell_edit_selected_template(app);
+                        crate::ui::actions::edit_selected_template(app);
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
                 },
@@ -147,7 +147,7 @@ pub fn handle_template(
                             app,
                             ShellSidebarItem::Module(ShellView::Templates),
                         );
-                        super::super::shell_edit_selected_net_template(app);
+                        crate::ui::actions::edit_selected_net_template(app);
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
                 },
@@ -330,14 +330,14 @@ pub fn handle_template(
                         shell_begin_confirm(app, label, cmdline_full);
                         return true;
                     }
-                    super::super::shell_deploy_template(app, &name, pull, recreate, action_req_tx)
+                    crate::ui::actions::deploy_template(app, &name, pull, recreate, action_req_tx)
                 }
                 TemplatesKind::Networks => {
                     if pull || recreate {
                         app.set_warn("usage: :nettemplate deploy[!] [name]");
                         return true;
                     }
-                    super::super::shell_deploy_net_template(app, &name, force, action_req_tx)
+                    crate::ui::actions::deploy_net_template(app, &name, force, action_req_tx)
                 }
             }
             true
@@ -430,7 +430,7 @@ pub fn handle_nettemplate(
             app.templates_state.kind = TemplatesKind::Networks;
             app.set_main_view(ShellView::Templates);
             shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-            super::super::shell_edit_selected_net_template(app);
+            crate::ui::actions::edit_selected_net_template(app);
             true
         }
         "new" => {
@@ -468,7 +468,7 @@ pub fn handle_nettemplate(
                     app.templates_state.kind = TemplatesKind::Networks;
                     app.set_main_view(ShellView::Templates);
                     shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-                    super::super::shell_edit_selected_net_template(app);
+                    crate::ui::actions::edit_selected_net_template(app);
                 }
                 Err(e) => app.set_error(format!("{e:#}")),
             }
@@ -483,7 +483,7 @@ pub fn handle_nettemplate(
                 app.set_warn("usage: :nettemplate deploy <name>");
                 return true;
             };
-            super::super::shell_deploy_net_template(app, &name, force, action_req_tx);
+            crate::ui::actions::deploy_net_template(app, &name, force, action_req_tx);
             true
         }
         "rm" | "del" | "delete" => {

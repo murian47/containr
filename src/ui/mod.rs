@@ -10,6 +10,7 @@
 //! - IO/runner functions should not mutate UI widgets directly.
 //! - UI code should use semantic theme roles (`theme::ThemeSpec`) instead of hard-coded colors.
 
+mod actions;
 mod commands;
 mod render;
 mod views;
@@ -25,8 +26,7 @@ use render::sidebar::{
 use render::format::{dot_spinner, loading_spinner, spinner_char, split_at_chars, truncate_start};
 use crate::domain::image_refs::{image_registry_for_ref, normalize_image_ref};
 use crate::ui::state::image_updates::{
-    resolve_image_update_state, resolve_stack_update_state, resolve_image_ref_for_updates,
-    is_rate_limit_error, ImageUpdateView,
+    resolve_image_update_state, resolve_stack_update_state, is_rate_limit_error, ImageUpdateView,
 };
 use render::badges::header_logo_spans;
 use render::header::draw_rate_limit_banner;
@@ -38,6 +38,7 @@ use render::inspect::{
 };
 use render::status::action_status_prefix;
 use render::status::action_error_label;
+pub(in crate::ui) use actions::{service_name_from_label_list, stack_compose_dirs, template_name_from_stack};
 use render::highlight::{
     highlight_log_line_literal, highlight_log_line_regex, json_highlight_line, split_yaml_comment,
     yaml_highlight_line,
@@ -4948,7 +4949,7 @@ fn normalize_image_id(id: &str) -> String {
     format!("sha256:{}", s)
 }
 
-fn template_id_from_labels(labels: &str) -> Option<String> {
+pub(in crate::ui) fn template_id_from_labels(labels: &str) -> Option<String> {
     for part in labels.split(',') {
         let Some((k, v)) = part.split_once('=') else {
             continue;
@@ -6657,7 +6658,7 @@ pub async fn run_tui(
                             if app.image_update_autocheck && *pull {
                                 let images = images_from_compose(local_compose);
                                 if !images.is_empty() {
-                                    shell_check_image_updates(&mut app, images, &action_req_tx);
+                                    actions::check_image_updates(&mut app, images, &action_req_tx);
                                 }
                             }
                         }
@@ -7228,7 +7229,7 @@ fn run_interactive_local_command(cmd: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn shell_single_quote(s: &str) -> String {
+pub(in crate::ui) fn shell_single_quote(s: &str) -> String {
     // Produce a POSIX-shell-safe single-quoted string literal.
     // Example: abc'd -> 'abc'"'"'d'
     let mut out = String::with_capacity(s.len() + 2);
@@ -7242,6 +7243,51 @@ fn shell_single_quote(s: &str) -> String {
     }
     out.push('\'');
     out
+}
+
+pub(in crate::ui) fn extract_template_id(path: &PathBuf) -> Option<String> {
+    // Heuristic: find a "# containr_template_id: ..." line near the top of compose.yaml.
+    let data = fs::read_to_string(path).ok()?;
+    for line in data.lines().take(40) {
+        let l = line.trim_start();
+        if !l.starts_with('#') {
+            if !l.is_empty() {
+                break;
+            }
+            continue;
+        }
+        let body = l.trim_start_matches('#').trim_start();
+        let low = body.to_ascii_lowercase();
+        if !low.starts_with("containr_template_id:") {
+            continue;
+        }
+        let value = body["containr_template_id:".len()..].trim();
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+pub(in crate::ui) fn ensure_template_id(path: &PathBuf) -> anyhow::Result<String> {
+    if let Some(existing) = extract_template_id(path) {
+        return Ok(existing);
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let data = fs::read_to_string(path).unwrap_or_default();
+    let mut out = String::new();
+    out.push_str(&format!("# containr_template_id: {id}\n"));
+    out.push_str(&data);
+    fs::write(path, out)?;
+    Ok(id)
+}
+
+pub(in crate::ui) fn deploy_remote_dir_for(name: &str) -> String {
+    format!(".config/containr/apps/{name}")
+}
+
+pub(in crate::ui) fn deploy_remote_net_dir_for(name: &str) -> String {
+    format!(".config/containr/networks/{name}")
 }
 
 fn shell_quote_with_home(s: &str) -> String {
