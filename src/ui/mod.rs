@@ -2339,6 +2339,67 @@ impl App {
         };
     }
 
+    fn first_container_id(&mut self) -> Option<String> {
+        if let Some(c) = self.selected_container() {
+            return Some(c.id.clone());
+        }
+        if self.active_view != ActiveView::Containers {
+            self.active_view = ActiveView::Containers;
+        }
+        if self.containers.is_empty() {
+            return None;
+        }
+        if self.list_mode == ListMode::Tree {
+            self.ensure_view();
+            if let Some((idx, ViewEntry::Container { id, .. })) = self
+                .view
+                .iter()
+                .enumerate()
+                .find(|(_, e)| matches!(e, ViewEntry::Container { .. }))
+            {
+                self.selected = idx;
+                return Some(id.clone());
+            }
+        }
+        self.selected = self.selected.min(self.containers.len().saturating_sub(1));
+        Some(self.containers.get(self.selected)?.id.clone())
+    }
+
+    fn enter_logs(&mut self, logs_req_tx: &mpsc::UnboundedSender<(String, usize)>) {
+        // Logs are container-only; always use the containers selection.
+        self.set_main_view(ShellView::Containers);
+        self.shell_view = ShellView::Logs;
+        self.shell_focus = ShellFocus::List;
+
+        let Some(id) = self.first_container_id() else {
+            self.logs.loading = false;
+            self.logs.error = Some("no container selected".to_string());
+            self.logs.text = None;
+            return;
+        };
+        self.open_logs_state(id.clone());
+        let _ = logs_req_tx.send((id, self.logs.tail.max(1)));
+    }
+
+    fn enter_inspect(&mut self, inspect_req_tx: &mpsc::UnboundedSender<InspectTarget>) {
+        // Inspect follows the current main view selection.
+        if matches!(self.shell_view, ShellView::Logs | ShellView::Inspect) {
+            self.shell_view = self.shell_last_main_view;
+        }
+        self.shell_view = ShellView::Inspect;
+        self.shell_focus = ShellFocus::List;
+
+        let Some(target) = self.selected_inspect_target() else {
+            self.inspect.loading = false;
+            self.inspect.error = Some("nothing selected".to_string());
+            self.inspect.value = None;
+            self.inspect.lines.clear();
+            return;
+        };
+        self.open_inspect_state(target.clone());
+        let _ = inspect_req_tx.send(target);
+    }
+
     fn switch_server(
         &mut self,
         idx: usize,

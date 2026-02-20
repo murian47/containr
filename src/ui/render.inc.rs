@@ -65,117 +65,6 @@ fn shell_cycle_focus(app: &mut App) {
 }
 
 
-fn shell_first_container_id(app: &mut App) -> Option<String> {
-    if let Some(c) = app.selected_container() {
-        return Some(c.id.clone());
-    }
-    if app.active_view != ActiveView::Containers {
-        app.active_view = ActiveView::Containers;
-    }
-    if app.containers.is_empty() {
-        return None;
-    }
-    if app.list_mode == ListMode::Tree {
-        app.ensure_view();
-        if let Some((idx, ViewEntry::Container { id, .. })) = app
-            .view
-            .iter()
-            .enumerate()
-            .find(|(_, e)| matches!(e, ViewEntry::Container { .. }))
-        {
-            app.selected = idx;
-            return Some(id.clone());
-        }
-    }
-    app.selected = app.selected.min(app.containers.len().saturating_sub(1));
-    Some(app.containers.get(app.selected)?.id.clone())
-}
-
-fn shell_enter_logs(app: &mut App, logs_req_tx: &mpsc::UnboundedSender<(String, usize)>) {
-    // Logs are container-only; always use the containers selection.
-    app.set_main_view(ShellView::Containers);
-    app.shell_view = ShellView::Logs;
-    app.shell_focus = ShellFocus::List;
-
-    let Some(id) = shell_first_container_id(app) else {
-        app.logs.loading = false;
-        app.logs.error = Some("no container selected".to_string());
-        app.logs.text = None;
-        return;
-    };
-    app.open_logs_state(id.clone());
-    let _ = logs_req_tx.send((id, app.logs.tail.max(1)));
-}
-
-fn shell_enter_inspect(app: &mut App, inspect_req_tx: &mpsc::UnboundedSender<InspectTarget>) {
-    // Inspect follows the current main view selection.
-    if matches!(app.shell_view, ShellView::Logs | ShellView::Inspect) {
-        app.shell_view = app.shell_last_main_view;
-    }
-    app.shell_view = ShellView::Inspect;
-    app.shell_focus = ShellFocus::List;
-
-    let Some(target) = app.selected_inspect_target() else {
-        app.inspect.loading = false;
-        app.inspect.error = Some("nothing selected".to_string());
-        app.inspect.value = None;
-        app.inspect.lines.clear();
-        return;
-    };
-    app.open_inspect_state(target.clone());
-    let _ = inspect_req_tx.send(target);
-}
-
-fn shell_run_template_ai(app: &mut App) {
-    if app.shell_view != ShellView::Templates {
-        app.set_warn("AI is only available in Templates");
-        return;
-    }
-    let cmd_raw = match std::env::var("CONTAINR_AI_CMD") {
-        Ok(v) if !v.trim().is_empty() => v,
-        _ => {
-            app.set_warn("AI command not configured (set CONTAINR_AI_CMD)");
-            return;
-        }
-    };
-    let (kind, name, path, has_file) = match app.templates_state.kind {
-        TemplatesKind::Stacks => app
-            .selected_template()
-            .map(|t| ("stack", t.name.clone(), t.compose_path.clone(), t.has_compose))
-            .unwrap_or(("stack", String::new(), PathBuf::new(), false)),
-        TemplatesKind::Networks => app
-            .selected_net_template()
-            .map(|t| ("network", t.name.clone(), t.cfg_path.clone(), t.has_cfg))
-            .unwrap_or(("network", String::new(), PathBuf::new(), false)),
-    };
-    if name.trim().is_empty() {
-        app.set_warn("no template selected");
-        return;
-    }
-    if !has_file {
-        app.set_warn("template has no config file");
-        return;
-    }
-    let file = path.to_string_lossy().to_string();
-    app.capture_template_ai_snapshot(app.templates_state.kind, name.clone(), path.clone());
-    let cmd = format!(
-        "CONTAINR_AI_FILE={} CONTAINR_AI_KIND={} CONTAINR_AI_NAME={} {}",
-        shell_escape_sh_arg(&file),
-        shell_escape_sh_arg(kind),
-        shell_escape_sh_arg(&name),
-        cmd_raw
-    );
-    match app.templates_state.kind {
-        TemplatesKind::Stacks => {
-            app.templates_state.templates_refresh_after_edit = Some(name);
-        }
-        TemplatesKind::Networks => {
-            app.templates_state.net_templates_refresh_after_edit = Some(name);
-        }
-    }
-    app.shell_pending_interactive = Some(ShellInteractive::RunLocalCommand { cmd });
-}
-
 fn shell_back_from_full(app: &mut App) {
     if matches!(
         app.shell_view,
@@ -3903,12 +3792,12 @@ fn shell_execute_cmdline(
             app.set_warn("usage: :ai");
             return;
         }
-        shell_run_template_ai(app);
+        let _ = commands::templates_cmd::handle_template_ai(app);
         return;
     }
 
     if cmd == "inspect" {
-        shell_enter_inspect(app, inspect_req_tx);
+        app.enter_inspect(inspect_req_tx);
         return;
     }
 
@@ -3920,7 +3809,7 @@ fn shell_execute_cmdline(
         }
         args.extend(it);
         if args.is_empty() && app.shell_view != ShellView::Logs {
-            shell_enter_logs(app, logs_req_tx);
+            app.enter_logs(logs_req_tx);
             return;
         }
         let _ = commands::logs_cmd::handle_logs(app, &args, logs_req_tx);
@@ -4105,10 +3994,10 @@ fn shell_execute_action(
 ) {
     match a {
         ShellAction::Inspect => {
-            shell_enter_inspect(app, inspect_req_tx);
+            app.enter_inspect(inspect_req_tx);
         }
         ShellAction::Logs => {
-            shell_enter_logs(app, logs_req_tx);
+            app.enter_logs(logs_req_tx);
         }
         ShellAction::Start => {
             if app.shell_view == ShellView::Stacks {
@@ -4171,7 +4060,9 @@ fn shell_execute_action(
             }
             shell_begin_confirm(app, "network rm", "network rm");
         }
-        ShellAction::TemplateAi => shell_run_template_ai(app),
+                ShellAction::TemplateAi => {
+                    let _ = commands::templates_cmd::handle_template_ai(app);
+                }
         ShellAction::TemplateEdit => shell_edit_selected_template(app),
         ShellAction::TemplateNew => {
             app.shell_cmdline.mode = true;
@@ -5209,8 +5100,8 @@ fn handle_shell_key(
                         )
                     }
                     ShellSidebarItem::Module(v) => match v {
-                        ShellView::Inspect => shell_enter_inspect(app, inspect_req_tx),
-                        ShellView::Logs => shell_enter_logs(app, logs_req_tx),
+                        ShellView::Inspect => app.enter_inspect(inspect_req_tx),
+                        ShellView::Logs => app.enter_logs(logs_req_tx),
                         _ => {
                             app.set_main_view(v);
                             shell_sidebar_select_item(app, ShellSidebarItem::Module(v));

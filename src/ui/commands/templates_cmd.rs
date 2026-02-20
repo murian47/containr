@@ -1,9 +1,10 @@
 //! Template commands (`:templates ...`, `:template ...`, `:nettemplate ...`).
 
 use super::super::{
-    ActionRequest, App, ShellSidebarItem, ShellView, TemplatesKind, shell_begin_confirm,
-    shell_sidebar_select_item,
+    ActionRequest, App, ShellInteractive, ShellSidebarItem, ShellView, TemplatesKind, shell_begin_confirm,
+    shell_escape_sh_arg, shell_sidebar_select_item,
 };
+use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 fn begin_new_prompt(app: &mut App) {
@@ -523,4 +524,55 @@ pub fn handle_nettemplate(
             true
         }
     }
+}
+
+pub fn handle_template_ai(app: &mut App) -> bool {
+    if app.shell_view != ShellView::Templates {
+        app.set_warn("AI is only available in Templates");
+        return true;
+    }
+    let cmd_raw = match std::env::var("CONTAINR_AI_CMD") {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => {
+            app.set_warn("AI command not configured (set CONTAINR_AI_CMD)");
+            return true;
+        }
+    };
+    let (kind, name, path, has_file) = match app.templates_state.kind {
+        TemplatesKind::Stacks => app
+            .selected_template()
+            .map(|t| ("stack", t.name.clone(), t.compose_path.clone(), t.has_compose))
+            .unwrap_or(("stack", String::new(), PathBuf::new(), false)),
+        TemplatesKind::Networks => app
+            .selected_net_template()
+            .map(|t| ("network", t.name.clone(), t.cfg_path.clone(), t.has_cfg))
+            .unwrap_or(("network", String::new(), PathBuf::new(), false)),
+    };
+    if name.trim().is_empty() {
+        app.set_warn("no template selected");
+        return true;
+    }
+    if !has_file {
+        app.set_warn("template has no config file");
+        return true;
+    }
+    let file = path.to_string_lossy().to_string();
+    app.capture_template_ai_snapshot(app.templates_state.kind, name.clone(), path.clone());
+    let cmd = format!(
+        "CONTAINR_AI_FILE={} CONTAINR_AI_KIND={} CONTAINR_AI_NAME={} {}",
+        shell_escape_sh_arg(&file),
+        shell_escape_sh_arg(kind),
+        shell_escape_sh_arg(&name),
+        cmd_raw
+    );
+    match app.templates_state.kind {
+        TemplatesKind::Stacks => {
+            app.templates_state.templates_refresh_after_edit = Some(name);
+        }
+        TemplatesKind::Networks => {
+            app.templates_state.net_templates_refresh_after_edit = Some(name);
+        }
+    }
+    app.shell_pending_interactive = Some(ShellInteractive::RunLocalCommand { cmd });
+    true
 }
