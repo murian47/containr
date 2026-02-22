@@ -480,6 +480,86 @@ pub fn execute_cmdline(
                     app.rebuild_stacks();
                     return;
                 }
+                "start" | "stop" | "restart" | "rm" | "remove" | "delete" | "check" | "updates" => {
+                    let name = args.first().copied();
+                    if args.len() > 1 {
+                        app.set_warn(
+                            "usage: :stack (start|stop|restart|rm|check) [name]",
+                        );
+                        return;
+                    }
+                    match sub {
+                        "start" => {
+                            crate::ui::state::actions::exec_stack_action(
+                                app,
+                                crate::docker::ContainerAction::Start,
+                                name,
+                                action_req_tx,
+                            );
+                        }
+                        "stop" => {
+                            crate::ui::state::actions::exec_stack_action(
+                                app,
+                                crate::docker::ContainerAction::Stop,
+                                name,
+                                action_req_tx,
+                            );
+                        }
+                        "restart" => {
+                            crate::ui::state::actions::exec_stack_action(
+                                app,
+                                crate::docker::ContainerAction::Restart,
+                                name,
+                                action_req_tx,
+                            );
+                        }
+                        "rm" | "remove" | "delete" => {
+                            if force {
+                                crate::ui::state::actions::exec_stack_action(
+                                    app,
+                                    crate::docker::ContainerAction::Remove,
+                                    name,
+                                    action_req_tx,
+                                );
+                            } else if let Some(name) = name {
+                                shell_begin_confirm(app, format!("stack rm {name}"), cmdline_full);
+                            } else if let Some(sel) =
+                                app.selected_stack_entry().map(|s| s.name.clone())
+                            {
+                                shell_begin_confirm(app, format!("stack rm {sel}"), cmdline_full);
+                            } else {
+                                app.set_warn("no stack selected");
+                            }
+                        }
+                        "check" | "updates" => {
+                            let stack = if let Some(name) = name {
+                                name.to_string()
+                            } else if let Some(sel) =
+                                app.selected_stack_entry().map(|s| s.name.clone())
+                            {
+                                sel
+                            } else {
+                                app.set_warn("no stack selected");
+                                return;
+                            };
+                            let mut images: HashSet<String> = HashSet::new();
+                            for c in app
+                                .containers
+                                .iter()
+                                .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(stack.as_str()))
+                            {
+                                images.insert(c.image.clone());
+                            }
+                            crate::ui::actions::check_image_updates(
+                                app,
+                                images.into_iter().collect(),
+                                action_req_tx,
+                            );
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
                 "update" | "up" => {
                     let mut name: Option<String> = None;
                     let mut pull = true;
