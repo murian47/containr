@@ -26,22 +26,19 @@ use render::details::draw_shell_main_details;
 use render::sidebar::{
     draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
-use render::format::{dot_spinner, loading_spinner, spinner_char, split_at_chars, truncate_start};
 use render::cmdline::{cmdline_completion_candidates, cmdline_completion_context, cmdline_common_prefix_ci};
 use crate::domain::image_refs::image_registry_for_ref;
-use crate::ui::state::image_updates::{
-    resolve_image_update_state, resolve_stack_update_state, is_rate_limit_error, ImageUpdateView,
+use crate::ui::state::image_updates::{is_rate_limit_error, ImageUpdateView};
+use render::shell::{draw_shell_cmdline, draw_shell_header, draw_shell_main_list};
+pub(in crate::ui) use render::tables::{
+    draw_shell_containers_table, draw_shell_images_table, draw_shell_networks_table,
+    draw_shell_volumes_table, shell_header_style,
 };
-use render::badges::header_logo_spans;
-use render::header::draw_rate_limit_banner;
-use render::breadcrumbs::shell_breadcrumbs;
 use render::footer::draw_shell_footer;
 use render::inspect::{
     ancestors_of_pointer, build_inspect_lines, collect_expandable_paths, collect_match_paths,
     collect_path_rank,
 };
-use render::status::action_status_prefix;
-use render::status::action_error_label;
 pub(in crate::ui) use actions::{service_name_from_label_list, stack_compose_dirs, template_name_from_stack};
 pub(in crate::ui) use helpers::{
     deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, extract_template_id,
@@ -62,7 +59,7 @@ use render::utils::{
     expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
     theme_color_rgba, write_text_file,
 };
-use render::text::{slice_window, truncate_end, window_hscroll};
+use render::text::{slice_window, window_hscroll};
 use render::scroll::{draw_shell_scrollbar_h, draw_shell_scrollbar_v};
 use render::stacks::stack_name_from_labels;
 
@@ -83,7 +80,7 @@ use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{
         Block, Cell, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap,
@@ -418,7 +415,11 @@ fn set_text_and_cursor(text: &mut String, cursor: &mut usize, new_text: String) 
     *cursor = text.chars().count();
 }
 
-fn input_window_with_cursor(text: &str, cursor: usize, width: usize) -> (String, String, String) {
+pub(in crate::ui) fn input_window_with_cursor(
+    text: &str,
+    cursor: usize,
+    width: usize,
+) -> (String, String, String) {
     // Returns (before_cursor, cursor_cell, after_cursor) of the visible window.
     let width = width.max(1);
     let chars: Vec<char> = text.chars().collect();

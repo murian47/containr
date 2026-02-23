@@ -18,3 +18,5 @@ pub mod inspect;
 pub mod git;
 pub mod theme_selector;
 pub mod cmdline;
+pub mod shell;
+pub mod tables;
