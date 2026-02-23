@@ -27,6 +27,7 @@ use render::sidebar::{
     draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
 use render::format::{dot_spinner, loading_spinner, spinner_char, split_at_chars, truncate_start};
+use render::cmdline::{cmdline_completion_candidates, cmdline_completion_context, cmdline_common_prefix_ci};
 use crate::domain::image_refs::image_registry_for_ref;
 use crate::ui::state::image_updates::{
     resolve_image_update_state, resolve_stack_update_state, is_rate_limit_error, ImageUpdateView,
