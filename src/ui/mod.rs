@@ -30,6 +30,8 @@ use render::cmdline::{cmdline_completion_candidates, cmdline_completion_context,
 use crate::domain::image_refs::image_registry_for_ref;
 use crate::ui::state::image_updates::{is_rate_limit_error, ImageUpdateView};
 use render::shell::{draw_shell_cmdline, draw_shell_header, draw_shell_main_list};
+pub(in crate::ui) use render::messages::{draw_shell_messages_dock, draw_shell_messages_view};
+pub(in crate::ui) use render::clipboard::copy_to_clipboard;
 pub(in crate::ui) use render::tables::{
     draw_shell_containers_table, draw_shell_images_table, draw_shell_networks_table,
     draw_shell_volumes_table, shell_header_style,
@@ -59,7 +61,7 @@ use render::utils::{
     expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
     theme_color_rgba, write_text_file,
 };
-use render::text::{slice_window, window_hscroll};
+use render::text::slice_window;
 use render::scroll::{draw_shell_scrollbar_h, draw_shell_scrollbar_v};
 use render::stacks::stack_name_from_labels;
 
