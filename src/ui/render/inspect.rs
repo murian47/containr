@@ -3,7 +3,14 @@ use std::fmt::Write as _;
 
 use serde_json::Value;
 
-use crate::ui::{App, InspectLine};
+use crate::ui::{App, InspectLine, InspectMode};
+use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::widgets::{Block, List, ListItem, ListState};
+
+use super::highlight::highlight_log_line_literal;
+use super::scroll::draw_shell_scrollbar_v;
+use super::text::slice_window;
+use super::utils::shell_row_highlight;
 
 pub(crate) fn build_inspect_lines(
     root: Option<&Value>,
@@ -92,6 +99,106 @@ pub(crate) fn current_match_pos(app: &App) -> (usize, usize) {
         .map(|i| i + 1)
         .unwrap_or(0);
     (idx, total)
+}
+
+pub(in crate::ui) fn draw_shell_inspect_view(
+    f: &mut ratatui::Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+) {
+    // Reuse inspect tree lines computed in app.inspect.lines.
+    let bg = app.theme.overlay.to_style();
+    f.render_widget(Block::default().style(bg), area);
+    let inner = area.inner(ratatui::layout::Margin {
+        vertical: 0,
+        horizontal: 1,
+    });
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(inner);
+    let content = cols[0];
+    let vbar_area = cols[1];
+
+    let view_height = content.height.max(1) as usize;
+    let total_lines = app.inspect.lines.len();
+    let max_scroll = total_lines.saturating_sub(view_height);
+    let cursor = app.inspect.selected.min(total_lines.saturating_sub(1));
+    let mut scroll_top = app.inspect.scroll_top.min(max_scroll);
+    if cursor < scroll_top {
+        scroll_top = cursor;
+    } else if cursor >= scroll_top.saturating_add(view_height) {
+        scroll_top = cursor
+            .saturating_add(1)
+            .saturating_sub(view_height)
+            .min(max_scroll);
+    }
+    app.inspect.scroll_top = scroll_top;
+
+    let start = scroll_top;
+    let end = (start + view_height).min(total_lines);
+    let avail_w = content.width.max(1) as usize;
+
+    // Clamp horizontal scroll so it does not "virtually" exceed the content width.
+    let mut max_len: usize = 0;
+    for l in &app.inspect.lines {
+        let label_len = l.label.chars().count();
+        let summary_len = l.summary.chars().count();
+        let line_len = l.depth.saturating_mul(2)
+            + 2
+            + label_len
+            + if summary_len > 0 { 2 + summary_len } else { 0 };
+        max_len = max_len.max(line_len);
+    }
+    let max_hscroll = max_len.saturating_sub(avail_w);
+    app.inspect.scroll = app.inspect.scroll.min(max_hscroll);
+
+    let q = app.inspect.query.trim();
+    let mut items: Vec<ListItem> = Vec::with_capacity(end.saturating_sub(start));
+    for l in app.inspect.lines.iter().take(end).skip(start) {
+        let indent = "  ".repeat(l.depth);
+        let glyph = if l.expandable {
+            if l.expanded { "▾ " } else { "▸ " }
+        } else {
+            "  "
+        };
+        let mut text = format!("{indent}{glyph}{}", l.label);
+        if !l.summary.is_empty() {
+            text.push_str(": ");
+            text.push_str(&l.summary);
+        }
+        let visible = slice_window(&text, app.inspect.scroll, avail_w);
+        let line = if app.inspect.mode == InspectMode::Search && !q.is_empty() {
+            highlight_log_line_literal(&visible, q)
+        } else if l.matches {
+            highlight_log_line_literal(&visible, q)
+        } else {
+            ratatui::text::Line::from(visible)
+        };
+        items.push(ListItem::new(line));
+    }
+    if items.is_empty() {
+        items.push(ListItem::new(ratatui::text::Line::from("")));
+    }
+
+    let list = List::new(items)
+        .style(bg)
+        .highlight_style(shell_row_highlight(app))
+        .highlight_symbol("");
+    let mut state = ListState::default();
+    state.select(Some(cursor.saturating_sub(start)));
+    f.render_stateful_widget(list, content, &mut state);
+
+    draw_shell_scrollbar_v(
+        f,
+        vbar_area,
+        scroll_top,
+        max_scroll,
+        total_lines,
+        view_height,
+        app.ascii_only,
+        &app.theme,
+    );
 }
 
 fn build_inspect_lines_inner(

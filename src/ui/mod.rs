@@ -18,20 +18,23 @@ mod templates_ops;
 mod render;
 mod views;
 mod state;
+mod input;
 pub mod theme;
 
-use render::help::shell_help_lines;
 use render::layout::{draw_shell_body, draw_shell_hr};
 use render::details::draw_shell_main_details;
 use render::sidebar::{
-    draw_shell_sidebar, shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
+    draw_shell_sidebar, shell_sidebar_select_item,
 };
-use render::cmdline::{cmdline_completion_candidates, cmdline_completion_context, cmdline_common_prefix_ci};
 use crate::domain::image_refs::image_registry_for_ref;
 use crate::ui::state::image_updates::{is_rate_limit_error, ImageUpdateView};
 use render::shell::{draw_shell_cmdline, draw_shell_header, draw_shell_main_list};
 pub(in crate::ui) use render::messages::{draw_shell_messages_dock, draw_shell_messages_view};
 pub(in crate::ui) use render::clipboard::copy_to_clipboard;
+pub(in crate::ui) use render::help::draw_shell_help_view;
+pub(in crate::ui) use render::inspect::draw_shell_inspect_view;
+pub(in crate::ui) use render::logs::draw_shell_logs_view;
+pub(in crate::ui) use render::registries::draw_shell_registries_table;
 pub(in crate::ui) use render::tables::{
     draw_shell_containers_table, draw_shell_images_table, draw_shell_networks_table,
     draw_shell_volumes_table, shell_header_style,
@@ -53,16 +56,11 @@ pub(in crate::ui) use templates_ops::{
 };
 #[cfg(test)]
 pub(crate) use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
-use render::highlight::{
-    highlight_log_line_literal, highlight_log_line_regex, json_highlight_line,
-    yaml_highlight_line,
-};
+use render::highlight::{json_highlight_line, yaml_highlight_line};
 use render::utils::{
     expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
     theme_color_rgba, write_text_file,
 };
-use render::text::slice_window;
-use render::scroll::{draw_shell_scrollbar_h, draw_shell_scrollbar_v};
 use render::stacks::stack_name_from_labels;
 
 use crate::config::{self, ContainrConfig, DockerCmd, KeyBinding, ServerEntry};
@@ -83,10 +81,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::Style,
-    text::{Line, Span},
-    widgets::{
-        Block, Cell, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap,
-    },
+    widgets::Block,
 };
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::StatefulProtocol;
@@ -4327,25 +4322,47 @@ fn dashboard_command(docker_cmd: &DockerCmd) -> String {
     let docker_fmt = "{{{{.Server.Version}}}}|{{{{.Server.Os}}}}|{{{{.Server.Arch}}}}|{{{{.Server.ApiVersion}}}}";
     let dc = docker_cmd.to_shell();
     format!(
-        "echo {OS}; \
-         ( [ -r /etc/os-release ] && . /etc/os-release && echo \"$PRETTY_NAME\" || uname -s ); \
+        "uname_s=$(uname -s 2>/dev/null || echo unknown); \
+         echo {OS}; \
+         if [ -r /etc/os-release ]; then . /etc/os-release && echo \"$PRETTY_NAME\"; \
+         elif [ \"$uname_s\" = Darwin ]; then sw_vers -productName 2>/dev/null | tr -d '\\n'; echo \" $(sw_vers -productVersion 2>/dev/null)\"; \
+         else uname -s 2>/dev/null; fi; \
          echo {KERNEL}; uname -r 2>/dev/null || true; \
          echo {ARCH}; uname -m 2>/dev/null || true; \
-         echo {UPTIME}; ( uptime -p 2>/dev/null || cat /proc/uptime 2>/dev/null || true ); \
-         echo {CORES}; ( nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1 ); \
-         echo {LOAD}; ( cat /proc/loadavg 2>/dev/null || uptime 2>/dev/null || true ); \
-         echo {MEM}; ( cat /proc/meminfo 2>/dev/null || true ); \
-         echo {DISK}; ( df -B1 -P -T 2>/dev/null || true ); \
+         echo {UPTIME}; ( uptime -p 2>/dev/null || uptime 2>/dev/null || cat /proc/uptime 2>/dev/null || true ); \
+         echo {CORES}; ( nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1 ); \
+         echo {LOAD}; ( cat /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | tr -d '{{}}' || uptime 2>/dev/null || true ); \
+         echo {MEM}; ( \
+           if [ -r /proc/meminfo ]; then cat /proc/meminfo 2>/dev/null; \
+           elif [ \"$uname_s\" = Darwin ]; then \
+             total=$(sysctl -n hw.memsize 2>/dev/null || echo 0); \
+             pagesize=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096); \
+             vm=$(vm_stat 2>/dev/null); \
+             free=$(echo \"$vm\" | awk '/Pages free/ {{print $3}}' | tr -d '.'); \
+             inactive=$(echo \"$vm\" | awk '/Pages inactive/ {{print $3}}' | tr -d '.'); \
+             speculative=$(echo \"$vm\" | awk '/Pages speculative/ {{print $3}}' | tr -d '.'); \
+             avail_pages=$((free+inactive+speculative)); \
+             avail=$((avail_pages*pagesize)); \
+             used=$((total-avail)); \
+             echo \"MEM_TOTAL=$total MEM_AVAIL=$avail MEM_USED=$used\"; \
+           fi ); \
+         echo {DISK}; ( df -B1 -P -T 2>/dev/null || df -k -P 2>/dev/null || true ); \
          echo {NICS}; ( \
-           for i in /sys/class/net/*; do \
-             iface=$(basename \"$i\"); \
-             [ -e \"$i/device\" ] || continue; \
-             case \"$iface\" in \
-               lo|br*|bond*|team*|vlan*|veth*|docker*|virbr*|cni*|flannel*|kube*|tap*|tun*) continue ;; \
-             esac; \
-             ip -o -4 addr show dev \"$iface\" 2>/dev/null | awk '{{print $2, $4}}'; \
-           done \
-         ); \
+           if [ -d /sys/class/net ]; then \
+             for i in /sys/class/net/*; do \
+               iface=$(basename \"$i\"); \
+               [ -e \"$i/device\" ] || continue; \
+               case \"$iface\" in \
+                 lo|br*|bond*|team*|vlan*|veth*|docker*|virbr*|cni*|flannel*|kube*|tap*|tun*) continue ;; \
+               esac; \
+               ip -o -4 addr show dev \"$iface\" 2>/dev/null | awk '{{print $2, $4}}'; \
+             done; \
+           elif [ \"$uname_s\" = Darwin ]; then \
+             networksetup -listallhardwareports 2>/dev/null | awk '/Device:/ {{print $2}}' | while read -r dev; do \
+               ip=$(ipconfig getifaddr \"$dev\" 2>/dev/null || true); \
+               if [ -n \"$ip\" ]; then echo \"$dev $ip\"; fi; \
+             done; \
+           fi ); \
          echo {ENGINE}; ( {dc} version --format '{docker_fmt}' 2>/dev/null || {dc} --version 2>/dev/null || true ); \
          echo {CONTAINERS}; ( {dc} ps -q 2>/dev/null | wc -l | tr -d ' ' ); ( {dc} ps -a -q 2>/dev/null | wc -l | tr -d ' ' )",
         OS = OS,
@@ -4382,6 +4399,70 @@ fn format_uptime_from_proc(raw: &str) -> Option<String> {
     }
     parts.push(format!("{minutes}m"));
     Some(parts.join(" "))
+}
+
+fn normalize_uptime_line(raw: &str) -> String {
+    let mut s = raw.trim().to_string();
+    if s.is_empty() {
+        return "-".to_string();
+    }
+
+    // BSD/macOS uptime often looks like:
+    // "14:03  up 5 days,  3:02, 3 users, load averages: 1.11 1.08 1.05"
+    // Keep only the actual uptime segment.
+    if !s.starts_with("up ") {
+        if let Some((_, rest)) = s.split_once(" up ") {
+            s = format!("up {}", rest.trim());
+        }
+    }
+
+    if let Some((left, _)) = s.split_once(", load average") {
+        s = left.trim().to_string();
+    }
+    if let Some((left, _)) = s.split_once(", load averages") {
+        s = left.trim().to_string();
+    }
+
+    // Remove trailing user count (", 3 users" / ", 1 user").
+    if let Some(idx) = s.rfind(",") {
+        let tail = s[idx + 1..].trim();
+        let mut it = tail.split_whitespace();
+        if let (Some(n), Some(u)) = (it.next(), it.next()) {
+            if n.chars().all(|c| c.is_ascii_digit()) && (u == "user" || u == "users") {
+                s = s[..idx].trim().to_string();
+            }
+        }
+    }
+
+    // Normalize shorthand clock-style uptime to Linux-like wording:
+    // "up 6:15" -> "up 6 hours, 15 minutes"
+    // "up 5 days, 6:15" -> "up 5 days, 6 hours, 15 minutes"
+    let mut out_parts: Vec<String> = Vec::new();
+    let core = s.strip_prefix("up ").unwrap_or(&s).trim();
+    for part in core.split(',').map(|p| p.trim()).filter(|p| !p.is_empty()) {
+        if let Some((h, m)) = part.split_once(':') {
+            let h_ok = h.chars().all(|c| c.is_ascii_digit());
+            let m_ok = m.chars().all(|c| c.is_ascii_digit());
+            if h_ok && m_ok {
+                let hours = h.parse::<u32>().unwrap_or(0);
+                let mins = m.parse::<u32>().unwrap_or(0);
+                if hours > 0 {
+                    let unit = if hours == 1 { "hour" } else { "hours" };
+                    out_parts.push(format!("{hours} {unit}"));
+                }
+                let unit = if mins == 1 { "minute" } else { "minutes" };
+                out_parts.push(format!("{mins} {unit}"));
+                continue;
+            }
+        }
+        out_parts.push(part.to_string());
+    }
+
+    if out_parts.is_empty() {
+        s
+    } else {
+        format!("up {}", out_parts.join(", "))
+    }
 }
 
 fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
@@ -4441,11 +4522,11 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
 
     let uptime_raw = first(UPTIME);
     let uptime = if uptime_raw.contains("up ") || uptime_raw.starts_with("up ") {
-        uptime_raw
+        normalize_uptime_line(&uptime_raw)
     } else if let Some(u) = format_uptime_from_proc(&uptime_raw) {
         u
     } else {
-        uptime_raw
+        normalize_uptime_line(&uptime_raw)
     };
 
     let cpu_cores = first(CORES).trim().parse::<u32>().unwrap_or(1).max(1);
@@ -4458,7 +4539,8 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
         .get(LOAD)
         .and_then(|xs| xs.iter().find(|s| !s.trim().is_empty()))
     {
-        let toks: Vec<&str> = line.split_whitespace().collect();
+        let cleaned = line.replace('{', "").replace('}', "");
+        let toks: Vec<&str> = cleaned.split_whitespace().collect();
         if toks.len() >= 3 {
             load1 = toks[0].parse::<f32>().unwrap_or(0.0);
             load5 = toks[1].parse::<f32>().unwrap_or(0.0);
@@ -4475,23 +4557,41 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
 
     let mut mem_total_kb: Option<u64> = None;
     let mut mem_avail_kb: Option<u64> = None;
+    let mut mem_total_bytes: Option<u64> = None;
+    let mut mem_avail_bytes: Option<u64> = None;
+    let mut mem_used_bytes: Option<u64> = None;
     if let Some(lines) = sec.get(MEM) {
         for l in lines {
             let l = l.trim();
+            if l.contains("MEM_TOTAL=") {
+                for part in l.split_whitespace() {
+                    if let Some(rest) = part.strip_prefix("MEM_TOTAL=") {
+                        mem_total_bytes = rest.parse::<u64>().ok();
+                    }
+                    if let Some(rest) = part.strip_prefix("MEM_AVAIL=") {
+                        mem_avail_bytes = rest.parse::<u64>().ok();
+                    }
+                    if let Some(rest) = part.strip_prefix("MEM_USED=") {
+                        mem_used_bytes = rest.parse::<u64>().ok();
+                    }
+                }
+            }
             if let Some(rest) = l.strip_prefix("MemTotal:") {
                 mem_total_kb = rest.split_whitespace().next().and_then(|x| x.parse().ok());
             }
             if let Some(rest) = l.strip_prefix("MemAvailable:") {
                 mem_avail_kb = rest.split_whitespace().next().and_then(|x| x.parse().ok());
             }
-            if mem_total_kb.is_some() && mem_avail_kb.is_some() {
+            if (mem_total_kb.is_some() && mem_avail_kb.is_some())
+                || (mem_total_bytes.is_some() && (mem_avail_bytes.is_some() || mem_used_bytes.is_some()))
+            {
                 break;
             }
         }
     }
-    let mem_total_bytes = mem_total_kb.unwrap_or(0).saturating_mul(1024);
-    let mem_avail_bytes = mem_avail_kb.unwrap_or(0).saturating_mul(1024);
-    let mem_used_bytes = mem_total_bytes.saturating_sub(mem_avail_bytes);
+    let mem_total_bytes = mem_total_bytes.unwrap_or_else(|| mem_total_kb.unwrap_or(0).saturating_mul(1024));
+    let mem_avail_bytes = mem_avail_bytes.unwrap_or_else(|| mem_avail_kb.unwrap_or(0).saturating_mul(1024));
+    let mem_used_bytes = mem_used_bytes.unwrap_or_else(|| mem_total_bytes.saturating_sub(mem_avail_bytes));
 
     let mut disk_entries: Vec<DiskEntry> = Vec::new();
     if let Some(lines) = sec.get(DISK) {
@@ -4501,14 +4601,27 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
                 continue;
             }
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() < 7 {
+            if parts.len() < 6 {
                 continue;
             }
-            let source = parts[0].to_string();
-            let fs_type = parts[1].to_string();
-            let total_bytes = parts[2].parse::<u64>().unwrap_or(0);
-            let used_bytes = parts[3].parse::<u64>().unwrap_or(0);
-            let mount = parts[6].to_string();
+            let (source, fs_type, total_bytes, used_bytes, mount) = if parts.len() >= 7 {
+                (
+                    parts[0].to_string(),
+                    parts[1].to_string(),
+                    parts[2].parse::<u64>().unwrap_or(0),
+                    parts[3].parse::<u64>().unwrap_or(0),
+                    parts[6].to_string(),
+                )
+            } else {
+                // `df -k -P` (e.g. macOS fallback) reports 1K blocks, not bytes.
+                (
+                    parts[0].to_string(),
+                    String::new(),
+                    parts[1].parse::<u64>().unwrap_or(0).saturating_mul(1024),
+                    parts[2].parse::<u64>().unwrap_or(0).saturating_mul(1024),
+                    parts[5].to_string(),
+                )
+            };
             disk_entries.push(DiskEntry {
                 source,
                 fs_type,
@@ -4522,7 +4635,22 @@ fn parse_dashboard_output(out: &str) -> anyhow::Result<DashboardSnapshot> {
     let disk_entries = collapse_disks(filter_disk_entries(disk_entries));
     let mut disk_used_bytes = 0u64;
     let mut disk_total_bytes = 0u64;
-    if let Some(root) = disk_entries.iter().find(|d| d.mount == "/") {
+    let is_macos = os.to_ascii_lowercase().contains("mac");
+    if is_macos {
+        if let Some(data) = disk_entries
+            .iter()
+            .find(|d| d.mount == "/System/Volumes/Data")
+        {
+            disk_used_bytes = data.used_bytes;
+            disk_total_bytes = data.total_bytes;
+        } else if let Some(root) = disk_entries.iter().find(|d| d.mount == "/") {
+            disk_used_bytes = root.used_bytes;
+            disk_total_bytes = root.total_bytes;
+        } else if let Some(first) = disk_entries.first() {
+            disk_used_bytes = first.used_bytes;
+            disk_total_bytes = first.total_bytes;
+        }
+    } else if let Some(root) = disk_entries.iter().find(|d| d.mount == "/") {
         disk_used_bytes = root.used_bytes;
         disk_total_bytes = root.total_bytes;
     } else if let Some(first) = disk_entries.first() {
@@ -4618,8 +4746,28 @@ fn filter_disk_entries(mut entries: Vec<DiskEntry>) -> Vec<DiskEntry> {
     }
 
     let excluded_types = [
-        "tmpfs", "devtmpfs", "udev", "overlay", "proc", "sysfs", "cgroup", "cgroup2", "squashfs",
-        "autofs", "fusectl",
+        "tmpfs",
+        "devtmpfs",
+        "udev",
+        "overlay",
+        "proc",
+        "sysfs",
+        "cgroup",
+        "cgroup2",
+        "squashfs",
+        "autofs",
+        "fusectl",
+        // Network filesystems/shares should not be treated as local host disks.
+        "nfs",
+        "nfs4",
+        "cifs",
+        "smbfs",
+        "sshfs",
+        "fuse.sshfs",
+        "fuse.glusterfs",
+        "ceph",
+        "ceph-fuse",
+        "9p",
     ];
 
     entries.retain(|e| {
@@ -4676,6 +4824,7 @@ fn collapse_disks(mut entries: Vec<DiskEntry>) -> Vec<DiskEntry> {
         for e in &entries {
             let m = e.mount.as_str();
             if m == "/"
+                || m == "/System/Volumes/Data"
                 || m == "/var/lib/docker"
                 || m.starts_with("/mnt/")
                 || m.starts_with("/data/")
@@ -6910,7 +7059,7 @@ pub async fn run_tui(
                         continue;
                     }
 
-                    handle_shell_key(
+                    input::handle_shell_key(
                         &mut app,
                         key,
                         &conn_tx,

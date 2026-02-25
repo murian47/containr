@@ -574,3 +574,81 @@ pub(in crate::ui) fn cmdline_completion_candidates(
 
     (String::new(), cmdline_filter_candidates(&ctx.token_prefix, candidates))
 }
+
+pub(in crate::ui) fn cmdline_apply_completion(app: &mut App) {
+    let input = app.shell_cmdline.input.clone();
+    let cursor = app.shell_cmdline.cursor;
+    let ctx = cmdline_completion_context(&input, cursor);
+    let (leading, mut matches) = cmdline_completion_candidates(app, &ctx);
+    if matches.is_empty() {
+        return;
+    }
+
+    let mut prefix = ctx.token_prefix.clone();
+    if !leading.is_empty() && prefix.starts_with(':') {
+        prefix = prefix.trim_start_matches(':').to_string();
+    }
+    if leading.contains('!') && prefix.starts_with('!') {
+        prefix = prefix.trim_start_matches('!').to_string();
+    }
+
+    let single_match = matches.len() == 1;
+    let replacement = if single_match {
+        matches[0].clone()
+    } else {
+        let common = cmdline_common_prefix_ci(&matches);
+        if common.len() > prefix.len() {
+            common
+        } else {
+            String::new()
+        }
+    };
+
+    if replacement.is_empty() {
+        let max = 12usize;
+        if matches.len() > max {
+            let rest = matches.len() - max;
+            matches.truncate(max);
+            app.set_info(format!(
+                "matches: {} ... +{rest} more",
+                matches.join(" ")
+            ));
+        } else {
+            app.set_info(format!("matches: {}", matches.join(" ")));
+        }
+        return;
+    }
+
+    let mut replace_text = format!("{leading}{replacement}");
+    if ctx.quote_prefix {
+        replace_text = format!("\"{}", replace_text);
+    }
+
+    let mut new_input = String::new();
+    new_input.push_str(&input[..ctx.token_start]);
+    new_input.push_str(&replace_text);
+    new_input.push_str(&input[ctx.cursor_byte..]);
+    app.shell_cmdline.input = new_input;
+    app.shell_cmdline.cursor =
+        app.shell_cmdline.input[..ctx.token_start + replace_text.len()].chars().count();
+
+    if single_match {
+        let after = &app.shell_cmdline.input[ctx.token_start + replace_text.len()..];
+        if after.is_empty() {
+            app.shell_cmdline.input.push(' ');
+            app.shell_cmdline.cursor += 1;
+        }
+    } else {
+        let max = 12usize;
+        if matches.len() > max {
+            let rest = matches.len() - max;
+            matches.truncate(max);
+            app.set_info(format!(
+                "matches: {} ... +{rest} more",
+                matches.join(" ")
+            ));
+        } else {
+            app.set_info(format!("matches: {}", matches.join(" ")));
+        }
+    }
+}
