@@ -55,7 +55,7 @@ fn render_screen(app: &mut App, width: u16, height: u16) -> String {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| {
-            draw_shell(f, app, Duration::from_secs(5));
+            crate::ui::render::root::draw_shell(f, app, Duration::from_secs(5));
         })
         .unwrap();
     let buf = terminal.backend().buffer().clone();
@@ -77,7 +77,7 @@ fn render_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buf
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| {
-            draw_shell(f, app, Duration::from_secs(5));
+            crate::ui::render::root::draw_shell(f, app, Duration::from_secs(5));
         })
         .unwrap();
     terminal.backend().buffer().clone()

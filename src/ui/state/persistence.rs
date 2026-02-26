@@ -1,74 +1,17 @@
-fn draw(f: &mut ratatui::Frame, app: &mut App, refresh: Duration) {
-    draw_shell(f, app, refresh);
-}
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::PathBuf;
 
-fn draw_shell(f: &mut ratatui::Frame, app: &mut App, refresh: Duration) {
-    // Shell UI: header + sidebar + main + footer + command line. No overlays/dialogs.
-    let area = f.area();
-    let bg = app.theme.background.to_style();
-    f.render_widget(Block::default().style(bg), area);
-
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // header
-            Constraint::Min(1),    // body
-            Constraint::Length(1), // footer
-            Constraint::Length(1), // cmdline
-        ])
-        .split(area);
-
-    draw_shell_header(f, app, refresh, rows[0]);
-    draw_shell_body(f, app, rows[1]);
-    draw_shell_footer(f, app, rows[2]);
-    draw_shell_cmdline(f, app, rows[3]);
-}
-
-
-fn shell_cycle_focus(app: &mut App) {
-    let mut order: Vec<ShellFocus> = Vec::new();
-    if !app.shell_sidebar_hidden {
-        order.push(ShellFocus::Sidebar);
-    }
-    order.push(ShellFocus::List);
-    let has_details = matches!(
-        app.shell_view,
-        ShellView::Stacks
-            | ShellView::Containers
-            | ShellView::Images
-            | ShellView::Volumes
-            | ShellView::Networks
-            | ShellView::Templates
-            | ShellView::Registries
-    );
-    if has_details {
-        order.push(ShellFocus::Details);
-    }
-    let dock_allowed = app.log_dock_enabled
-        && !matches!(
-            app.shell_view,
-            ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages | ShellView::ThemeSelector
-        );
-    if dock_allowed {
-        order.push(ShellFocus::Dock);
-    }
-    if order.is_empty() {
-        app.shell_focus = ShellFocus::List;
-        return;
-    }
-    let idx = order
-        .iter()
-        .position(|f| *f == app.shell_focus)
-        .unwrap_or(0);
-    let next = (idx + 1) % order.len();
-    app.shell_focus = order[next];
-}
-
-
-
+use crate::config::{self, ContainrConfig, ServerEntry};
+use crate::domain::image_refs::image_registry_for_ref;
+use crate::ui::{
+    now_unix, template_commit_from_labels, template_id_from_labels, App, ImageUpdateEntry,
+    LocalState, MsgLevel, ShellSplitMode, TemplateDeployEntry, format_session_ts,
+};
+use crate::ui::render::utils::write_text_file;
 
 impl App {
-    fn persist_config(&mut self) {
+    pub(in crate::ui) fn persist_config(&mut self) {
         let cfg = ContainrConfig {
             version: 10,
             last_server: self.active_server.clone(),
@@ -108,7 +51,7 @@ impl App {
         }
     }
 
-    fn persist_registries(&mut self) {
+    pub(in crate::ui) fn persist_registries(&mut self) {
         let path = config::registries_path(&self.config_path);
         if let Err(e) = config::save_registries(&path, &self.registries_cfg) {
             self.set_error(format!("failed to save registries: {:#}", e));
@@ -117,89 +60,7 @@ impl App {
         self.resolve_registry_auths();
     }
 
-    fn prune_image_updates(&mut self) {
-        let now = now_unix();
-        self.image_updates
-            .retain(|_, v| now.saturating_sub(v.checked_at) <= IMAGE_UPDATE_TTL_SECS);
-    }
-
-    fn prune_rate_limits(&mut self) {
-        let now = now_unix();
-        self.rate_limits.retain(|_, v| {
-            v.hits.retain(|ts| now.saturating_sub(*ts) <= RATE_LIMIT_WINDOW_SECS);
-            if let Some(until) = v.limited_until {
-                if now >= until {
-                    v.limited_until = None;
-                }
-            }
-            !v.hits.is_empty() || v.limited_until.is_some()
-        });
-    }
-
-    fn note_rate_limit_request(&mut self, image_ref: &str) {
-        let now = now_unix();
-        let registry = image_registry_for_ref(image_ref);
-        let entry = self.rate_limits.entry(registry).or_default();
-        entry.hits.push(now);
-        entry
-            .hits
-            .retain(|ts| now.saturating_sub(*ts) <= RATE_LIMIT_WINDOW_SECS);
-    }
-
-    fn note_rate_limit_error(&mut self, image_ref: &str) {
-        let now = now_unix();
-        let registry = image_registry_for_ref(image_ref);
-        let entry = self.rate_limits.entry(registry).or_default();
-        entry.limited_until = Some(now + RATE_LIMIT_WINDOW_SECS);
-    }
-
-    fn status_banner(&mut self) -> Option<String> {
-        if self.refresh_paused {
-            let reason = self
-                .refresh_pause_reason
-                .as_deref()
-                .unwrap_or("paused")
-                .to_string();
-            return Some(format!("Refresh paused ({reason}). Press r to retry."));
-        }
-        self.rate_limit_banner()
-    }
-
-    fn rate_limit_banner(&mut self) -> Option<String> {
-        self.prune_rate_limits();
-        let now = now_unix();
-        let mut limited: Option<(String, i64)> = None;
-        let mut warn: Option<(String, usize)> = None;
-        for (reg, entry) in &self.rate_limits {
-            if let Some(until) = entry.limited_until {
-                if until > now {
-                    let remaining = until.saturating_sub(now);
-                    limited = Some((reg.clone(), remaining));
-                    break;
-                }
-            }
-            let count = entry.hits.len();
-            if count >= RATE_LIMIT_WARN {
-                if warn.as_ref().map(|(_, c)| count > *c).unwrap_or(true) {
-                    warn = Some((reg.clone(), count));
-                }
-            }
-        }
-        if let Some((reg, remaining)) = limited {
-            let mins = (remaining / 60).max(1);
-            return Some(format!(
-                "Rate limit reached for {reg}. Try again in ~{mins}m."
-            ));
-        }
-        if let Some((reg, count)) = warn {
-            return Some(format!(
-                "Rate limit nearing for {reg}: {count}/{RATE_LIMIT_MAX} in 6h window."
-            ));
-        }
-        None
-    }
-
-    fn save_local_state(&mut self) {
+    pub(in crate::ui) fn save_local_state(&mut self) {
         let dir = self
             .image_updates_path
             .parent()
@@ -230,7 +91,11 @@ impl App {
         }
     }
 
-    fn remove_template_deploys_for_server(&mut self, template_id: &str, server: &str) -> bool {
+    pub(in crate::ui) fn remove_template_deploys_for_server(
+        &mut self,
+        template_id: &str,
+        server: &str,
+    ) -> bool {
         if template_id.trim().is_empty() || server.trim().is_empty() {
             return false;
         }
@@ -252,7 +117,7 @@ impl App {
         changed || empty
     }
 
-    fn prune_template_deploys_for_active_server(&mut self) {
+    pub(in crate::ui) fn prune_template_deploys_for_active_server(&mut self) {
         let Some(server) = self.active_server.clone() else {
             return;
         };
@@ -356,16 +221,7 @@ impl App {
         }
     }
 
-    fn image_update_entry(&self, key: &str) -> Option<&ImageUpdateEntry> {
-        let entry = self.image_updates.get(key)?;
-        let now = now_unix();
-        if now.saturating_sub(entry.checked_at) > IMAGE_UPDATE_TTL_SECS {
-            return None;
-        }
-        Some(entry)
-    }
-
-    fn messages_save(&mut self, path: &str, force: bool) {
+    pub(in crate::ui) fn messages_save(&mut self, path: &str, force: bool) {
         if self.session_msgs.is_empty() {
             self.set_warn("no messages");
             return;
@@ -385,13 +241,108 @@ impl App {
             Err(e) => self.set_error(format!("{e:#}")),
         }
     }
+
+    pub(in crate::ui) fn prune_image_updates(&mut self) {
+        let now = now_unix();
+        self.image_updates
+            .retain(|_, v| now.saturating_sub(v.checked_at) <= crate::ui::IMAGE_UPDATE_TTL_SECS);
+    }
+
+    pub(in crate::ui) fn prune_rate_limits(&mut self) {
+        let now = now_unix();
+        self.rate_limits.retain(|_, v| {
+            v.hits.retain(|ts| now.saturating_sub(*ts) <= crate::ui::RATE_LIMIT_WINDOW_SECS);
+            if let Some(until) = v.limited_until {
+                if now >= until {
+                    v.limited_until = None;
+                }
+            }
+            !v.hits.is_empty() || v.limited_until.is_some()
+        });
+    }
+
+    pub(in crate::ui) fn note_rate_limit_request(&mut self, image_ref: &str) {
+        let now = now_unix();
+        let registry = image_registry_for_ref(image_ref);
+        let entry = self.rate_limits.entry(registry).or_default();
+        entry.hits.push(now);
+        entry
+            .hits
+            .retain(|ts| now.saturating_sub(*ts) <= crate::ui::RATE_LIMIT_WINDOW_SECS);
+    }
+
+    pub(in crate::ui) fn note_rate_limit_error(&mut self, image_ref: &str) {
+        let now = now_unix();
+        let registry = image_registry_for_ref(image_ref);
+        let entry = self.rate_limits.entry(registry).or_default();
+        entry.limited_until = Some(now + crate::ui::RATE_LIMIT_WINDOW_SECS);
+    }
+
+    pub(in crate::ui) fn status_banner(&mut self) -> Option<String> {
+        if self.refresh_paused {
+            let reason = self
+                .refresh_pause_reason
+                .as_deref()
+                .unwrap_or("paused")
+                .to_string();
+            return Some(format!("Refresh paused ({reason}). Press r to retry."));
+        }
+        self.rate_limit_banner()
+    }
+
+    pub(in crate::ui) fn rate_limit_banner(&mut self) -> Option<String> {
+        self.prune_rate_limits();
+        let now = now_unix();
+        let mut limited: Option<(String, i64)> = None;
+        let mut warn: Option<(String, usize)> = None;
+        for (reg, entry) in &self.rate_limits {
+            if let Some(until) = entry.limited_until {
+                if until > now {
+                    let remaining = until.saturating_sub(now);
+                    limited = Some((reg.clone(), remaining));
+                    break;
+                }
+            }
+            let count = entry.hits.len();
+            if count >= crate::ui::RATE_LIMIT_WARN {
+                if warn.as_ref().map(|(_, c)| count > *c).unwrap_or(true) {
+                    warn = Some((reg.clone(), count));
+                }
+            }
+        }
+        if let Some((reg, remaining)) = limited {
+            let mins = (remaining / 60).max(1);
+            return Some(format!(
+                "Rate limit reached for {reg}. Try again in ~{mins}m."
+            ));
+        }
+        if let Some((reg, count)) = warn {
+            return Some(format!(
+                "Rate limit nearing for {reg}: {count}/{} in 6h window.",
+                crate::ui::RATE_LIMIT_MAX
+            ));
+        }
+        None
+    }
+
+    pub(in crate::ui) fn image_update_entry(&self, key: &str) -> Option<&ImageUpdateEntry> {
+        let entry = self.image_updates.get(key)?;
+        let now = now_unix();
+        if now.saturating_sub(entry.checked_at) > crate::ui::IMAGE_UPDATE_TTL_SECS {
+            return None;
+        }
+        Some(entry)
+    }
 }
 
-fn find_server_by_name(servers: &[ServerEntry], name: &str) -> Option<usize> {
+pub(in crate::ui) fn find_server_by_name(servers: &[ServerEntry], name: &str) -> Option<usize> {
     servers.iter().position(|s| s.name == name)
 }
 
-fn ensure_unique_server_name(servers: &[ServerEntry], desired: &str) -> Option<String> {
+pub(in crate::ui) fn ensure_unique_server_name(
+    servers: &[ServerEntry],
+    desired: &str,
+) -> Option<String> {
     let desired = desired.trim();
     if desired.is_empty() {
         return None;
@@ -401,163 +352,3 @@ fn ensure_unique_server_name(servers: &[ServerEntry], desired: &str) -> Option<S
     }
     None
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ImageUpdateResult {
-    image: String,
-    entry: ImageUpdateEntry,
-    debug: Option<String>,
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-pub(in crate::ui) fn image_update_indicator(app: &App, view: ImageUpdateView, bg: Style) -> (String, Style) {
-    let (text, style) = match view {
-        ImageUpdateView::UpToDate => (
-            if app.ascii_only { "Y" } else { "●" },
-            bg.patch(app.theme.text_ok.to_style()),
-        ),
-        ImageUpdateView::UpdateAvailable => (
-            if app.ascii_only { "U" } else { "●" },
-            bg.patch(app.theme.text_warn.to_style()),
-        ),
-        ImageUpdateView::Error => (
-            if app.ascii_only { "!" } else { "●" },
-            bg.patch(app.theme.text_error.to_style()),
-        ),
-        ImageUpdateView::RateLimited => (
-            if app.ascii_only { "i" } else { "●" },
-            bg.patch(app.theme.text_info.to_style()),
-        ),
-        ImageUpdateView::Checking => (
-            if app.ascii_only { "*" } else { "⟳" },
-            bg.patch(app.theme.text_warn.to_style()),
-        ),
-        ImageUpdateView::Unknown => (
-            if app.ascii_only { "?" } else { "·" },
-            bg.patch(app.theme.text_dim.to_style()),
-        ),
-    };
-    (text.to_string(), style)
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-pub(in crate::ui) fn format_session_ts(at: OffsetDateTime) -> String {
-    use std::sync::OnceLock;
-    static FMT: OnceLock<Vec<time::format_description::FormatItem<'static>>> = OnceLock::new();
-    let fmt = FMT.get_or_init(|| {
-        time::format_description::parse("[hour]:[minute]:[second]")
-            .unwrap_or_else(|_| Vec::new())
-    });
-    at.format(fmt)
-        .unwrap_or_else(|_| at.unix_timestamp().to_string())
-}
-

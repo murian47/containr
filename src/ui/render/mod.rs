@@ -21,6 +21,7 @@ pub mod registries;
 pub mod theme_selector;
 pub mod cmdline;
 pub mod shell;
+pub mod root;
 pub mod tables;
 pub mod messages;
 pub mod clipboard;

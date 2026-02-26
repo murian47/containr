@@ -1,7 +1,7 @@
 //! View modules (Phase 1 scaffold)
 //! 
 //! Ziel: render-spezifische Funktionen pro View kapseln, ohne Logik zu ändern.
-//! Aktuell nur Platzhalter; die bestehenden Render-Funktionen liegen noch in `render.inc.rs`.
+//! Aktuell nur Platzhalter; Rendering liegt in `ui/render/*`.
 
 pub mod dashboard;
 pub mod stacks;

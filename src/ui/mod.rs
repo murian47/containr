@@ -21,15 +21,17 @@ mod state;
 mod input;
 pub mod theme;
 
-use render::layout::{draw_shell_body, draw_shell_hr};
+use render::layout::draw_shell_hr;
 use render::details::draw_shell_main_details;
 use render::sidebar::{
     draw_shell_sidebar, shell_sidebar_select_item,
 };
-use crate::domain::image_refs::image_registry_for_ref;
-use crate::ui::state::image_updates::{is_rate_limit_error, ImageUpdateView};
-use render::shell::{draw_shell_cmdline, draw_shell_header, draw_shell_main_list};
-pub(in crate::ui) use render::messages::{draw_shell_messages_dock, draw_shell_messages_view};
+use crate::ui::state::image_updates::{ImageUpdateResult, is_rate_limit_error};
+use render::shell::draw_shell_main_list;
+pub(in crate::ui) use render::messages::{
+    draw_shell_messages_dock, draw_shell_messages_view, format_session_ts,
+};
+pub(in crate::ui) use render::root::draw;
 pub(in crate::ui) use render::clipboard::copy_to_clipboard;
 pub(in crate::ui) use render::help::draw_shell_help_view;
 pub(in crate::ui) use render::inspect::draw_shell_inspect_view;
@@ -39,16 +41,17 @@ pub(in crate::ui) use render::tables::{
     draw_shell_containers_table, draw_shell_images_table, draw_shell_networks_table,
     draw_shell_volumes_table, shell_header_style,
 };
-use render::footer::draw_shell_footer;
 use render::inspect::{
     ancestors_of_pointer, build_inspect_lines, collect_expandable_paths, collect_match_paths,
     collect_path_rank,
 };
 pub(in crate::ui) use actions::{service_name_from_label_list, stack_compose_dirs, template_name_from_stack};
+pub(in crate::ui) use app_view::shell_cycle_focus;
 pub(in crate::ui) use helpers::{
     deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, extract_template_id,
     parse_kv_args, shell_single_quote,
 };
+pub(in crate::ui) use state::persistence::{ensure_unique_server_name, find_server_by_name};
 pub(in crate::ui) use templates_ops::{
     create_net_template, create_template, delete_net_template, delete_template,
     export_net_template, export_stack_template, extract_net_template_description,
@@ -57,13 +60,14 @@ pub(in crate::ui) use templates_ops::{
 #[cfg(test)]
 pub(crate) use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
 use render::highlight::{json_highlight_line, yaml_highlight_line};
+pub(in crate::ui) use render::status::image_update_indicator;
 use render::utils::{
     expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
-    theme_color_rgba, write_text_file,
+    theme_color_rgba,
 };
 use render::stacks::stack_name_from_labels;
 
-use crate::config::{self, ContainrConfig, DockerCmd, KeyBinding, ServerEntry};
+use crate::config::{self, DockerCmd, KeyBinding, ServerEntry};
 use crate::docker::{
     self, ContainerAction, ContainerRow, DockerCfg, ImageRow, NetworkRow, VolumeRow,
 };
@@ -76,13 +80,7 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{
-    Terminal,
-    backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    style::Style,
-    widgets::Block,
-};
+use ratatui::{Terminal, backend::CrosstermBackend};
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::StatefulProtocol;
 use image::{DynamicImage, Rgba, RgbaImage};
@@ -7826,8 +7824,6 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow
     terminal.show_cursor()?;
     Ok(())
 }
-
-include!("render.inc.rs");
 
 #[cfg(test)]
 mod tests;

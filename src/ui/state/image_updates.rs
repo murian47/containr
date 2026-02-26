@@ -3,6 +3,14 @@ use crate::domain::image_refs::{
 };
 use crate::ui::{App, ImageUpdateKind};
 use crate::ui::render::stacks::stack_name_from_labels;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(in crate::ui) struct ImageUpdateResult {
+    pub image: String,
+    pub entry: crate::ui::ImageUpdateEntry,
+    pub debug: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageUpdateView {

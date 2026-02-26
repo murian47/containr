@@ -1,4 +1,4 @@
-use crate::ui::{format_session_ts, App, MsgLevel, ShellFocus};
+use crate::ui::{App, MsgLevel, ShellFocus};
 use crate::ui::render::scroll::draw_shell_scrollbar_v;
 use crate::ui::render::utils::shell_row_highlight;
 use crate::ui::render::text::window_hscroll;
@@ -6,6 +6,18 @@ use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState};
+use time::OffsetDateTime;
+
+pub(in crate::ui) fn format_session_ts(at: OffsetDateTime) -> String {
+    use std::sync::OnceLock;
+    static FMT: OnceLock<Vec<time::format_description::FormatItem<'static>>> = OnceLock::new();
+    let fmt = FMT.get_or_init(|| {
+        time::format_description::parse("[hour]:[minute]:[second]")
+            .unwrap_or_else(|_| Vec::new())
+    });
+    at.format(fmt)
+        .unwrap_or_else(|_| at.unix_timestamp().to_string())
+}
 
 pub(in crate::ui) fn draw_shell_messages_view(
     f: &mut ratatui::Frame,

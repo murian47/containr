@@ -7,6 +7,49 @@ use crate::ui::{
 };
 use tokio::sync::{mpsc, watch};
 
+pub(in crate::ui) fn shell_cycle_focus(app: &mut App) {
+    let mut order: Vec<ShellFocus> = Vec::new();
+    if !app.shell_sidebar_hidden {
+        order.push(ShellFocus::Sidebar);
+    }
+    order.push(ShellFocus::List);
+    let has_details = matches!(
+        app.shell_view,
+        ShellView::Stacks
+            | ShellView::Containers
+            | ShellView::Images
+            | ShellView::Volumes
+            | ShellView::Networks
+            | ShellView::Templates
+            | ShellView::Registries
+    );
+    if has_details {
+        order.push(ShellFocus::Details);
+    }
+    let dock_allowed = app.log_dock_enabled
+        && !matches!(
+            app.shell_view,
+            ShellView::Logs
+                | ShellView::Inspect
+                | ShellView::Help
+                | ShellView::Messages
+                | ShellView::ThemeSelector
+        );
+    if dock_allowed {
+        order.push(ShellFocus::Dock);
+    }
+    if order.is_empty() {
+        app.shell_focus = ShellFocus::List;
+        return;
+    }
+    let idx = order
+        .iter()
+        .position(|f| *f == app.shell_focus)
+        .unwrap_or(0);
+    let next = (idx + 1) % order.len();
+    app.shell_focus = order[next];
+}
+
 impl App {
     pub(in crate::ui) fn set_main_view(&mut self, view: ShellView) {
         self.shell_view = view;
