@@ -16,6 +16,7 @@ mod app_logs;
 mod app_inspect;
 mod app_registry;
 mod app_registry_http;
+mod app_requests;
 mod app_secrets;
 mod app_clock;
 mod app_types;
@@ -89,6 +90,7 @@ use cmd_history::CmdHistory;
 use app_ops::{perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy};
 use app_runtime::{current_docker_cmd_from_app, current_runner_from_app, current_server_label, restore_terminal, run_interactive_command, run_interactive_local_command, setup_terminal};
 pub(in crate::ui) use app_clock::{now_local, now_unix};
+pub(in crate::ui) use app_requests::{ActionRequest, Connection, ShellConfirm};
 pub(in crate::ui) use app_types::{
     ActionErrorKind, ActionMarker, DashboardAllState, DashboardHostState, DashboardImageState,
     DashboardSnapshot, DashboardState, DeployMarker, DiskEntry, IMAGE_UPDATE_TTL_SECS,
@@ -557,92 +559,6 @@ impl ShellAction {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(in crate::ui) enum ActionRequest {
-    Container {
-        action: ContainerAction,
-        id: String,
-    },
-    RegistryTest {
-        host: String,
-        auth: RegistryAuthResolved,
-        test_repo: Option<String>,
-    },
-    TemplateDeploy {
-        name: String,
-        runner: Runner,
-        docker: DockerCfg,
-        local_compose: PathBuf,
-        pull: bool,
-        force_recreate: bool,
-        server_name: String,
-        template_id: String,
-        template_commit: Option<String>,
-    },
-    StackUpdate {
-        stack_name: String,
-        runner: Runner,
-        docker: DockerCfg,
-        compose_dirs: Vec<String>,
-        pull: bool,
-        dry: bool,
-        force: bool,
-        services: Vec<StackUpdateService>,
-    },
-    NetTemplateDeploy {
-        name: String,
-        runner: Runner,
-        docker: DockerCfg,
-        local_cfg: PathBuf,
-        force: bool,
-        server_name: String,
-    },
-    TemplateFromNetwork {
-        name: String,
-        source: String,
-        network_id: String,
-        templates_dir: PathBuf,
-    },
-    TemplateFromStack {
-        name: String,
-        stack_name: String,
-        source: String,
-        container_ids: Vec<String>,
-        templates_dir: PathBuf,
-    },
-    TemplateFromContainer {
-        name: String,
-        source: String,
-        container_id: String,
-        templates_dir: PathBuf,
-    },
-    ImageUpdateCheck {
-        image: String,
-        debug: bool,
-    },
-    ImageUntag {
-        marker_key: String,
-        reference: String,
-    },
-    ImageForceRemove {
-        marker_key: String,
-        id: String,
-    },
-    ImagePush {
-        marker_key: String,
-        source_ref: String,
-        target_ref: String,
-        registry_host: String,
-        auth: Option<RegistryAuthResolved>,
-    },
-    VolumeRemove {
-        name: String,
-    },
-    NetworkRemove {
-        id: String,
-    },
-}
-
 struct App {
     containers: Vec<ContainerRow>,
     images: Vec<ImageRow>,
@@ -787,18 +703,6 @@ struct App {
     image_details_id: Option<String>,
     volume_details_id: Option<String>,
     network_details_id: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-struct ShellConfirm {
-    label: String,
-    cmdline: String, // command line without leading ':'
-}
-
-#[derive(Clone, Debug)]
-struct Connection {
-    runner: Runner,
-    docker: DockerCfg,
 }
 
 pub async fn run_tui(
