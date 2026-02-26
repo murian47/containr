@@ -3,15 +3,15 @@ use std::fs;
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
 
-use super::{
+use crate::ui::{
     App, GitRemoteStatus, MsgLevel, NetTemplateEntry, TemplateEditSnapshot, TemplateEntry,
     TemplatesKind,
 };
-use crate::ui::templates_ops::{extract_net_template_description, extract_template_description};
+use super::{extract_net_template_description, extract_template_description};
 use crate::ui::{commands, extract_template_id};
 
 impl App {
-    pub(super) fn refresh_templates(&mut self) {
+    pub(in crate::ui) fn refresh_templates(&mut self) {
         self.templates_state.templates_error = None;
         self.templates_state.templates.clear();
         self.templates_state.templates_details_scroll = 0;
@@ -94,21 +94,21 @@ impl App {
         self.template_deploys.retain(|id, _| known.contains(id));
     }
 
-    pub(super) fn selected_template(&self) -> Option<&TemplateEntry> {
+    pub(in crate::ui) fn selected_template(&self) -> Option<&TemplateEntry> {
         self.templates_state
             .templates
             .get(self.templates_state.templates_selected)
     }
 
-    pub(super) fn net_templates_dir(&self) -> PathBuf {
+    pub(in crate::ui) fn net_templates_dir(&self) -> PathBuf {
         self.templates_state.dir.join("networks")
     }
 
-    pub(super) fn stack_templates_dir(&self) -> PathBuf {
+    pub(in crate::ui) fn stack_templates_dir(&self) -> PathBuf {
         self.templates_state.dir.join("stacks")
     }
 
-    pub(super) fn migrate_templates_layout_if_needed(&mut self) {
+    pub(in crate::ui) fn migrate_templates_layout_if_needed(&mut self) {
         // Old layout: <templates_dir>/<name>/compose.yaml and <templates_dir>/networks/...
         // New layout: <templates_dir>/stacks/<name>/compose.yaml and <templates_dir>/networks/...
         let stacks = self.stack_templates_dir();
@@ -168,7 +168,7 @@ impl App {
         }
     }
 
-    pub(super) fn refresh_net_templates(&mut self) {
+    pub(in crate::ui) fn refresh_net_templates(&mut self) {
         self.templates_state.net_templates_error = None;
         self.templates_state.net_templates.clear();
         self.templates_state.net_templates_details_scroll = 0;
@@ -227,7 +227,7 @@ impl App {
         }
     }
 
-    pub(super) fn refresh_template_git_status(&mut self) {
+    pub(in crate::ui) fn refresh_template_git_status(&mut self) {
         self.templates_state.dirty_templates.clear();
         self.templates_state.dirty_net_templates.clear();
         self.templates_state.untracked_templates.clear();
@@ -321,13 +321,13 @@ impl App {
         }
     }
 
-    pub(super) fn selected_net_template(&self) -> Option<&NetTemplateEntry> {
+    pub(in crate::ui) fn selected_net_template(&self) -> Option<&NetTemplateEntry> {
         self.templates_state
             .net_templates
             .get(self.templates_state.net_templates_selected)
     }
 
-    pub(super) fn capture_template_ai_snapshot(
+    pub(in crate::ui) fn capture_template_ai_snapshot(
         &mut self,
         kind: TemplatesKind,
         name: String,
@@ -342,7 +342,7 @@ impl App {
         });
     }
 
-    pub(super) fn apply_template_ai_snapshot_if_kind(&mut self, kind: TemplatesKind) {
+    pub(in crate::ui) fn apply_template_ai_snapshot_if_kind(&mut self, kind: TemplatesKind) {
         let Some(snapshot) = self.templates_state.ai_edit_snapshot.as_ref() else {
             return;
         };

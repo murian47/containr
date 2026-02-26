@@ -25,13 +25,11 @@ mod app_selection;
 mod app_state;
 mod app_stacks;
 mod app_theme_selector;
-mod app_templates;
 mod app_view;
 mod core;
 mod features;
 mod commands;
 mod helpers;
-mod templates_ops;
 mod render;
 mod views;
 mod state;
@@ -67,7 +65,7 @@ pub(in crate::ui) use helpers::{
     build_server_shortcuts, normalize_image_id, truncate_msg,
 };
 pub(in crate::ui) use state::persistence::{ensure_unique_server_name, find_server_by_name};
-pub(in crate::ui) use templates_ops::{
+pub(in crate::ui) use features::templates::{
     create_net_template, create_template, delete_net_template, delete_template,
     export_net_template, export_stack_template, images_from_compose, maybe_autocommit_templates,
 };
