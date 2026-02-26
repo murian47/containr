@@ -53,6 +53,23 @@ impl DockerCmd {
             .collect::<Vec<_>>()
             .join(" ")
     }
+
+    pub fn to_compose_shell(&self) -> String {
+        if self.tokens.is_empty() {
+            return String::new();
+        }
+        let first_is_compose_bin = self
+            .tokens
+            .first()
+            .map(|t| t.ends_with("compose"))
+            .unwrap_or(false);
+        let has_compose_subcmd = self.tokens.iter().any(|t| t == "compose");
+        if first_is_compose_bin || has_compose_subcmd {
+            self.to_shell()
+        } else {
+            format!("{} compose", self.to_shell())
+        }
+    }
 }
 
 impl Default for DockerCmd {

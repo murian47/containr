@@ -7295,22 +7295,46 @@ async fn perform_template_deploy(
         render_compose_with_template_id(local_compose, &template_id, template_commit)?;
     let remote_compose = format!("{remote_dir}/compose.rendered.yaml");
     let remote_dir_q = shell_single_quote(&remote_dir);
-    let docker_cmd = docker.docker_cmd.to_shell();
+    let compose_cmd = docker.docker_cmd.to_compose_shell();
     let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
-    let pull_cmd = format!(
-        "cd {remote_dir_q} && {docker_cmd} compose -f compose.rendered.yaml pull"
-    );
+    let pull_cmd = format!("cd {remote_dir_q} && {compose_cmd} -f compose.rendered.yaml pull");
     let recreate_flag = if force_recreate { " --force-recreate" } else { "" };
-    let up_cmd = format!(
-        "cd {remote_dir_q} && {docker_cmd} compose -f compose.rendered.yaml up -d{recreate_flag}"
-    );
+    let up_cmd =
+        format!("cd {remote_dir_q} && {compose_cmd} -f compose.rendered.yaml up -d{recreate_flag}");
     runner.run(&mkdir_cmd).await?;
     runner.copy_file_to(rendered_path.as_ref(), &remote_compose).await?;
     if pull {
-        let _ = runner.run(&pull_cmd).await?;
+        let _ = run_with_local_compose_fallback(runner, &pull_cmd).await?;
     }
-    let out = runner.run(&up_cmd).await?;
+    let out = run_with_local_compose_fallback(runner, &up_cmd).await?;
     Ok(out)
+}
+
+async fn run_with_local_compose_fallback(runner: &Runner, cmd: &str) -> anyhow::Result<String> {
+    match runner.run(cmd).await {
+        Ok(out) => Ok(out),
+        Err(e) => {
+            let msg = format!("{:#}", e);
+            let is_missing_desktop_helper = msg.contains("docker-credential-desktop")
+                && msg.contains("executable file not found");
+            if !matches!(runner, Runner::Local) || !is_missing_desktop_helper {
+                return Err(e);
+            }
+
+            let home = std::env::var("HOME")
+                .map_err(|_| anyhow::anyhow!("HOME is not set for local compose fallback"))?;
+            let cfg_dir = PathBuf::from(home).join(".config/containr/docker-no-creds");
+            fs::create_dir_all(&cfg_dir)
+                .map_err(|err| anyhow::anyhow!("failed to create local docker fallback dir: {err}"))?;
+            let cfg_file = cfg_dir.join("config.json");
+            fs::write(&cfg_file, "{\"auths\":{}}\n").map_err(|err| {
+                anyhow::anyhow!("failed to write local docker fallback config: {err}")
+            })?;
+            let cfg_q = shell_single_quote(cfg_dir.to_string_lossy().as_ref());
+            let wrapped = format!("export DOCKER_CONFIG={cfg_q}; {cmd}");
+            runner.run(&wrapped).await
+        }
+    }
 }
 
 async fn perform_stack_update(
@@ -7353,7 +7377,8 @@ async fn perform_stack_update(
     let dir_q = shell_quote_with_home(&dir);
     let file_q = shell_single_quote("compose.rendered.yaml");
     let docker_cmd = docker.docker_cmd.to_shell();
-    let pull_cmd = format!("cd {dir_q} && {docker_cmd} compose -f {file_q} pull");
+    let compose_cmd = docker.docker_cmd.to_compose_shell();
+    let pull_cmd = format!("cd {dir_q} && {compose_cmd} -f {file_q} pull");
     let mut svc_args: Vec<String> = Vec::new();
     for svc in services {
         let name = svc.name.trim();
@@ -7366,9 +7391,8 @@ async fn perform_stack_update(
     } else {
         format!(" {}", svc_args.join(" "))
     };
-    let up_cmd = format!(
-        "cd {dir_q} && {docker_cmd} compose -f {file_q} up -d --force-recreate{svc_args_str}"
-    );
+    let up_cmd =
+        format!("cd {dir_q} && {compose_cmd} -f {file_q} up -d --force-recreate{svc_args_str}");
     if dry {
         let mut lines = Vec::new();
         lines.push(format!("stack update dry-run: {stack_name}"));
@@ -7383,7 +7407,7 @@ async fn perform_stack_update(
     lines.push(format!("stack update: {stack_name}"));
     lines.push(format!("compose dir: {}", dir));
     if pull {
-        let pull_out = runner.run(&pull_cmd).await?;
+        let pull_out = run_with_local_compose_fallback(runner, &pull_cmd).await?;
         let pull_msg = pull_out.trim();
         if pull_msg.is_empty() {
             lines.push("pull: ok".to_string());
@@ -7467,9 +7491,8 @@ async fn perform_stack_update(
     } else {
         format!(" {}", svc_args.join(" "))
     };
-    let up_cmd = format!(
-        "cd {dir_q} && {docker_cmd} compose -f {file_q} up -d --force-recreate{svc_args_str}"
-    );
+    let up_cmd =
+        format!("cd {dir_q} && {compose_cmd} -f {file_q} up -d --force-recreate{svc_args_str}");
     if !svc_args_str.is_empty() {
         let raw = svc_args
             .iter()
@@ -7480,7 +7503,7 @@ async fn perform_stack_update(
     } else {
         lines.push("recreate: all".to_string());
     }
-    let out = runner.run(&up_cmd).await?;
+    let out = run_with_local_compose_fallback(runner, &up_cmd).await?;
     let out_msg = out.trim();
     if !out_msg.is_empty() {
         lines.push(format!("compose up: {}", truncate_msg(out_msg, 200)));
@@ -7635,9 +7658,11 @@ async fn perform_net_template_deploy(
         }
     }
 
+    let mut effective_parent: Option<String> = None;
     if driver == "ipvlan" {
         let parent = spec.parent.as_deref().unwrap_or("").trim();
         anyhow::ensure!(!parent.is_empty(), "ipvlan requires 'parent'");
+        effective_parent = Some(parent.to_string());
         parts.push("--opt".to_string());
         parts.push(shell_single_quote(&format!("parent={parent}")));
         if let Some(mode) = spec.ipvlan_mode.as_deref().filter(|s| !s.trim().is_empty()) {
@@ -7669,8 +7694,84 @@ async fn perform_net_template_deploy(
 
     parts.push(net_q);
     let create_cmd = parts.join(" ");
-    let out = runner.run(&create_cmd).await?;
-    Ok(out)
+    match runner.run(&create_cmd).await {
+        Ok(out) => Ok(out),
+        Err(primary_err) => {
+            let parent = effective_parent.as_deref().unwrap_or("");
+            let can_retry_macos_parent = cfg!(target_os = "macos")
+                && matches!(runner, Runner::Local)
+                && driver == "ipvlan"
+                && parent.starts_with("en")
+                && !parent.is_empty();
+            if !can_retry_macos_parent {
+                return Err(primary_err);
+            }
+
+            let vlan_suffix = parent
+                .split_once('.')
+                .map(|(_, v)| v.trim().to_string())
+                .filter(|v| !v.is_empty());
+            let detected_base = detect_local_ipvlan_parent_base(runner, docker).await;
+            let mapped_parent = if let Some(base) = detected_base {
+                if let Some(vlan) = &vlan_suffix {
+                    format!("{base}.{vlan}")
+                } else {
+                    base
+                }
+            } else if let Some(vlan) = &vlan_suffix {
+                format!("eth0.{vlan}")
+            } else {
+                "eth0".to_string()
+            };
+
+            let from_quoted = shell_single_quote(&format!("parent={parent}"));
+            let to_quoted = shell_single_quote(&format!("parent={mapped_parent}"));
+            let from_plain = format!("parent={parent}");
+            let to_plain = format!("parent={mapped_parent}");
+            let retry_cmd = create_cmd
+                .replace(&from_quoted, &to_quoted)
+                .replace(&from_plain, &to_plain);
+
+            match runner.run(&retry_cmd).await {
+                Ok(out) => Ok(format!(
+                    "{}\n(macos local ipvlan parent remapped: {} -> {})",
+                    out.trim(),
+                    parent,
+                    mapped_parent
+                )
+                .trim()
+                .to_string()),
+                Err(_) => Err(primary_err),
+            }
+        }
+    }
+}
+
+async fn detect_local_ipvlan_parent_base(runner: &Runner, docker: &DockerCfg) -> Option<String> {
+    if !matches!(runner, Runner::Local) {
+        return None;
+    }
+    let docker_cmd = docker.docker_cmd.to_shell();
+    if docker_cmd.trim().is_empty() {
+        return None;
+    }
+    let cmd = format!(
+        "{docker_cmd} network inspect $({docker_cmd} network ls -q) --format '{{{{.Driver}}}} {{{{index .Options \"parent\"}}}}' 2>/dev/null || true"
+    );
+    let out = runner.run(&cmd).await.ok()?;
+    for line in out.lines() {
+        let mut it = line.split_whitespace();
+        let drv = it.next().unwrap_or("");
+        let parent = it.next().unwrap_or("");
+        if drv != "ipvlan" || parent.is_empty() || parent == "<no" {
+            continue;
+        }
+        let base = parent.split('.').next().unwrap_or(parent).trim();
+        if !base.is_empty() {
+            return Some(base.to_string());
+        }
+    }
+    None
 }
 
 pub(in crate::ui) fn current_runner_from_app(app: &App) -> Runner {
