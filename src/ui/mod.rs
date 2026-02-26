@@ -16,26 +16,19 @@ mod app_logs;
 mod app_inspect;
 mod app_registry;
 mod app_registry_http;
-mod app_requests;
 mod app_secrets;
-mod app_clock;
-mod app_types;
-mod app_dashboard;
-mod app_dashboard_data;
-mod app_dashboard_image;
-mod app_local_state;
-mod app_template_labels;
 mod app_server_switch;
 mod app_keymap;
 mod app_init;
 mod app_ops;
-mod app_runtime;
 mod app_selection;
 mod app_state;
 mod app_stacks;
 mod app_theme_selector;
 mod app_templates;
 mod app_view;
+mod core;
+mod features;
 mod commands;
 mod helpers;
 mod templates_ops;
@@ -88,10 +81,10 @@ use render::utils::{
 use render::stacks::stack_name_from_labels;
 use cmd_history::CmdHistory;
 use app_ops::{perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy};
-use app_runtime::{current_docker_cmd_from_app, current_runner_from_app, current_server_label, restore_terminal, run_interactive_command, run_interactive_local_command, setup_terminal};
-pub(in crate::ui) use app_clock::{now_local, now_unix};
-pub(in crate::ui) use app_requests::{ActionRequest, Connection, ShellConfirm};
-pub(in crate::ui) use app_types::{
+use core::runtime::{current_docker_cmd_from_app, current_runner_from_app, current_server_label, restore_terminal, run_interactive_command, run_interactive_local_command, setup_terminal};
+pub(in crate::ui) use core::clock::{now_local, now_unix};
+pub(in crate::ui) use core::requests::{ActionRequest, Connection, ShellConfirm};
+pub(in crate::ui) use core::types::{
     ActionErrorKind, ActionMarker, DashboardAllState, DashboardHostState, DashboardImageState,
     DashboardSnapshot, DashboardState, DeployMarker, DiskEntry, IMAGE_UPDATE_TTL_SECS,
     ImageUpdateEntry, ImageUpdateKind, InspectKind, InspectLine, InspectMode, InspectTarget,
@@ -101,16 +94,14 @@ pub(in crate::ui) use app_types::{
     StackEntry, StackUpdateService, TemplateDeployEntry, TemplateEntry, UsageSnapshot, ViewEntry,
     classify_action_error,
 };
-use app_dashboard_data::{dashboard_command, parse_dashboard_output};
+use features::dashboard::{dashboard_command, parse_dashboard_output};
 use app_registry_http::registry_test;
-pub(in crate::ui) use app_dashboard_image::{
-    apply_dashboard_theme, build_dashboard_image, init_dashboard_image,
-};
-pub(in crate::ui) use app_local_state::load_local_state;
+pub(in crate::ui) use features::dashboard::init_dashboard_image;
+pub(in crate::ui) use core::local_state::load_local_state;
 pub(in crate::ui) use app_secrets::{
     decrypt_age_secret, encrypt_age_secret, ensure_age_identity, load_age_identities,
 };
-pub(in crate::ui) use app_template_labels::{
+pub(in crate::ui) use features::templates::{
     render_compose_with_template_id, template_commit_from_labels, template_id_from_labels,
 };
 pub(in crate::ui) use app_keymap::{cmdline_is_destructive, is_single_letter_without_modifiers};

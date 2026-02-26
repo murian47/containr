@@ -1,9 +1,10 @@
 use image::DynamicImage;
 
-use super::{App, apply_dashboard_theme, build_dashboard_image, init_dashboard_image};
+use crate::ui::App;
+use super::{apply_dashboard_theme, build_dashboard_image, init_dashboard_image};
 
 impl App {
-    pub(super) fn dashboard_image_enabled(&self) -> bool {
+    pub(in crate::ui) fn dashboard_image_enabled(&self) -> bool {
         if !self.kitty_graphics {
             return false;
         }
@@ -13,7 +14,7 @@ impl App {
             .unwrap_or(false)
     }
 
-    pub(super) fn set_kitty_graphics(&mut self, enabled: bool) -> bool {
+    pub(in crate::ui) fn set_kitty_graphics(&mut self, enabled: bool) -> bool {
         if enabled {
             if self.ascii_only {
                 return false;
@@ -35,7 +36,7 @@ impl App {
         true
     }
 
-    pub(super) fn update_dashboard_image(&mut self, area: ratatui::layout::Rect) {
+    pub(in crate::ui) fn update_dashboard_image(&mut self, area: ratatui::layout::Rect) {
         let Some(state) = &mut self.dashboard_image else {
             return;
         };
@@ -97,7 +98,7 @@ impl App {
         state.last_key = Some(key);
     }
 
-    pub(super) fn reset_dashboard_image(&mut self) {
+    pub(in crate::ui) fn reset_dashboard_image(&mut self) {
         if let Some(state) = &mut self.dashboard_image {
             apply_dashboard_theme(state, &self.theme);
             state.protocol = None;

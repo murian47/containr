@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::docker::{ContainerAction, DockerCfg};
 use crate::runner::Runner;
 
-use super::{RegistryAuthResolved, StackUpdateService};
+use super::types::{RegistryAuthResolved, StackUpdateService};
 
 #[derive(Debug, Clone)]
 pub(in crate::ui) enum ActionRequest {

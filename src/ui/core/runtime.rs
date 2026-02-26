@@ -12,7 +12,7 @@ use crate::config::DockerCmd;
 use crate::runner::Runner;
 use crate::ssh::Ssh;
 
-use super::App;
+use crate::ui::App;
 
 pub(in crate::ui) fn setup_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
     enable_raw_mode()?;

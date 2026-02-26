@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-use super::{ImageUpdateEntry, RateLimitEntry, RegistryTestEntry, TemplateDeployEntry};
+use super::types::{ImageUpdateEntry, RateLimitEntry, RegistryTestEntry, TemplateDeployEntry};
 
 pub(in crate::ui) fn image_updates_path() -> PathBuf {
     if let Ok(root) = std::env::var("XDG_STATE_HOME") {
