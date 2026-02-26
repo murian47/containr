@@ -18,6 +18,7 @@ mod app_registry;
 mod app_registry_http;
 mod app_secrets;
 mod app_clock;
+mod app_types;
 mod app_dashboard;
 mod app_dashboard_data;
 mod app_dashboard_image;
@@ -88,6 +89,16 @@ use cmd_history::CmdHistory;
 use app_ops::{perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy};
 use app_runtime::{current_docker_cmd_from_app, current_runner_from_app, current_server_label, restore_terminal, run_interactive_command, run_interactive_local_command, setup_terminal};
 pub(in crate::ui) use app_clock::{now_local, now_unix};
+pub(in crate::ui) use app_types::{
+    ActionErrorKind, ActionMarker, DashboardAllState, DashboardHostState, DashboardImageState,
+    DashboardSnapshot, DashboardState, DeployMarker, DiskEntry, IMAGE_UPDATE_TTL_SECS,
+    ImageUpdateEntry, ImageUpdateKind, InspectKind, InspectLine, InspectMode, InspectTarget,
+    LastActionError, LocalState, LogsMode, NetTemplateEntry, NetworkTemplateIpv4,
+    NetworkTemplateSpec, NicEntry, RATE_LIMIT_MAX, RATE_LIMIT_WARN, RATE_LIMIT_WINDOW_SECS,
+    RateLimitEntry, RegistryAuthResolved, RegistryTestEntry, SimpleMarker, StackDetailsFocus,
+    StackEntry, StackUpdateService, TemplateDeployEntry, TemplateEntry, UsageSnapshot, ViewEntry,
+    classify_action_error,
+};
 use app_dashboard_data::{dashboard_command, parse_dashboard_output};
 use app_registry_http::registry_test;
 pub(in crate::ui) use app_dashboard_image::{
@@ -118,9 +129,7 @@ use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
 };
 use ratatui_image::picker::Picker;
-use ratatui_image::protocol::StatefulProtocol;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -548,245 +557,6 @@ impl ShellAction {
     }
 }
 
-#[derive(Clone, Debug)]
-enum ViewEntry {
-    StackHeader {
-        name: String,
-        total: usize,
-        running: usize,
-        expanded: bool,
-    },
-    UngroupedHeader {
-        total: usize,
-        running: usize,
-    },
-    Container {
-        id: String,
-        indent: usize,
-    },
-}
-
-#[derive(Clone, Debug)]
-struct StackEntry {
-    name: String,
-    total: usize,
-    running: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum StackDetailsFocus {
-    Containers,
-    Networks,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InspectMode {
-    Normal,
-    Search,
-    Command,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LogsMode {
-    Normal,
-    Search,
-    Command,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InspectKind {
-    Container,
-    Image,
-    Volume,
-    Network,
-}
-
-#[derive(Debug, Clone)]
-struct InspectTarget {
-    kind: InspectKind,
-    key: String,
-    arg: String,
-    label: String,
-}
-
-#[derive(Debug, Clone)]
-struct InspectLine {
-    path: String,     // JSON pointer
-    depth: usize,     // indentation
-    label: String,    // key/index label (already printable)
-    summary: String,  // preview text (no newlines)
-    expandable: bool, // object/array
-    expanded: bool,   // current state
-    matches: bool,    // search match
-}
-
-#[derive(Clone, Debug)]
-struct TemplateEntry {
-    name: String,
-    dir: PathBuf,
-    compose_path: PathBuf,
-    has_compose: bool,
-    desc: String,
-    template_id: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-struct NetTemplateEntry {
-    name: String,
-    dir: PathBuf,
-    cfg_path: PathBuf,
-    has_cfg: bool,
-    desc: String,
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-struct NetworkTemplateIpv4 {
-    subnet: Option<String>,
-    gateway: Option<String>,
-    #[serde(rename = "ip_range")]
-    ip_range: Option<String>,
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-struct NetworkTemplateSpec {
-    name: String,
-    #[allow(dead_code)]
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    driver: Option<String>,
-    #[serde(default)]
-    parent: Option<String>,
-    #[serde(default, rename = "ipvlan_mode")]
-    ipvlan_mode: Option<String>,
-    #[serde(default)]
-    internal: Option<bool>,
-    #[serde(default)]
-    attachable: Option<bool>,
-    #[serde(default)]
-    ipv4: Option<NetworkTemplateIpv4>,
-    #[serde(default)]
-    options: Option<HashMap<String, String>>,
-    #[serde(default)]
-    labels: Option<HashMap<String, String>>,
-}
-
-const IMAGE_UPDATE_TTL_SECS: i64 = 24 * 60 * 60;
-const RATE_LIMIT_WINDOW_SECS: i64 = 6 * 60 * 60;
-const RATE_LIMIT_MAX: usize = 100;
-const RATE_LIMIT_WARN: usize = 80;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum ImageUpdateKind {
-    UpToDate,
-    UpdateAvailable,
-    Error,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct ImageUpdateEntry {
-    checked_at: i64,
-    status: ImageUpdateKind,
-    local_digest: Option<String>,
-    remote_digest: Option<String>,
-    error: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct TemplateDeployEntry {
-    server_name: String,
-    timestamp: i64,
-    #[serde(default)]
-    commit: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct RegistryTestEntry {
-    checked_at: i64,
-    ok: bool,
-    message: String,
-}
-
-#[derive(Clone, Debug)]
-struct RegistryAuthResolved {
-    auth: config::RegistryAuth,
-    username: Option<String>,
-    secret: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
-struct RateLimitEntry {
-    hits: Vec<i64>,
-    limited_until: Option<i64>,
-}
-
-#[derive(Default, Serialize, Deserialize)]
-struct LocalState {
-    version: u32,
-    #[serde(default)]
-    image_updates: HashMap<String, ImageUpdateEntry>,
-    #[serde(default)]
-    rate_limits: HashMap<String, RateLimitEntry>,
-    #[serde(default)]
-    template_deploys: HashMap<String, Vec<TemplateDeployEntry>>,
-    #[serde(default)]
-    net_template_deploys: HashMap<String, Vec<TemplateDeployEntry>>,
-    #[serde(default)]
-    registry_tests: HashMap<String, RegistryTestEntry>,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(in crate::ui) struct DeployMarker {
-    started: Instant,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(in crate::ui) struct ActionMarker {
-    action: ContainerAction,
-    until: Instant,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(in crate::ui) struct SimpleMarker {
-    until: Instant,
-}
-
-#[derive(Clone, Debug)]
-enum ActionErrorKind {
-    InUse,
-    Other,
-}
-
-#[derive(Clone, Debug)]
-struct LastActionError {
-    at: OffsetDateTime,
-    action: String,
-    kind: ActionErrorKind,
-    message: String,
-}
-
-#[derive(Clone, Debug)]
-struct StackUpdateService {
-    name: String,
-    container_id: String,
-    image: String,
-}
-
-fn classify_action_error(msg: &str) -> ActionErrorKind {
-    let s = msg.to_ascii_lowercase();
-    if s.contains("in use")
-        || s.contains("being used")
-        || s.contains("has active endpoints")
-        || s.contains("active endpoints")
-        || s.contains("is being used")
-    {
-        ActionErrorKind::InUse
-    } else {
-        ActionErrorKind::Other
-    }
-}
-
-
 #[derive(Debug, Clone)]
 pub(in crate::ui) enum ActionRequest {
     Container {
@@ -1030,100 +800,6 @@ struct Connection {
     runner: Runner,
     docker: DockerCfg,
 }
-
-#[derive(Debug, Clone, Default)]
-struct UsageSnapshot {
-    image_ref_count_by_id: HashMap<String, usize>,
-    image_run_count_by_id: HashMap<String, usize>,
-    image_containers_by_id: HashMap<String, Vec<String>>,
-    volume_ref_count_by_name: HashMap<String, usize>,
-    volume_run_count_by_name: HashMap<String, usize>,
-    volume_containers_by_name: HashMap<String, Vec<String>>,
-    network_ref_count_by_id: HashMap<String, usize>,
-    network_containers_by_id: HashMap<String, Vec<String>>,
-    ip_by_container_id: HashMap<String, String>,
-}
-
-#[derive(Clone, Debug)]
-struct DashboardSnapshot {
-    os: String,
-    kernel: String,
-    arch: String,
-    uptime: String,
-    engine: String,
-    containers_running: u32,
-    containers_total: u32,
-    cpu_cores: u32,
-    load1: f32,
-    load5: f32,
-    load15: f32,
-    mem_used_bytes: u64,
-    mem_total_bytes: u64,
-    disk_used_bytes: u64,
-    disk_total_bytes: u64,
-    disks: Vec<DiskEntry>,
-    nics: Vec<NicEntry>,
-    collected_at: OffsetDateTime,
-}
-
-#[derive(Clone, Debug)]
-struct DashboardState {
-    loading: bool,
-    error: Option<String>,
-    snap: Option<DashboardSnapshot>,
-    last_disk_count: usize,
-    suppress_image_frames: u8,
-}
-
-#[derive(Clone, Debug)]
-struct DashboardHostState {
-    name: String,
-    loading: bool,
-    error: Option<String>,
-    snap: Option<DashboardSnapshot>,
-    latency_ms: Option<u128>,
-}
-
-#[derive(Clone, Debug, Default)]
-struct DashboardAllState {
-    hosts: Vec<DashboardHostState>,
-}
-
-impl Default for DashboardState {
-    fn default() -> Self {
-        Self {
-            loading: false,
-            error: None,
-            snap: None,
-            last_disk_count: 0,
-            suppress_image_frames: 0,
-        }
-    }
-}
-
-struct DashboardImageState {
-    enabled: bool,
-    picker: Picker,
-    protocol: Option<StatefulProtocol>,
-    last_key: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-struct DiskEntry {
-    source: String,
-    fs_type: String,
-    mount: String,
-    used_bytes: u64,
-    total_bytes: u64,
-}
-
-#[derive(Clone, Debug)]
-struct NicEntry {
-    name: String,
-    addr: String,
-}
-
-
 
 pub async fn run_tui(
     runner: Runner,
