@@ -3,6 +3,14 @@
 use crate::ui::{App, ShellSplitMode, ShellView};
 
 impl App {
+    pub(in crate::ui) fn editor_cmd(&self) -> String {
+        let configured = self.editor_cmd.trim();
+        if !configured.is_empty() {
+            return configured.to_string();
+        }
+        std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string())
+    }
+
     pub(in crate::ui) fn get_view_split_mode(&self, view: ShellView) -> Option<ShellSplitMode> {
         self.shell_split_by_view.get(view.slug()).copied()
     }
