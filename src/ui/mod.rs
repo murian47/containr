@@ -17,6 +17,7 @@ mod app_inspect;
 mod app_registry;
 mod app_registry_http;
 mod app_secrets;
+mod app_clock;
 mod app_dashboard;
 mod app_dashboard_data;
 mod app_dashboard_image;
@@ -64,7 +65,7 @@ pub(in crate::ui) use render::tables::{
     draw_shell_volumes_table, shell_header_style,
 };
 pub(in crate::ui) use actions::{service_name_from_label_list, stack_compose_dirs, template_name_from_stack};
-pub(in crate::ui) use app_view::shell_cycle_focus;
+pub(in crate::ui) use app_view::{shell_cycle_focus, shell_module_shortcut};
 pub(in crate::ui) use helpers::{
     deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, extract_container_ip,
     extract_template_id, parse_kv_args, shell_quote_with_home, shell_single_quote,
@@ -86,6 +87,7 @@ use render::stacks::stack_name_from_labels;
 use cmd_history::CmdHistory;
 use app_ops::{perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy};
 use app_runtime::{current_docker_cmd_from_app, current_runner_from_app, current_server_label, restore_terminal, run_interactive_command, run_interactive_local_command, setup_terminal};
+pub(in crate::ui) use app_clock::{now_local, now_unix};
 use app_dashboard_data::{dashboard_command, parse_dashboard_output};
 use app_registry_http::registry_test;
 pub(in crate::ui) use app_dashboard_image::{
@@ -546,25 +548,6 @@ impl ShellAction {
     }
 }
 
-fn shell_module_shortcut(view: ShellView) -> char {
-    match view {
-        ShellView::Dashboard => 'd',
-        ShellView::Stacks => 's',
-        ShellView::Containers => 'c',
-        ShellView::Images => 'i',
-        ShellView::Volumes => 'v',
-        ShellView::Networks => 'n',
-        ShellView::Templates => 't',
-        ShellView::Registries => 'r',
-        ShellView::Inspect => 'i',
-        ShellView::Logs => 'l',
-        ShellView::Help => '?',
-        // Not a primary module; used only for internal navigation/help display.
-        ShellView::Messages => 'g',
-        ShellView::ThemeSelector => 't',
-    }
-}
-
 #[derive(Clone, Debug)]
 enum ViewEntry {
     StackHeader {
@@ -801,14 +784,6 @@ fn classify_action_error(msg: &str) -> ActionErrorKind {
     } else {
         ActionErrorKind::Other
     }
-}
-
-fn now_local() -> OffsetDateTime {
-    OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc())
-}
-
-fn now_unix() -> i64 {
-    OffsetDateTime::now_utc().unix_timestamp()
 }
 
 

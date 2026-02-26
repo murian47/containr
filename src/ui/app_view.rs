@@ -7,6 +7,25 @@ use crate::ui::{
 };
 use tokio::sync::{mpsc, watch};
 
+pub(in crate::ui) fn shell_module_shortcut(view: ShellView) -> char {
+    match view {
+        ShellView::Dashboard => 'd',
+        ShellView::Stacks => 's',
+        ShellView::Containers => 'c',
+        ShellView::Images => 'i',
+        ShellView::Volumes => 'v',
+        ShellView::Networks => 'n',
+        ShellView::Templates => 't',
+        ShellView::Registries => 'r',
+        ShellView::Inspect => 'i',
+        ShellView::Logs => 'l',
+        ShellView::Help => '?',
+        // Not a primary module; used only for internal navigation/help display.
+        ShellView::Messages => 'g',
+        ShellView::ThemeSelector => 't',
+    }
+}
+
 pub(in crate::ui) fn shell_cycle_focus(app: &mut App) {
     let mut order: Vec<ShellFocus> = Vec::new();
     if !app.shell_sidebar_hidden {
