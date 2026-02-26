@@ -140,6 +140,17 @@ pub(in crate::ui) fn extract_container_ip(v: &Value) -> Option<String> {
         })
 }
 
+pub(in crate::ui) fn normalize_image_id(id: &str) -> String {
+    let s = id.trim();
+    if s.is_empty() {
+        return String::new();
+    }
+    if s.starts_with("sha256:") {
+        return s.to_string();
+    }
+    format!("sha256:{s}")
+}
+
 pub(in crate::ui) fn build_server_shortcuts(servers: &[ServerEntry]) -> Vec<char> {
     // First 1..9 use digits. Remaining use deterministic "random-looking" uppercase letters.
     let mut out: Vec<char> = Vec::with_capacity(servers.len());

@@ -15,8 +15,13 @@ mod app_logging;
 mod app_logs;
 mod app_inspect;
 mod app_registry;
+mod app_registry_http;
+mod app_secrets;
 mod app_dashboard;
 mod app_dashboard_data;
+mod app_dashboard_image;
+mod app_local_state;
+mod app_template_labels;
 mod app_server_switch;
 mod app_keymap;
 mod app_init;
@@ -63,7 +68,7 @@ pub(in crate::ui) use app_view::shell_cycle_focus;
 pub(in crate::ui) use helpers::{
     deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, extract_container_ip,
     extract_template_id, parse_kv_args, shell_quote_with_home, shell_single_quote,
-    build_server_shortcuts, truncate_msg,
+    build_server_shortcuts, normalize_image_id, truncate_msg,
 };
 pub(in crate::ui) use state::persistence::{ensure_unique_server_name, find_server_by_name};
 pub(in crate::ui) use templates_ops::{
@@ -76,13 +81,23 @@ use render::highlight::{json_highlight_line, yaml_highlight_line};
 pub(in crate::ui) use render::status::image_update_indicator;
 use render::utils::{
     expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
-    theme_color_rgba,
 };
 use render::stacks::stack_name_from_labels;
 use cmd_history::CmdHistory;
 use app_ops::{perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy};
 use app_runtime::{current_docker_cmd_from_app, current_runner_from_app, current_server_label, restore_terminal, run_interactive_command, run_interactive_local_command, setup_terminal};
 use app_dashboard_data::{dashboard_command, parse_dashboard_output};
+use app_registry_http::registry_test;
+pub(in crate::ui) use app_dashboard_image::{
+    apply_dashboard_theme, build_dashboard_image, init_dashboard_image,
+};
+pub(in crate::ui) use app_local_state::load_local_state;
+pub(in crate::ui) use app_secrets::{
+    decrypt_age_secret, encrypt_age_secret, ensure_age_identity, load_age_identities,
+};
+pub(in crate::ui) use app_template_labels::{
+    render_compose_with_template_id, template_commit_from_labels, template_id_from_labels,
+};
 pub(in crate::ui) use app_keymap::{cmdline_is_destructive, is_single_letter_without_modifiers};
 pub(in crate::ui) use text_edit::{
     backspace_at_cursor, clamp_cursor_to_text, delete_at_cursor, insert_char_at_cursor,
@@ -100,19 +115,12 @@ use anyhow::Context as _;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
 };
-use ratatui_image::picker::{Picker, ProtocolType};
+use ratatui_image::picker::Picker;
 use ratatui_image::protocol::StatefulProtocol;
-use image::{Rgba, RgbaImage};
-use reqwest::{Client, StatusCode, Url};
-use reqwest::header::WWW_AUTHENTICATE;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use serde_yaml::{Mapping as YamlMapping, Value as YamlValue};
-use std::fs;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{
@@ -123,11 +131,6 @@ use tokio::sync::mpsc;
 use tokio::sync::Semaphore;
 use tokio::sync::watch;
 use tokio::task::JoinSet;
-use age::Decryptor;
-use age::Encryptor;
-use age::armor::{ArmoredWriter, Format};
-use age::secrecy::ExposeSecret;
-use age::x25519;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct KeySpec {
@@ -808,137 +811,6 @@ fn now_unix() -> i64 {
     OffsetDateTime::now_utc().unix_timestamp()
 }
 
-fn image_updates_path() -> PathBuf {
-    if let Ok(root) = std::env::var("XDG_STATE_HOME") {
-        let root = PathBuf::from(root);
-        return root.join("containr").join("state.json");
-    }
-    if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home)
-            .join(".local")
-            .join("state")
-            .join("containr")
-            .join("state.json");
-    }
-    PathBuf::from("state.json")
-}
-
-fn load_local_state(
-) -> (
-    PathBuf,
-    HashMap<String, ImageUpdateEntry>,
-    HashMap<String, RateLimitEntry>,
-    HashMap<String, Vec<TemplateDeployEntry>>,
-    HashMap<String, Vec<TemplateDeployEntry>>,
-    HashMap<String, RegistryTestEntry>,
-) {
-    let path = image_updates_path();
-    let data = fs::read_to_string(&path).ok();
-    let value = data
-        .as_deref()
-        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok());
-    let image_updates = value
-        .as_ref()
-        .and_then(|v| v.get("image_updates"))
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    let rate_limits = value
-        .as_ref()
-        .and_then(|v| v.get("rate_limits"))
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    let mut template_deploys: HashMap<String, Vec<TemplateDeployEntry>> = HashMap::new();
-    if let Some(v) = value.as_ref().and_then(|v| v.get("template_deploys")) {
-        if let Some(obj) = v.as_object() {
-            for (key, entry) in obj {
-                if entry.is_array() {
-                    if let Ok(list) = serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
-                    {
-                        if !list.is_empty() {
-                            template_deploys.insert(key.clone(), list);
-                        }
-                    }
-                    continue;
-                }
-                if let Ok(single) = serde_json::from_value::<TemplateDeployEntry>(entry.clone()) {
-                    template_deploys.insert(key.clone(), vec![single]);
-                    continue;
-                }
-                let server_name = entry
-                    .get("server_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let timestamp = entry
-                    .get("timestamp")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
-                if !server_name.trim().is_empty() && timestamp > 0 {
-                    template_deploys.insert(
-                        key.clone(),
-                        vec![TemplateDeployEntry {
-                            server_name,
-                            timestamp,
-                            commit: None,
-                        }],
-                    );
-                }
-            }
-        }
-    }
-    let mut net_template_deploys: HashMap<String, Vec<TemplateDeployEntry>> = HashMap::new();
-    if let Some(v) = value.as_ref().and_then(|v| v.get("net_template_deploys")) {
-        if let Some(obj) = v.as_object() {
-            for (key, entry) in obj {
-                if entry.is_array() {
-                    if let Ok(list) = serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
-                    {
-                        if !list.is_empty() {
-                            net_template_deploys.insert(key.clone(), list);
-                        }
-                    }
-                    continue;
-                }
-                if let Ok(single) = serde_json::from_value::<TemplateDeployEntry>(entry.clone()) {
-                    net_template_deploys.insert(key.clone(), vec![single]);
-                    continue;
-                }
-                let server_name = entry
-                    .get("server_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let timestamp = entry
-                    .get("timestamp")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
-                if !server_name.trim().is_empty() && timestamp > 0 {
-                    net_template_deploys.insert(
-                        key.clone(),
-                        vec![TemplateDeployEntry {
-                            server_name,
-                            timestamp,
-                            commit: None,
-                        }],
-                    );
-                }
-            }
-        }
-    }
-    let registry_tests = value
-        .as_ref()
-        .and_then(|v| v.get("registry_tests"))
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    (
-        path,
-        image_updates,
-        rate_limits,
-        template_deploys,
-        net_template_deploys,
-        registry_tests,
-    )
-}
 
 #[derive(Debug, Clone)]
 pub(in crate::ui) enum ActionRequest {
@@ -1261,40 +1133,6 @@ struct DashboardImageState {
     last_key: Option<String>,
 }
 
-fn init_dashboard_image(mut picker: Picker, theme: &theme::ThemeSpec) -> DashboardImageState {
-    let fallback = Rgba([16, 16, 16, 255]);
-    let panel_raw = theme.panel.bg.trim();
-    let panel_bg = theme_color_rgba(&theme.panel.bg, fallback);
-    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset") {
-        theme_color_rgba(&theme.background.bg, fallback)
-    } else {
-        panel_bg
-    };
-    picker.set_background_color(bg);
-    let enabled = picker.protocol_type() == ProtocolType::Kitty;
-    DashboardImageState {
-        enabled,
-        picker,
-        protocol: None,
-        last_key: None,
-    }
-}
-
-fn apply_dashboard_theme(state: &mut DashboardImageState, theme: &theme::ThemeSpec) {
-    let fallback = Rgba([16, 16, 16, 255]);
-    let panel_raw = theme.panel.bg.trim();
-    let panel_bg = theme_color_rgba(&theme.panel.bg, fallback);
-    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset") {
-        theme_color_rgba(&theme.background.bg, fallback)
-    } else {
-        panel_bg
-    };
-    state.picker.set_background_color(bg);
-    state.enabled = state.picker.protocol_type() == ProtocolType::Kitty;
-    state.protocol = None;
-    state.last_key = None;
-}
-
 #[derive(Clone, Debug)]
 struct DiskEntry {
     source: String,
@@ -1310,595 +1148,7 @@ struct NicEntry {
     addr: String,
 }
 
-fn build_dashboard_image(
-    theme: &theme::ThemeSpec,
-    ratios: &[f32],
-    width: u32,
-    height: u32,
-) -> RgbaImage {
-    let mut img = RgbaImage::new(width, height);
-    let fallback_bg = Rgba([16, 16, 16, 255]);
-    let panel_raw = theme.panel.bg.trim();
-    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset") {
-        theme_color_rgba(&theme.background.bg, fallback_bg)
-    } else {
-        theme_color_rgba(&theme.panel.bg, fallback_bg)
-    };
-    let faint = theme_color_rgba(&theme.header.bg, Rgba([40, 40, 40, 255]));
-    let ok = theme_color_rgba(&theme.text_ok.fg, Rgba([90, 200, 120, 255]));
-    let warn = theme_color_rgba(&theme.text_warn.fg, Rgba([255, 190, 64, 255]));
-    let err = theme_color_rgba(&theme.text_error.fg, Rgba([220, 120, 120, 255]));
 
-    for p in img.pixels_mut() {
-        *p = bg;
-    }
-
-    let mut fill_rect = |x: u32, y: u32, w: u32, h: u32, color: Rgba<u8>| {
-        let max_x = width.saturating_sub(1);
-        let max_y = height.saturating_sub(1);
-        let end_x = (x + w).min(width);
-        let end_y = (y + h).min(height);
-        for yy in y..end_y {
-            if yy > max_y {
-                break;
-            }
-            for xx in x..end_x {
-                if xx > max_x {
-                    break;
-                }
-                img.put_pixel(xx, yy, color);
-            }
-        }
-    };
-
-    let lerp = |a: u8, b: u8, t: f32| -> u8 {
-        let t = t.clamp(0.0, 1.0);
-        (a as f32 + (b as f32 - a as f32) * t).round() as u8
-    };
-    let lerp_rgba = |a: Rgba<u8>, b: Rgba<u8>, t: f32| -> Rgba<u8> {
-        Rgba([
-            lerp(a[0], b[0], t),
-            lerp(a[1], b[1], t),
-            lerp(a[2], b[2], t),
-            255,
-        ])
-    };
-
-    let ratios: Vec<f32> = ratios.iter().map(|r| r.clamp(0.0, 1.0)).collect();
-    if ratios.is_empty() {
-        return img;
-    }
-    let margin_x = 2u32;
-    let bar_w = width.saturating_sub(margin_x * 2);
-    let rows = ratios.len().max(1) as u32;
-    let row_h = (height / rows).max(1);
-    let pad = (row_h / 6).min(2);
-    let bar_h = row_h.saturating_sub(pad * 2).max(3);
-    for (idx, ratio) in ratios.iter().enumerate() {
-        let row_top = idx as u32 * row_h;
-        let y = row_top + (row_h.saturating_sub(bar_h)) / 2;
-        fill_rect(margin_x, y, bar_w, bar_h, faint);
-        let fill_w = ((bar_w as f32) * ratio).round() as u32;
-        for xx in 0..fill_w {
-            let t = if bar_w <= 1 { 1.0 } else { (xx as f32) / (bar_w as f32 - 1.0) };
-            let color = if t <= 0.7 {
-                lerp_rgba(ok, warn, t / 0.7)
-            } else {
-                lerp_rgba(warn, err, (t - 0.7) / 0.3)
-            };
-            fill_rect(margin_x + xx, y, 1, bar_h, color);
-        }
-    }
-
-    img
-}
-
-fn normalize_image_id(id: &str) -> String {
-    let s = id.trim();
-    if s.is_empty() {
-        return "".to_string();
-    }
-    if s.starts_with("sha256:") {
-        return s.to_string();
-    }
-    format!("sha256:{}", s)
-}
-
-pub(in crate::ui) fn template_id_from_labels(labels: &str) -> Option<String> {
-    for part in labels.split(',') {
-        let Some((k, v)) = part.split_once('=') else {
-            continue;
-        };
-        if k.trim() == "app.containr.template_id" {
-            let value = v.trim();
-            if !value.is_empty() {
-                return Some(value.to_string());
-            }
-        }
-    }
-    None
-}
-
-fn template_commit_from_labels(labels: &str) -> Option<String> {
-    for part in labels.split(',') {
-        let Some((k, v)) = part.split_once('=') else {
-            continue;
-        };
-        if k.trim() == "app.containr.commit" {
-            let value = v.trim();
-            if !value.is_empty() {
-                return Some(value.to_string());
-            }
-        }
-    }
-    None
-}
-
-fn add_label_mapping(map: &mut YamlMapping, key: &str, value: &str) {
-    let k = YamlValue::String(key.to_string());
-    let v = YamlValue::String(value.to_string());
-    map.insert(k, v);
-}
-
-fn add_label_sequence(seq: &mut Vec<YamlValue>, key: &str, value: &str) {
-    let needle = format!("{key}={value}");
-    if seq
-        .iter()
-        .any(|v| v.as_str().map(|s| s == needle).unwrap_or(false))
-    {
-        return;
-    }
-    seq.push(YamlValue::String(needle));
-}
-
-fn inject_template_labels(
-    value: &mut YamlValue,
-    template_id: &str,
-    template_commit: Option<&str>,
-) -> anyhow::Result<()> {
-    let obj = value
-        .as_mapping_mut()
-        .ok_or_else(|| anyhow::anyhow!("compose root is not a mapping"))?;
-    for key in ["services", "networks", "volumes"] {
-        let Some(section) = obj.get_mut(&YamlValue::String(key.to_string())) else {
-            continue;
-        };
-        let Some(items) = section.as_mapping_mut() else {
-            continue;
-        };
-        for (_, item) in items.iter_mut() {
-            let Some(item_map) = item.as_mapping_mut() else {
-                continue;
-            };
-            let label_key = YamlValue::String("labels".to_string());
-            if let Some(labels) = item_map.get_mut(&label_key) {
-                match labels {
-                    YamlValue::Mapping(m) => {
-                        add_label_mapping(m, "app.containr.template_id", template_id);
-                        if let Some(commit) = template_commit {
-                            add_label_mapping(m, "app.containr.commit", commit);
-                        }
-                    }
-                    YamlValue::Sequence(seq) => {
-                        add_label_sequence(seq, "app.containr.template_id", template_id);
-                        if let Some(commit) = template_commit {
-                            add_label_sequence(seq, "app.containr.commit", commit);
-                        }
-                    }
-                    _ => {
-                        let mut m = YamlMapping::new();
-                        add_label_mapping(&mut m, "app.containr.template_id", template_id);
-                        if let Some(commit) = template_commit {
-                            add_label_mapping(&mut m, "app.containr.commit", commit);
-                        }
-                        *labels = YamlValue::Mapping(m);
-                    }
-                }
-            } else {
-                let mut m = YamlMapping::new();
-                add_label_mapping(&mut m, "app.containr.template_id", template_id);
-                if let Some(commit) = template_commit {
-                    add_label_mapping(&mut m, "app.containr.commit", commit);
-                }
-                item_map.insert(label_key, YamlValue::Mapping(m));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn load_age_identities(path: &Path) -> anyhow::Result<Vec<Box<dyn age::Identity>>> {
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read age identity: {}", path.display()))?;
-    let mut ids: Vec<Box<dyn age::Identity>> = Vec::new();
-    for line in raw.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if !line.starts_with("AGE-SECRET-KEY-") {
-            continue;
-        }
-        let id = x25519::Identity::from_str(line)
-            .map_err(|_| anyhow::anyhow!("invalid age identity"))?;
-        ids.push(Box::new(id));
-    }
-    anyhow::ensure!(!ids.is_empty(), "no age identities found");
-    Ok(ids)
-}
-
-fn ensure_age_identity(path: &Path) -> anyhow::Result<x25519::Identity> {
-    if path.exists() {
-        let raw = fs::read_to_string(path)
-            .with_context(|| format!("failed to read age identity: {}", path.display()))?;
-        for line in raw.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if !line.starts_with("AGE-SECRET-KEY-") {
-                continue;
-            }
-            let id = x25519::Identity::from_str(line)
-                .map_err(|_| anyhow::anyhow!("invalid age identity"))?;
-            return Ok(id);
-        }
-        anyhow::bail!("no age identities found");
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create identity dir: {}", parent.display()))?;
-    }
-    let id = x25519::Identity::generate();
-    let id_line = id.to_string();
-    let content = format!("# containr age identity\n{}\n", id_line.expose_secret());
-    fs::write(path, content)
-        .with_context(|| format!("failed to write age identity: {}", path.display()))?;
-    Ok(id)
-}
-
-fn encrypt_age_secret(secret: &str, identity: &x25519::Identity) -> anyhow::Result<String> {
-    let recipient = identity.to_public();
-    let encryptor =
-        Encryptor::with_recipients(std::iter::once(&recipient as &dyn age::Recipient))
-            .map_err(|_| anyhow::anyhow!("failed to configure age recipient"))?;
-    let mut out = Vec::new();
-    let armor = ArmoredWriter::wrap_output(&mut out, Format::AsciiArmor)?;
-    let mut writer = encryptor.wrap_output(armor)?;
-    writer.write_all(secret.as_bytes())?;
-    let armor = writer.finish()?;
-    let _ = armor.finish()?;
-    let encoded = String::from_utf8(out).context("encrypted secret is not valid utf-8")?;
-    Ok(encoded)
-}
-
-fn decrypt_age_secret(secret: &str, identities: &[Box<dyn age::Identity>]) -> anyhow::Result<String> {
-    let data = secret.as_bytes();
-    let reader: Box<dyn std::io::Read> = if secret.contains("BEGIN AGE ENCRYPTED FILE") {
-        Box::new(age::armor::ArmoredReader::new(std::io::Cursor::new(data)))
-    } else {
-        Box::new(std::io::Cursor::new(data))
-    };
-    let decryptor = Decryptor::new(reader)?;
-    let mut out = String::new();
-    let mut r = decryptor.decrypt(identities.iter().map(|id| id.as_ref() as &dyn age::Identity))?;
-    r.read_to_string(&mut out)?;
-    Ok(out.trim().to_string())
-}
-
-fn is_local_registry_host(host: &str) -> bool {
-    let host = host.trim().to_ascii_lowercase();
-    host == "localhost"
-        || host.starts_with("localhost:")
-        || host == "127.0.0.1"
-        || host.starts_with("127.0.0.1:")
-        || host == "::1"
-        || host.starts_with("[::1]")
-}
-
-fn registry_api_base_url(host: &str) -> anyhow::Result<String> {
-    let host = host.trim();
-    anyhow::ensure!(!host.is_empty(), "registry host is empty");
-    if host.starts_with("http://") || host.starts_with("https://") {
-        let url = Url::parse(host).context("invalid registry url")?;
-        let scheme = url.scheme();
-        let host_str = url
-            .host_str()
-            .ok_or_else(|| anyhow::anyhow!("registry url missing host"))?;
-        let host_str = if host_str.eq_ignore_ascii_case("docker.io")
-            || host_str.eq_ignore_ascii_case("index.docker.io")
-        {
-            "registry-1.docker.io"
-        } else {
-            host_str
-        };
-        let mut base = format!("{scheme}://{host_str}");
-        if let Some(port) = url.port() {
-            base.push_str(&format!(":{port}"));
-        }
-        return Ok(base);
-    }
-    let host_norm = if host.eq_ignore_ascii_case("docker.io")
-        || host.eq_ignore_ascii_case("index.docker.io")
-    {
-        "registry-1.docker.io".to_string()
-    } else {
-        host.to_string()
-    };
-    let scheme = if is_local_registry_host(host) {
-        "http"
-    } else {
-        "https"
-    };
-    Ok(format!("{scheme}://{host_norm}"))
-}
-
-fn parse_www_authenticate_params(value: &str, scheme: &str) -> Option<HashMap<String, String>> {
-    let value_trim = value.trim();
-    let scheme_lc = scheme.to_ascii_lowercase();
-    let value_lc = value_trim.to_ascii_lowercase();
-    let prefix = format!("{scheme_lc} ");
-    let pos = value_lc.find(&prefix)?;
-    let params_str = &value_trim[pos + prefix.len()..];
-    let mut params: HashMap<String, String> = HashMap::new();
-    for part in params_str.split(',') {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-        let mut it = part.splitn(2, '=');
-        let key = it.next()?.trim();
-        let val = it.next().unwrap_or("").trim().trim_matches('"');
-        if !key.is_empty() {
-            params.insert(key.to_string(), val.to_string());
-        }
-    }
-    if params.is_empty() {
-        None
-    } else {
-        Some(params)
-    }
-}
-
-async fn registry_fetch_token(
-    client: &Client,
-    realm: &str,
-    service: Option<&str>,
-    scope: Option<&str>,
-    basic: Option<(&str, &str)>,
-) -> anyhow::Result<String> {
-    let mut url = Url::parse(realm).context("invalid token realm url")?;
-    {
-        let mut pairs = url.query_pairs_mut();
-        if let Some(service) = service {
-            if !service.trim().is_empty() {
-                pairs.append_pair("service", service);
-            }
-        }
-        if let Some(scope) = scope {
-            if !scope.trim().is_empty() {
-                pairs.append_pair("scope", scope);
-            }
-        }
-    }
-    let mut req = client.get(url);
-    if let Some((user, pass)) = basic {
-        req = req.basic_auth(user, Some(pass));
-    }
-    let resp = req.send().await.context("token request failed")?;
-    if !resp.status().is_success() {
-        anyhow::bail!("token request failed: http {}", resp.status());
-    }
-    let body = resp.text().await.context("invalid token response")?;
-    let value: Value = serde_json::from_str(&body).context("invalid token response")?;
-    if let Some(token) = value
-        .get("token")
-        .and_then(|v| v.as_str())
-        .or_else(|| value.get("access_token").and_then(|v| v.as_str()))
-    {
-        return Ok(token.to_string());
-    }
-    anyhow::bail!("token response missing token");
-}
-
-fn token_context(realm: &str, service: Option<&str>, scope: Option<&str>) -> String {
-    let service = service.unwrap_or("-");
-    let scope = scope.unwrap_or("-");
-    format!("realm={realm} service={service} scope={scope}")
-}
-
-fn normalize_test_repo(raw: &str) -> String {
-    let raw = raw.trim().trim_start_matches('/');
-    let raw = raw.split('@').next().unwrap_or(raw);
-    let raw = raw.split(':').next().unwrap_or(raw);
-    raw.to_string()
-}
-
-async fn registry_test(
-    host: &str,
-    auth: &RegistryAuthResolved,
-    test_repo: Option<&str>,
-) -> anyhow::Result<String> {
-    let base = registry_api_base_url(host)?;
-    let repo = test_repo
-        .map(normalize_test_repo)
-        .filter(|v| !v.is_empty());
-    let url = format!("{base}/v2/");
-    let client = Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .context("failed to build http client")?;
-    let host_lc = host.trim().to_ascii_lowercase();
-    if host_lc == "ghcr.io" && matches!(auth.auth, config::RegistryAuth::Anonymous) && repo.is_none()
-    {
-        anyhow::bail!("ghcr.io anonymous test requires test-repo");
-    }
-
-    let mut request = client.get(&url);
-    match auth.auth {
-        config::RegistryAuth::BearerToken => {
-            if let Some(token) = auth.secret.as_deref() {
-                request = request.bearer_auth(token);
-            }
-        }
-        _ => {}
-    }
-    let resp = request
-        .send()
-        .await
-        .context("registry request failed")?;
-    if resp.status().is_success() {
-        return Ok(format!("ok ({})", resp.status()));
-    }
-    if resp.status() != StatusCode::UNAUTHORIZED {
-        anyhow::bail!("registry request failed: http {}", resp.status());
-    }
-
-    let auth_header = resp
-        .headers()
-        .get(WWW_AUTHENTICATE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_string();
-
-    if parse_www_authenticate_params(&auth_header, "basic").is_some() {
-        let (user, pass) = match auth.auth {
-            config::RegistryAuth::Basic | config::RegistryAuth::GithubPat => {
-                let user = auth.username.as_deref().unwrap_or("");
-                let pass = auth.secret.as_deref().unwrap_or("");
-                if user.is_empty() || pass.is_empty() {
-                    anyhow::bail!("registry credentials missing for {host}");
-                }
-                (user, pass)
-            }
-            _ => anyhow::bail!("registry requires basic auth"),
-        };
-        let resp = client
-            .get(&url)
-            .basic_auth(user, Some(pass))
-            .send()
-            .await
-            .context("registry basic auth request failed")?;
-        if resp.status().is_success() {
-            return Ok(format!("ok ({})", resp.status()));
-        }
-        anyhow::bail!("registry basic auth failed: http {}", resp.status());
-    }
-
-    let params = parse_www_authenticate_params(&auth_header, "bearer")
-        .ok_or_else(|| anyhow::anyhow!("registry auth challenge missing bearer details"))?;
-    let realm = params
-        .get("realm")
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("registry auth challenge missing realm"))?;
-    let service = params.get("service").cloned();
-    let mut scope = params.get("scope").cloned();
-    if let Some(repo) = repo.as_deref() {
-        scope = Some(format!("repository:{repo}:pull"));
-    }
-    let service = service.as_deref();
-    let scope = scope.as_deref();
-    let basic = match auth.auth {
-        config::RegistryAuth::Anonymous => None,
-        config::RegistryAuth::Basic | config::RegistryAuth::GithubPat => {
-            let user = auth.username.as_deref().unwrap_or("");
-            let pass = auth.secret.as_deref().unwrap_or("");
-            if user.is_empty() || pass.is_empty() {
-                anyhow::bail!("registry credentials missing for {host}");
-            }
-            Some((user, pass))
-        }
-        config::RegistryAuth::BearerToken => None,
-    };
-    let mut used_ghcr = false;
-    let token = match auth.auth {
-        config::RegistryAuth::BearerToken => auth
-            .secret
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("registry token missing for {host}"))?,
-        _ => match registry_fetch_token(&client, &realm, service, scope, basic).await {
-            Ok(token) => token,
-            Err(e) => {
-                if host_lc == "lscr.io" {
-                    let repo = repo
-                        .as_deref()
-                        .ok_or_else(|| anyhow::anyhow!("lscr.io test requires test-repo"))?;
-                    let ghcr_realm = "https://ghcr.io/token";
-                    let ghcr_scope = format!("repository:{repo}:pull");
-                    let ghcr_service = "ghcr.io";
-                    match registry_fetch_token(
-                        &client,
-                        ghcr_realm,
-                        Some(ghcr_service),
-                        Some(&ghcr_scope),
-                        basic,
-                    )
-                    .await
-                    {
-                        Ok(token) => {
-                            used_ghcr = true;
-                            token
-                        }
-                        Err(e2) => {
-                            let ctx = token_context(
-                                ghcr_realm,
-                                Some(ghcr_service),
-                                Some(&ghcr_scope),
-                            );
-                            anyhow::bail!("token request failed: {:#} ({ctx})", e2);
-                        }
-                    }
-                } else {
-                    let ctx = token_context(&realm, service, scope);
-                    anyhow::bail!("token request failed: {:#} ({ctx})", e);
-                }
-            }
-        },
-    };
-    let test_base = if used_ghcr {
-        "https://ghcr.io".to_string()
-    } else {
-        base
-    };
-    let test_url = if let Some(repo) = repo.as_deref() {
-        format!("{test_base}/v2/{repo}/tags/list")
-    } else {
-        url.clone()
-    };
-    let resp = client
-        .get(&test_url)
-        .bearer_auth(token)
-        .send()
-        .await
-        .context("registry bearer auth request failed")?;
-    if resp.status().is_success() {
-        let hint = if used_ghcr { " via ghcr.io" } else { "" };
-        return Ok(format!("ok ({}){hint}", resp.status()));
-    }
-    if resp.status() == StatusCode::NOT_FOUND && repo.is_some() {
-        anyhow::bail!("registry repository not found (check test-repo)");
-    }
-    anyhow::bail!("registry bearer auth failed: http {}", resp.status());
-}
-
-fn render_compose_with_template_id(
-    path: &Path,
-    template_id: &str,
-    template_commit: Option<&str>,
-) -> anyhow::Result<tempfile::TempPath> {
-    let data = fs::read_to_string(path)?;
-    let mut yaml: YamlValue =
-        serde_yaml::from_str(&data).map_err(|e| anyhow::anyhow!("compose parse failed: {}", e))?;
-    inject_template_labels(&mut yaml, template_id, template_commit)?;
-    let rendered =
-        serde_yaml::to_string(&yaml).map_err(|e| anyhow::anyhow!("compose render failed: {}", e))?;
-    let mut tmp = tempfile::Builder::new()
-        .prefix("containr-compose-")
-        .suffix(".yaml")
-        .tempfile()?;
-    tmp.write_all(rendered.as_bytes())?;
-    Ok(tmp.into_temp_path())
-}
 
 pub async fn run_tui(
     runner: Runner,
