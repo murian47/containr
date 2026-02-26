@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::PathBuf;
+use serde_json::Value;
 
 pub(in crate::ui) fn shell_single_quote(s: &str) -> String {
     // Produce a POSIX-shell-safe single-quoted string literal.
@@ -64,6 +65,14 @@ pub(in crate::ui) fn deploy_remote_net_dir_for(name: &str) -> String {
     format!(".config/containr/networks/{name}")
 }
 
+pub(in crate::ui) fn shell_quote_with_home(s: &str) -> String {
+    if s.starts_with("$HOME/") {
+        format!("\"{s}\"")
+    } else {
+        shell_single_quote(s)
+    }
+}
+
 pub(in crate::ui) fn parse_kv_args(
     mut it: impl Iterator<Item = String>,
 ) -> (
@@ -105,4 +114,27 @@ pub(in crate::ui) fn parse_kv_args(
         }
     }
     (port, identity, docker_cmd, rest)
+}
+
+pub(in crate::ui) fn extract_container_ip(v: &Value) -> Option<String> {
+    // Prefer user-defined networks.
+    v.pointer("/NetworkSettings/Networks")
+        .and_then(|n| n.as_object())
+        .and_then(|map| {
+            for (_name, net) in map {
+                if let Some(ip) = net.get("IPAddress").and_then(|x| x.as_str()) {
+                    let ip = ip.trim();
+                    if !ip.is_empty() {
+                        return Some(ip.to_string());
+                    }
+                }
+            }
+            None
+        })
+        .or_else(|| {
+            v.pointer("/NetworkSettings/IPAddress")
+                .and_then(|x| x.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
 }
