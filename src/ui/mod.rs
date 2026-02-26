@@ -20,6 +20,7 @@ mod app_server_switch;
 mod app_keymap;
 mod app_init;
 mod app_ops;
+mod app_runtime;
 mod app_selection;
 mod app_state;
 mod app_stacks;
@@ -61,6 +62,7 @@ pub(in crate::ui) use app_view::shell_cycle_focus;
 pub(in crate::ui) use helpers::{
     deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, extract_container_ip,
     extract_template_id, parse_kv_args, shell_quote_with_home, shell_single_quote,
+    build_server_shortcuts, truncate_msg,
 };
 pub(in crate::ui) use state::persistence::{ensure_unique_server_name, find_server_by_name};
 pub(in crate::ui) use templates_ops::{
@@ -78,6 +80,8 @@ use render::utils::{
 use render::stacks::stack_name_from_labels;
 use cmd_history::CmdHistory;
 use app_ops::{perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy};
+use app_runtime::{current_docker_cmd_from_app, current_runner_from_app, current_server_label, restore_terminal, run_interactive_command, run_interactive_local_command, setup_terminal};
+pub(in crate::ui) use app_keymap::{cmdline_is_destructive, is_single_letter_without_modifiers};
 pub(in crate::ui) use text_edit::{
     backspace_at_cursor, clamp_cursor_to_text, delete_at_cursor, insert_char_at_cursor,
     set_text_and_cursor,
@@ -93,10 +97,7 @@ use crate::ssh::Ssh;
 use anyhow::Context as _;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
-    execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::StatefulProtocol;
 use image::{Rgba, RgbaImage};
@@ -107,9 +108,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_yaml::{Mapping as YamlMapping, Value as YamlValue};
 use std::fs;
-use std::io::{self, Read, Stdout, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command as StdCommand, Stdio};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -335,41 +335,6 @@ pub(in crate::ui) fn input_window_with_cursor(
     (before, at, after)
 }
 
-fn is_single_letter_without_modifiers(spec: KeySpec) -> bool {
-    spec.mods == 0 && matches!(spec.code, KeyCodeNorm::Char(c) if c.is_ascii_alphabetic())
-}
-
-fn cmdline_is_destructive(raw: &str) -> bool {
-    let s = raw.trim().trim_start_matches(':').trim();
-    if s.is_empty() {
-        return false;
-    }
-    let mut it = s.split_whitespace();
-    let Some(cmd_raw) = it.next() else {
-        return false;
-    };
-    let cmd_raw = cmd_raw
-        .strip_prefix('!')
-        .unwrap_or(cmd_raw)
-        .trim_matches('!');
-    let cmd = cmd_raw.to_ascii_lowercase();
-    let sub = it.next().unwrap_or("").to_ascii_lowercase();
-    match cmd.as_str() {
-        "stack" | "stacks" | "stk" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
-        "container" | "ctr" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
-        "template" | "tpl" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
-        "nettemplate" | "nettpl" | "ntpl" | "nt" => {
-            matches!(sub.as_str(), "rm" | "remove" | "delete")
-        }
-        "theme" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
-        "server" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
-        "image" | "img" => matches!(sub.as_str(), "rm" | "remove" | "delete" | "untag"),
-        "volume" | "vol" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
-        "network" | "net" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
-        _ => false,
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TemplatesKind {
     Stacks,
@@ -593,58 +558,6 @@ fn shell_module_shortcut(view: ShellView) -> char {
         ShellView::Messages => 'g',
         ShellView::ThemeSelector => 't',
     }
-}
-
-fn build_server_shortcuts(servers: &[ServerEntry]) -> Vec<char> {
-    // First 1..9 use digits. Remaining use deterministic "random-looking" uppercase letters.
-    let mut out: Vec<char> = Vec::with_capacity(servers.len());
-    let mut used: HashSet<char> = HashSet::new();
-
-    for (i, _) in servers.iter().enumerate() {
-        if i < 9 {
-            let ch = char::from_digit((i + 1) as u32, 10).unwrap_or('?');
-            out.push(ch);
-            used.insert(ch);
-        } else {
-            out.push('\0');
-        }
-    }
-
-    // Avoid letters that could be confused with common module letters in uppercase.
-    for ch in ['C', 'S', 'M', 'I', 'V', 'N', 'L'] {
-        used.insert(ch);
-    }
-
-    let pool: Vec<char> = ('A'..='Z').filter(|c| !used.contains(c)).collect();
-    if pool.is_empty() {
-        for i in 9..servers.len() {
-            out[i] = 'A';
-        }
-        return out;
-    }
-
-    // Stable assignment based on server name.
-    for i in 9..servers.len() {
-        let name = &servers[i].name;
-        let mut h: u64 = 0xcbf29ce484222325;
-        for b in name.as_bytes() {
-            h ^= *b as u64;
-            h = h.wrapping_mul(0x100000001b3);
-        }
-        let start = (h as usize) % pool.len();
-        let mut chosen = None;
-        for off in 0..pool.len() {
-            let c = pool[(start + off) % pool.len()];
-            if !used.contains(&c) {
-                chosen = Some(c);
-                break;
-            }
-        }
-        let c = chosen.unwrap_or(pool[start]);
-        out[i] = c;
-        used.insert(c);
-    }
-    out
 }
 
 #[derive(Clone, Debug)]
@@ -1023,21 +936,6 @@ fn load_local_state(
         net_template_deploys,
         registry_tests,
     )
-}
-
-fn truncate_msg(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        return s.to_string();
-    }
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= max.saturating_sub(3) {
-            break;
-        }
-        out.push(ch);
-    }
-    out.push_str("...");
-    out
 }
 
 #[derive(Debug, Clone)]
@@ -4340,121 +4238,6 @@ pub async fn run_tui(
     ip_task.abort();
     usage_task.abort();
     restore_terminal(&mut terminal).context("failed to restore terminal")?;
-    Ok(())
-}
-
-fn setup_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    Ok(Terminal::new(backend)?)
-}
-fn run_interactive_command(runner: &Runner, cmd: &str) -> anyhow::Result<()> {
-    match runner {
-        Runner::Ssh(ssh) => {
-            let mut c = StdCommand::new("ssh");
-            // Allocate a tty for interactive docker exec.
-            c.arg("-t");
-            if let Some(port) = ssh.port {
-                c.arg("-p").arg(port.to_string());
-            }
-            if let Some(identity) = &ssh.identity {
-                c.arg("-i").arg(identity);
-            }
-            c.arg(&ssh.target).arg("--").arg(cmd);
-            c.stdin(Stdio::inherit());
-            c.stdout(Stdio::inherit());
-            c.stderr(Stdio::inherit());
-            let status = c.status().context("failed to run ssh")?;
-            if !status.success() {
-                anyhow::bail!("ssh exited with {}", status);
-            }
-            Ok(())
-        }
-        Runner::Local => {
-            let status = StdCommand::new("sh")
-                .arg("-lc")
-                .arg(cmd)
-                .stdin(Stdio::inherit())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .status()
-                .context("failed to run local command")?;
-            if !status.success() {
-                anyhow::bail!("local command exited with {}", status);
-            }
-            Ok(())
-        }
-    }
-}
-
-fn run_interactive_local_command(cmd: &str) -> anyhow::Result<()> {
-    let status = StdCommand::new("sh")
-        .arg("-lc")
-        .arg(cmd)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .context("failed to run local command")?;
-    if !status.success() {
-        anyhow::bail!("local command exited with {}", status);
-    }
-    Ok(())
-}
-
-
-pub(in crate::ui) fn current_runner_from_app(app: &App) -> Runner {
-    if let Some(name) = &app.active_server {
-        if let Some(s) = app.servers.iter().find(|x| &x.name == name) {
-            if s.target == "local" {
-                return Runner::Local;
-            }
-            return Runner::Ssh(Ssh {
-                target: s.target.clone(),
-                identity: s.identity.clone(),
-                port: s.port,
-            });
-        }
-    }
-    if app.current_target == "local" {
-        Runner::Local
-    } else {
-        Runner::Ssh(Ssh {
-            target: app.current_target.clone(),
-            identity: None,
-            port: None,
-        })
-    }
-}
-
-pub(in crate::ui) fn current_docker_cmd_from_app(app: &App) -> DockerCmd {
-    if let Some(name) = &app.active_server {
-        if let Some(s) = app.servers.iter().find(|x| &x.name == name) {
-            return s.docker_cmd.clone();
-        }
-    }
-    DockerCmd::default()
-}
-
-pub(in crate::ui) fn current_server_label(app: &App) -> String {
-    if app.server_all_selected {
-        return "All servers".to_string();
-    }
-    if let Some(name) = app.active_server.as_deref() {
-        return name.to_string();
-    }
-    if !app.current_target.trim().is_empty() {
-        return app.current_target.clone();
-    }
-    "no server".to_string()
-}
-
-fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow::Result<()> {
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
     Ok(())
 }
 

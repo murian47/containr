@@ -1,7 +1,41 @@
 use super::{
-    App, MsgLevel, cmdline_is_destructive, is_single_letter_without_modifiers, parse_key_spec,
-    parse_scope,
+    App, KeyCodeNorm, KeySpec, MsgLevel, parse_key_spec, parse_scope,
 };
+
+pub(in crate::ui) fn is_single_letter_without_modifiers(spec: KeySpec) -> bool {
+    spec.mods == 0 && matches!(spec.code, KeyCodeNorm::Char(c) if c.is_ascii_alphabetic())
+}
+
+pub(in crate::ui) fn cmdline_is_destructive(raw: &str) -> bool {
+    let s = raw.trim().trim_start_matches(':').trim();
+    if s.is_empty() {
+        return false;
+    }
+    let mut it = s.split_whitespace();
+    let Some(cmd_raw) = it.next() else {
+        return false;
+    };
+    let cmd_raw = cmd_raw
+        .strip_prefix('!')
+        .unwrap_or(cmd_raw)
+        .trim_matches('!');
+    let cmd = cmd_raw.to_ascii_lowercase();
+    let sub = it.next().unwrap_or("").to_ascii_lowercase();
+    match cmd.as_str() {
+        "stack" | "stacks" | "stk" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
+        "container" | "ctr" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
+        "template" | "tpl" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
+        "nettemplate" | "nettpl" | "ntpl" | "nt" => {
+            matches!(sub.as_str(), "rm" | "remove" | "delete")
+        }
+        "theme" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
+        "server" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
+        "image" | "img" => matches!(sub.as_str(), "rm" | "remove" | "delete" | "untag"),
+        "volume" | "vol" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
+        "network" | "net" => matches!(sub.as_str(), "rm" | "remove" | "delete"),
+        _ => false,
+    }
+}
 
 impl App {
     pub(super) fn rebuild_keymap(&mut self) {

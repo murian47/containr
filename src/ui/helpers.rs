@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::PathBuf;
 use serde_json::Value;
+use crate::config::ServerEntry;
 
 pub(in crate::ui) fn shell_single_quote(s: &str) -> String {
     // Produce a POSIX-shell-safe single-quoted string literal.
@@ -137,4 +138,71 @@ pub(in crate::ui) fn extract_container_ip(v: &Value) -> Option<String> {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
         })
+}
+
+pub(in crate::ui) fn build_server_shortcuts(servers: &[ServerEntry]) -> Vec<char> {
+    // First 1..9 use digits. Remaining use deterministic "random-looking" uppercase letters.
+    let mut out: Vec<char> = Vec::with_capacity(servers.len());
+    let mut used: std::collections::HashSet<char> = std::collections::HashSet::new();
+
+    for (i, _) in servers.iter().enumerate() {
+        if i < 9 {
+            let ch = char::from_digit((i + 1) as u32, 10).unwrap_or('?');
+            out.push(ch);
+            used.insert(ch);
+        } else {
+            out.push('\0');
+        }
+    }
+
+    // Avoid letters that could be confused with common module letters in uppercase.
+    for ch in ['C', 'S', 'M', 'I', 'V', 'N', 'L'] {
+        used.insert(ch);
+    }
+
+    let pool: Vec<char> = ('A'..='Z').filter(|c| !used.contains(c)).collect();
+    if pool.is_empty() {
+        for ch in out.iter_mut().skip(9) {
+            *ch = 'A';
+        }
+        return out;
+    }
+
+    // Stable assignment based on server name.
+    for i in 9..servers.len() {
+        let name = &servers[i].name;
+        let mut h: u64 = 0xcbf29ce484222325;
+        for b in name.as_bytes() {
+            h ^= *b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        let start = (h as usize) % pool.len();
+        let mut chosen = None;
+        for off in 0..pool.len() {
+            let c = pool[(start + off) % pool.len()];
+            if !used.contains(&c) {
+                chosen = Some(c);
+                break;
+            }
+        }
+        let c = chosen.unwrap_or(pool[start]);
+        out[i] = c;
+        used.insert(c);
+    }
+    out
+}
+
+pub(in crate::ui) fn truncate_msg(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        if i >= max.saturating_sub(3) {
+            break;
+        }
+        out.push(ch);
+    }
+    out.push_str("...");
+    out
 }
