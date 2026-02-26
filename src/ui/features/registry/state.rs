@@ -4,10 +4,10 @@ use crate::config;
 use crate::docker::ImageRow;
 use crate::ui::render::utils::expand_user_path;
 
-use super::{App, MsgLevel, RegistryAuthResolved, decrypt_age_secret, load_age_identities};
+use crate::ui::{App, MsgLevel, RegistryAuthResolved, decrypt_age_secret, load_age_identities};
 
 impl App {
-    pub(super) fn registry_env_secret(&self, key: &str) -> anyhow::Result<String> {
+    pub(in crate::ui) fn registry_env_secret(&self, key: &str) -> anyhow::Result<String> {
         let env_key = key.trim();
         if env_key.is_empty() {
             anyhow::bail!("empty env key");
@@ -15,7 +15,7 @@ impl App {
         std::env::var(env_key).map_err(|e| anyhow::anyhow!("env {env_key} not set: {e}"))
     }
 
-    pub(super) fn registry_keyring_secret(&self, key: &str) -> anyhow::Result<String> {
+    pub(in crate::ui) fn registry_keyring_secret(&self, key: &str) -> anyhow::Result<String> {
         let entry = keyring::Entry::new("containr", key)
             .map_err(|e| anyhow::anyhow!("keyring init failed: {e}"))?;
         entry
@@ -23,7 +23,7 @@ impl App {
             .map_err(|e| anyhow::anyhow!("keyring read failed: {e}"))
     }
 
-    pub(super) fn resolve_registry_auths(&mut self) {
+    pub(in crate::ui) fn resolve_registry_auths(&mut self) {
         let mut identities: Vec<Box<dyn age::Identity>> = Vec::new();
         let identity_path = self.registries_cfg.age_identity.trim();
         if !identity_path.is_empty() {
@@ -133,7 +133,7 @@ impl App {
         self.registry_auths = out;
     }
 
-    pub(super) fn registry_auth_for_host(&self, host: &str) -> anyhow::Result<RegistryAuthResolved> {
+    pub(in crate::ui) fn registry_auth_for_host(&self, host: &str) -> anyhow::Result<RegistryAuthResolved> {
         let host = host.trim().to_ascii_lowercase();
         let entry = self
             .registries_cfg
@@ -171,7 +171,7 @@ impl App {
         }
     }
 
-    pub(super) fn registry_default_host(&self) -> Option<String> {
+    pub(in crate::ui) fn registry_default_host(&self) -> Option<String> {
         let default = self
             .registries_cfg
             .default_registry
@@ -190,7 +190,7 @@ impl App {
         }
     }
 
-    pub(super) fn image_row_key(img: &ImageRow) -> String {
+    pub(in crate::ui) fn image_row_key(img: &ImageRow) -> String {
         if img.repository != "<none>" && img.tag != "<none>" && !img.tag.trim().is_empty() {
             format!("ref:{}:{}", img.repository, img.tag)
         } else {
@@ -198,7 +198,7 @@ impl App {
         }
     }
 
-    pub(super) fn image_row_ref(img: &ImageRow) -> Option<String> {
+    pub(in crate::ui) fn image_row_ref(img: &ImageRow) -> Option<String> {
         if img.repository != "<none>" && img.tag != "<none>" && !img.tag.trim().is_empty() {
             Some(format!("{}:{}", img.repository, img.tag))
         } else {

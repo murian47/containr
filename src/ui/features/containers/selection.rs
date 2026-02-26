@@ -5,12 +5,10 @@ use crate::docker::{ContainerAction, ContainerRow, ImageRow, NetworkRow, VolumeR
 use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::render::utils::is_container_stopped;
 
-use super::{
-    ActiveView, App, InspectKind, InspectTarget, ListMode, ViewEntry,
-};
+use crate::ui::{ActiveView, App, InspectKind, InspectTarget, ListMode, ViewEntry};
 
 impl App {
-    pub(super) fn selected_container(&self) -> Option<&ContainerRow> {
+    pub(in crate::ui) fn selected_container(&self) -> Option<&ContainerRow> {
         if self.active_view != ActiveView::Containers {
             return None;
         }
@@ -29,7 +27,7 @@ impl App {
         }
     }
 
-    pub(super) fn selected_stack(&self) -> Option<(&str, usize, usize, bool)> {
+    pub(in crate::ui) fn selected_stack(&self) -> Option<(&str, usize, usize, bool)> {
         if self.active_view != ActiveView::Containers {
             return None;
         }
@@ -53,7 +51,7 @@ impl App {
         }
     }
 
-    pub(super) fn selected_stack_container_ids(&mut self) -> Option<Vec<String>> {
+    pub(in crate::ui) fn selected_stack_container_ids(&mut self) -> Option<Vec<String>> {
         if self.active_view != ActiveView::Containers {
             return None;
         }
@@ -79,7 +77,7 @@ impl App {
         Some(ids)
     }
 
-    pub(super) fn container_ids_for_selection(&mut self) -> Vec<String> {
+    pub(in crate::ui) fn container_ids_for_selection(&mut self) -> Vec<String> {
         if let Some(ids) = self.selected_stack_container_ids() {
             return ids;
         }
@@ -91,7 +89,7 @@ impl App {
             .unwrap_or_default()
     }
 
-    pub(super) fn view_len(&mut self) -> usize {
+    pub(in crate::ui) fn view_len(&mut self) -> usize {
         if self.active_view != ActiveView::Containers {
             return 0;
         }
@@ -102,7 +100,7 @@ impl App {
         }
     }
 
-    pub(super) fn ensure_view(&mut self) {
+    pub(in crate::ui) fn ensure_view(&mut self) {
         if self.active_view != ActiveView::Containers {
             return;
         }
@@ -118,7 +116,7 @@ impl App {
         self.rebuild_tree_view();
     }
 
-    pub(super) fn current_anchor(&self) -> Option<(String, Option<String>)> {
+    pub(in crate::ui) fn current_anchor(&self) -> Option<(String, Option<String>)> {
         // (container_id, stack_name) where stack_name is Some only if selection is a stack header.
         match self.list_mode {
             ListMode::Flat => self.selected_container().map(|c| (c.id.clone(), None)),
@@ -135,7 +133,7 @@ impl App {
         }
     }
 
-    pub(super) fn rebuild_tree_view(&mut self) {
+    pub(in crate::ui) fn rebuild_tree_view(&mut self) {
         use std::collections::BTreeMap;
 
         let anchor = self.current_anchor();
@@ -217,7 +215,7 @@ impl App {
         }
     }
 
-    pub(super) fn toggle_tree_expanded_selected(&mut self) -> bool {
+    pub(in crate::ui) fn toggle_tree_expanded_selected(&mut self) -> bool {
         if self.active_view != ActiveView::Containers || self.list_mode != ListMode::Tree {
             return false;
         }
@@ -238,23 +236,23 @@ impl App {
         }
     }
 
-    pub(super) fn is_marked(&self, id: &str) -> bool {
+    pub(in crate::ui) fn is_marked(&self, id: &str) -> bool {
         self.marked.contains(id)
     }
 
-    pub(super) fn is_image_marked(&self, key: &str) -> bool {
+    pub(in crate::ui) fn is_image_marked(&self, key: &str) -> bool {
         self.marked_images.contains(key)
     }
 
-    pub(super) fn is_volume_marked(&self, name: &str) -> bool {
+    pub(in crate::ui) fn is_volume_marked(&self, name: &str) -> bool {
         self.marked_volumes.contains(name)
     }
 
-    pub(super) fn is_network_marked(&self, id: &str) -> bool {
+    pub(in crate::ui) fn is_network_marked(&self, id: &str) -> bool {
         self.marked_networks.contains(id)
     }
 
-    pub(super) fn toggle_mark_selected(&mut self) {
+    pub(in crate::ui) fn toggle_mark_selected(&mut self) {
         match self.active_view {
             ActiveView::Stacks => {}
             ActiveView::Containers => {
@@ -293,7 +291,7 @@ impl App {
         }
     }
 
-    pub(super) fn mark_all(&mut self) {
+    pub(in crate::ui) fn mark_all(&mut self) {
         match self.active_view {
             ActiveView::Stacks => {}
             ActiveView::Containers => {
@@ -335,7 +333,7 @@ impl App {
         }
     }
 
-    pub(super) fn clear_marks(&mut self) {
+    pub(in crate::ui) fn clear_marks(&mut self) {
         match self.active_view {
             ActiveView::Stacks => {}
             ActiveView::Containers => self.marked.clear(),
@@ -345,14 +343,14 @@ impl App {
         }
     }
 
-    pub(super) fn clear_all_marks(&mut self) {
+    pub(in crate::ui) fn clear_all_marks(&mut self) {
         self.marked.clear();
         self.marked_images.clear();
         self.marked_volumes.clear();
         self.marked_networks.clear();
     }
 
-    pub(super) fn prune_marks(&mut self) {
+    pub(in crate::ui) fn prune_marks(&mut self) {
         if self.marked.is_empty() || self.containers.is_empty() {
             if self.containers.is_empty() {
                 // Keep marks during transient loading; they will be pruned after we have data again.
@@ -363,7 +361,7 @@ impl App {
         self.marked.retain(|id| present.contains(id.as_str()));
     }
 
-    pub(super) fn prune_image_marks(&mut self) {
+    pub(in crate::ui) fn prune_image_marks(&mut self) {
         if self.marked_images.is_empty() || self.images.is_empty() {
             if self.images.is_empty() {
                 // Keep marks during transient loading.
@@ -374,7 +372,7 @@ impl App {
         self.marked_images.retain(|k| present.contains(k));
     }
 
-    pub(super) fn prune_volume_marks(&mut self) {
+    pub(in crate::ui) fn prune_volume_marks(&mut self) {
         if self.marked_volumes.is_empty() || self.volumes.is_empty() {
             if self.volumes.is_empty() {
                 // Keep marks during transient loading.
@@ -386,7 +384,7 @@ impl App {
             .retain(|name| present.contains(name.as_str()));
     }
 
-    pub(super) fn prune_network_marks(&mut self) {
+    pub(in crate::ui) fn prune_network_marks(&mut self) {
         if self.marked_networks.is_empty() || self.networks.is_empty() {
             if self.networks.is_empty() {
                 // Keep marks during transient loading.
@@ -398,7 +396,7 @@ impl App {
             .retain(|id| present.contains(id.as_str()));
     }
 
-    pub(super) fn move_up(&mut self) {
+    pub(in crate::ui) fn move_up(&mut self) {
         match self.active_view {
             ActiveView::Containers => {
                 if self.view_len() == 0 {
@@ -422,7 +420,7 @@ impl App {
         }
     }
 
-    pub(super) fn move_down(&mut self) {
+    pub(in crate::ui) fn move_down(&mut self) {
         match self.active_view {
             ActiveView::Containers => {
                 if self.view_len() == 0 {
@@ -464,7 +462,7 @@ impl App {
         }
     }
 
-    pub(super) fn set_containers(&mut self, containers: Vec<ContainerRow>) {
+    pub(in crate::ui) fn set_containers(&mut self, containers: Vec<ContainerRow>) {
         self.containers = containers;
         self.container_idx_by_id.clear();
         for (i, c) in self.containers.iter().enumerate() {
@@ -488,7 +486,7 @@ impl App {
         }
     }
 
-    pub(super) fn reconcile_noncontainer_action_markers(&mut self) {
+    pub(in crate::ui) fn reconcile_noncontainer_action_markers(&mut self) {
         let now = Instant::now();
         let present_image_ids: HashSet<&str> = self.images.iter().map(|i| i.id.as_str()).collect();
         let present_image_refs: HashSet<String> = self.images.iter().map(App::image_row_key).collect();
@@ -521,21 +519,21 @@ impl App {
             .retain(|id, _| present_nets.contains(id.as_str()));
     }
 
-    pub(super) fn image_referenced(&self, img: &ImageRow) -> bool {
+    pub(in crate::ui) fn image_referenced(&self, img: &ImageRow) -> bool {
         self.image_referenced_by_id
             .get(&img.id)
             .copied()
             .unwrap_or(false)
     }
 
-    pub(super) fn volume_referenced(&self, v: &VolumeRow) -> bool {
+    pub(in crate::ui) fn volume_referenced(&self, v: &VolumeRow) -> bool {
         self.volume_referenced_by_name
             .get(&v.name)
             .copied()
             .unwrap_or(false)
     }
 
-    pub(super) fn reconcile_action_markers(&mut self) {
+    pub(in crate::ui) fn reconcile_action_markers(&mut self) {
         // The docker start/stop/restart command may return before docker ps reflects the new state.
         // Keep showing the marker until we observe a matching state, or until the marker expires.
         let now = Instant::now();
@@ -561,7 +559,7 @@ impl App {
         });
     }
 
-    pub(super) fn start_loading(&mut self, clear_list: bool) {
+    pub(in crate::ui) fn start_loading(&mut self, clear_list: bool) {
         self.loading = true;
         self.loading_since = Some(Instant::now());
         self.clear_last_error();
@@ -584,21 +582,21 @@ impl App {
         }
     }
 
-    pub(super) fn selected_image(&self) -> Option<&ImageRow> {
+    pub(in crate::ui) fn selected_image(&self) -> Option<&ImageRow> {
         let idx = self.images_visible_index_at(self.images_selected)?;
         self.images.get(idx)
     }
 
-    pub(super) fn selected_volume(&self) -> Option<&VolumeRow> {
+    pub(in crate::ui) fn selected_volume(&self) -> Option<&VolumeRow> {
         let idx = self.volumes_visible_index_at(self.volumes_selected)?;
         self.volumes.get(idx)
     }
 
-    pub(super) fn selected_network(&self) -> Option<&NetworkRow> {
+    pub(in crate::ui) fn selected_network(&self) -> Option<&NetworkRow> {
         self.networks.get(self.networks_selected)
     }
 
-    pub(super) fn is_system_network(n: &NetworkRow) -> bool {
+    pub(in crate::ui) fn is_system_network(n: &NetworkRow) -> bool {
         // Docker/system-managed networks that should not be modified from the UI.
         // - Default networks: bridge/host/none
         // - Swarm: ingress, docker_gwbridge
@@ -608,7 +606,7 @@ impl App {
         )
     }
 
-    pub(super) fn is_system_network_id(&self, id: &str) -> bool {
+    pub(in crate::ui) fn is_system_network_id(&self, id: &str) -> bool {
         self.networks
             .iter()
             .find(|n| n.id == id)
@@ -616,7 +614,7 @@ impl App {
             .unwrap_or(false)
     }
 
-    pub(super) fn images_visible_index_at(&self, pos: usize) -> Option<usize> {
+    pub(in crate::ui) fn images_visible_index_at(&self, pos: usize) -> Option<usize> {
         if !self.images_unused_only {
             if pos < self.images.len() {
                 return Some(pos);
@@ -631,7 +629,7 @@ impl App {
             .map(|(i, _)| i)
     }
 
-    pub(super) fn images_visible_len(&self) -> usize {
+    pub(in crate::ui) fn images_visible_len(&self) -> usize {
         if !self.images_unused_only {
             self.images.len()
         } else {
@@ -639,7 +637,7 @@ impl App {
         }
     }
 
-    pub(super) fn volumes_visible_index_at(&self, pos: usize) -> Option<usize> {
+    pub(in crate::ui) fn volumes_visible_index_at(&self, pos: usize) -> Option<usize> {
         if !self.volumes_unused_only {
             if pos < self.volumes.len() {
                 return Some(pos);
@@ -654,7 +652,7 @@ impl App {
             .map(|(i, _)| i)
     }
 
-    pub(super) fn volumes_visible_len(&self) -> usize {
+    pub(in crate::ui) fn volumes_visible_len(&self) -> usize {
         if !self.volumes_unused_only {
             self.volumes.len()
         } else {
@@ -662,7 +660,7 @@ impl App {
         }
     }
 
-    pub(super) fn selected_inspect_target(&self) -> Option<InspectTarget> {
+    pub(in crate::ui) fn selected_inspect_target(&self) -> Option<InspectTarget> {
         match self.active_view {
             ActiveView::Stacks => None,
             ActiveView::Containers => {

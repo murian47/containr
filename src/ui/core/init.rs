@@ -5,17 +5,19 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use ratatui_image::picker::Picker;
 
 use crate::config::{self, KeyBinding, ServerEntry};
-
-use super::{
-    App, CmdHistory, DashboardAllState, DashboardHostState, DashboardState, InspectMode,
-    InspectState, LogsMode, LogsState, ShellCmdlineState, ShellFocus, ShellHelpState,
-    ShellMessagesState, ShellSplitMode, ShellView, StackDetailsFocus, TemplatesKind,
-    TemplatesState, ThemeSelectorState, build_server_shortcuts, init_dashboard_image,
-    load_local_state, now_unix, theme,
+use crate::ui::{
+    theme, ActiveView, App, CmdHistory, DashboardAllState, DashboardHostState, DashboardState,
+    IMAGE_UPDATE_TTL_SECS, InspectMode, InspectState, ListMode, LogsMode, LogsState,
+    RATE_LIMIT_WINDOW_SECS, ShellCmdlineState, ShellFocus, ShellHelpState, ShellMessagesState,
+    ShellSplitMode, ShellView, StackDetailsFocus, TemplatesKind, TemplatesState,
+    ThemeSelectorState, build_server_shortcuts,
 };
 
+use crate::ui::core::clock::now_unix;
+use crate::ui::core::local_state::load_local_state;
+
 impl App {
-    pub(super) fn new(
+    pub(in crate::ui) fn new(
         servers: Vec<ServerEntry>,
         keymap: Vec<KeyBinding>,
         active_server: Option<String>,
@@ -55,10 +57,10 @@ impl App {
             registry_tests,
         ) = load_local_state();
         let now = now_unix();
-        image_updates.retain(|_, v| now.saturating_sub(v.checked_at) <= super::IMAGE_UPDATE_TTL_SECS);
+        image_updates.retain(|_, v| now.saturating_sub(v.checked_at) <= IMAGE_UPDATE_TTL_SECS);
         rate_limits.retain(|_, v| {
             v.hits
-                .retain(|ts| now.saturating_sub(*ts) <= super::RATE_LIMIT_WINDOW_SECS);
+                .retain(|ts| now.saturating_sub(*ts) <= RATE_LIMIT_WINDOW_SECS);
             if let Some(until) = v.limited_until && now >= until {
                 v.limited_until = None;
             }
@@ -98,8 +100,8 @@ impl App {
             usage_refresh_needed: true,
             usage_loading: false,
             selected: 0,
-            active_view: super::ActiveView::Containers,
-            list_mode: super::ListMode::Flat,
+            active_view: ActiveView::Containers,
+            list_mode: ListMode::Flat,
             view: Vec::new(),
             view_dirty: true,
             stack_collapsed: HashSet::new(),
@@ -190,7 +192,7 @@ impl App {
             },
             dashboard_all,
             dashboard_image: if kitty_graphics {
-                dashboard_picker.map(|p| init_dashboard_image(p, &theme))
+                dashboard_picker.map(|p| crate::ui::features::dashboard::init_dashboard_image(p, &theme))
             } else {
                 None
             },

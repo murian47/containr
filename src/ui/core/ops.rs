@@ -7,12 +7,10 @@ use anyhow::Context as _;
 use crate::config;
 use crate::docker::DockerCfg;
 use crate::runner::Runner;
-
-use super::{
-    NetworkTemplateSpec,
-    RegistryAuthResolved, StackUpdateService, deploy_remote_dir_for, deploy_remote_net_dir_for,
-    ensure_template_id, render_compose_with_template_id, shell_quote_with_home, shell_single_quote,
-    truncate_msg,
+use crate::ui::{
+    NetworkTemplateSpec, RegistryAuthResolved, StackUpdateService, deploy_remote_dir_for,
+    deploy_remote_net_dir_for, ensure_template_id, render_compose_with_template_id,
+    shell_quote_with_home, shell_single_quote, truncate_msg,
 };
 
 pub(in crate::ui) async fn perform_template_deploy(

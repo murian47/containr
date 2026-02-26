@@ -3,10 +3,11 @@ use tokio::sync::{mpsc, watch};
 use crate::runner::Runner;
 use crate::ssh::Ssh;
 
-use super::{App, Connection, DashboardHostState, DockerCfg, ShellSidebarItem, ShellView, shell_sidebar_select_item};
+use crate::ui::render::sidebar::shell_sidebar_select_item;
+use crate::ui::{App, Connection, DashboardHostState, DockerCfg, ShellSidebarItem, ShellView};
 
 impl App {
-    pub(super) fn switch_server(
+    pub(in crate::ui) fn switch_server(
         &mut self,
         idx: usize,
         conn_tx: &watch::Sender<Connection>,
@@ -68,7 +69,7 @@ impl App {
         shell_sidebar_select_item(self, ShellSidebarItem::Server(idx));
     }
 
-    pub(super) fn switch_server_all(
+    pub(in crate::ui) fn switch_server_all(
         &mut self,
         dash_all_enabled_tx: &watch::Sender<bool>,
         dash_all_refresh_tx: &mpsc::UnboundedSender<()>,

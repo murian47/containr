@@ -6,10 +6,10 @@ use crate::ui::render::inspect::{
     collect_path_rank,
 };
 
-use super::{App, InspectMode, InspectTarget};
+use crate::ui::{App, InspectMode, InspectTarget};
 
 impl App {
-    pub(super) fn open_inspect_state(&mut self, target: InspectTarget) {
+    pub(in crate::ui) fn open_inspect_state(&mut self, target: InspectTarget) {
         self.inspect.loading = true;
         self.inspect.error = None;
         self.inspect.value = None;
@@ -28,7 +28,7 @@ impl App {
         self.inspect.input.clear();
     }
 
-    pub(super) fn rebuild_inspect_lines(&mut self) {
+    pub(in crate::ui) fn rebuild_inspect_lines(&mut self) {
         self.inspect.path_rank = collect_path_rank(self.inspect.value.as_ref());
         let effective_query = self.inspect_effective_query().to_string();
         self.inspect.match_paths = collect_match_paths(self.inspect.value.as_ref(), &effective_query);
@@ -47,7 +47,7 @@ impl App {
         }
     }
 
-    pub(super) fn inspect_move_up(&mut self, by: usize) {
+    pub(in crate::ui) fn inspect_move_up(&mut self, by: usize) {
         if self.inspect.lines.is_empty() {
             self.inspect.selected = 0;
             self.inspect.scroll = 0;
@@ -59,7 +59,7 @@ impl App {
         }
     }
 
-    pub(super) fn inspect_move_down(&mut self, by: usize) {
+    pub(in crate::ui) fn inspect_move_down(&mut self, by: usize) {
         if self.inspect.lines.is_empty() {
             self.inspect.selected = 0;
             self.inspect.scroll = 0;
@@ -72,7 +72,7 @@ impl App {
             .min(self.inspect.lines.len() - 1);
     }
 
-    pub(super) fn inspect_toggle_selected(&mut self) {
+    pub(in crate::ui) fn inspect_toggle_selected(&mut self) {
         let Some(line) = self.inspect.lines.get(self.inspect.selected) else {
             return;
         };
@@ -87,7 +87,7 @@ impl App {
         self.rebuild_inspect_lines();
     }
 
-    pub(super) fn inspect_expand_all(&mut self) {
+    pub(in crate::ui) fn inspect_expand_all(&mut self) {
         let Some(root) = self.inspect.value.as_ref() else {
             return;
         };
@@ -96,13 +96,13 @@ impl App {
         self.rebuild_inspect_lines();
     }
 
-    pub(super) fn inspect_collapse_all(&mut self) {
+    pub(in crate::ui) fn inspect_collapse_all(&mut self) {
         self.inspect.expanded.clear();
         self.inspect.expanded.insert("".to_string());
         self.rebuild_inspect_lines();
     }
 
-    pub(super) fn inspect_jump_next_match(&mut self) {
+    pub(in crate::ui) fn inspect_jump_next_match(&mut self) {
         if self.inspect.mode != InspectMode::Normal {
             return;
         }
@@ -133,7 +133,7 @@ impl App {
         }
     }
 
-    pub(super) fn inspect_jump_prev_match(&mut self) {
+    pub(in crate::ui) fn inspect_jump_prev_match(&mut self) {
         if self.inspect.mode != InspectMode::Normal {
             return;
         }
@@ -164,7 +164,7 @@ impl App {
         }
     }
 
-    pub(super) fn inspect_focus_path(&mut self, path: &str) {
+    pub(in crate::ui) fn inspect_focus_path(&mut self, path: &str) {
         for parent in ancestors_of_pointer(path) {
             self.inspect.expanded.insert(parent);
         }
@@ -174,34 +174,34 @@ impl App {
         }
     }
 
-    pub(super) fn inspect_effective_query(&self) -> &str {
+    pub(in crate::ui) fn inspect_effective_query(&self) -> &str {
         match self.inspect.mode {
             InspectMode::Search => &self.inspect.input,
             _ => &self.inspect.query,
         }
     }
 
-    pub(super) fn inspect_enter_search(&mut self) {
+    pub(in crate::ui) fn inspect_enter_search(&mut self) {
         self.inspect.mode = InspectMode::Search;
         self.inspect.input = self.inspect.query.clone();
         self.inspect.input_cursor = self.inspect.input.chars().count();
         self.rebuild_inspect_lines();
     }
 
-    pub(super) fn inspect_enter_command(&mut self) {
+    pub(in crate::ui) fn inspect_enter_command(&mut self) {
         self.inspect.mode = InspectMode::Command;
         self.inspect.input.clear();
         self.inspect.input_cursor = 0;
     }
 
-    pub(super) fn inspect_exit_input(&mut self) {
+    pub(in crate::ui) fn inspect_exit_input(&mut self) {
         self.inspect.mode = InspectMode::Normal;
         self.inspect.input.clear();
         self.inspect.input_cursor = 0;
         self.rebuild_inspect_lines();
     }
 
-    pub(super) fn inspect_commit_search(&mut self) {
+    pub(in crate::ui) fn inspect_commit_search(&mut self) {
         self.inspect.query = self.inspect.input.clone();
         self.inspect.mode = InspectMode::Normal;
         self.inspect.input.clear();
@@ -212,7 +212,7 @@ impl App {
         }
     }
 
-    pub(super) fn inspect_copy_selected_value(&mut self, pretty: bool) {
+    pub(in crate::ui) fn inspect_copy_selected_value(&mut self, pretty: bool) {
         let Some(root) = self.inspect.value.as_ref() else {
             return;
         };
@@ -241,7 +241,7 @@ impl App {
         }
     }
 
-    pub(super) fn inspect_copy_selected_path(&mut self) {
+    pub(in crate::ui) fn inspect_copy_selected_path(&mut self) {
         let Some(line) = self.inspect.lines.get(self.inspect.selected) else {
             return;
         };

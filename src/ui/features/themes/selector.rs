@@ -1,17 +1,17 @@
 use crate::ui::render::sidebar::shell_sidebar_select_item;
 use crate::ui::{commands, theme};
 
-use super::{App, ShellFocus, ShellSidebarItem, ShellView};
+use crate::ui::{App, ShellFocus, ShellSidebarItem, ShellView};
 
 impl App {
-    pub(super) fn theme_selector_selected_name(&self) -> Option<&str> {
+    pub(in crate::ui) fn theme_selector_selected_name(&self) -> Option<&str> {
         self.theme_selector
             .names
             .get(self.theme_selector.selected)
             .map(|s| s.as_str())
     }
 
-    pub(super) fn theme_selector_update_preview(&mut self) {
+    pub(in crate::ui) fn theme_selector_update_preview(&mut self) {
         let Some(name) = self.theme_selector_selected_name().map(|s| s.to_string()) else {
             self.theme_selector.preview_theme = self.theme.clone();
             self.theme_selector.error = Some("no themes available".to_string());
@@ -29,7 +29,7 @@ impl App {
         }
     }
 
-    pub(super) fn theme_selector_search(&mut self, query: &str) {
+    pub(in crate::ui) fn theme_selector_search(&mut self, query: &str) {
         let query = query.trim().to_ascii_lowercase();
         if query.is_empty() {
             return;
@@ -49,7 +49,7 @@ impl App {
         }
     }
 
-    pub(super) fn theme_selector_adjust_scroll(&mut self, center: bool) {
+    pub(in crate::ui) fn theme_selector_adjust_scroll(&mut self, center: bool) {
         let total = self.theme_selector.names.len();
         if total == 0 {
             self.theme_selector.scroll = 0;
@@ -78,7 +78,7 @@ impl App {
         self.theme_selector.scroll = scroll;
     }
 
-    pub(super) fn theme_selector_move(&mut self, delta: i32) {
+    pub(in crate::ui) fn theme_selector_move(&mut self, delta: i32) {
         if self.theme_selector.names.is_empty() {
             self.theme_selector.selected = 0;
             return;
@@ -99,12 +99,12 @@ impl App {
         }
     }
 
-    pub(super) fn theme_selector_page_move(&mut self, delta: i32) {
+    pub(in crate::ui) fn theme_selector_page_move(&mut self, delta: i32) {
         let step = self.theme_selector.page_size.max(1);
         self.theme_selector_move(delta.saturating_mul(step as i32));
     }
 
-    pub(super) fn theme_selector_apply(&mut self) {
+    pub(in crate::ui) fn theme_selector_apply(&mut self) {
         let Some(name) = self.theme_selector_selected_name().map(|s| s.to_string()) else {
             self.set_warn("no theme selected");
             return;
@@ -126,7 +126,7 @@ impl App {
         }
     }
 
-    pub(super) fn theme_selector_cancel(&mut self) {
+    pub(in crate::ui) fn theme_selector_cancel(&mut self) {
         let base = self.theme_selector.base_theme_name.clone();
         if let Err(e) = commands::theme_cmd::set_theme(self, &base) {
             self.set_error(format!("{e:#}"));

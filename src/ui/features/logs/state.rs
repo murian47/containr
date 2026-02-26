@@ -1,10 +1,10 @@
 use crate::ui::render::clipboard::copy_to_clipboard;
 use regex::RegexBuilder;
 
-use super::{App, LogsMode};
+use crate::ui::{App, LogsMode};
 
 impl App {
-    pub(super) fn open_logs_state(&mut self, id: String) {
+    pub(in crate::ui) fn open_logs_state(&mut self, id: String) {
         self.logs.loading = true;
         self.logs.error = None;
         self.logs.text = None;
@@ -24,11 +24,11 @@ impl App {
         self.logs.show_line_numbers = false;
     }
 
-    pub(super) fn logs_move_up(&mut self, by: usize) {
+    pub(in crate::ui) fn logs_move_up(&mut self, by: usize) {
         self.logs.cursor = self.logs.cursor.saturating_sub(by);
     }
 
-    pub(super) fn logs_move_down(&mut self, by: usize) {
+    pub(in crate::ui) fn logs_move_down(&mut self, by: usize) {
         let total = self.logs_total_lines();
         if total == 0 {
             self.logs.cursor = 0;
@@ -37,7 +37,7 @@ impl App {
         self.logs.cursor = self.logs.cursor.saturating_add(by).min(total - 1);
     }
 
-    pub(super) fn logs_total_lines(&self) -> usize {
+    pub(in crate::ui) fn logs_total_lines(&self) -> usize {
         self.logs
             .text
             .as_ref()
@@ -45,24 +45,24 @@ impl App {
             .unwrap_or(0)
     }
 
-    pub(super) fn logs_toggle_selection(&mut self) {
+    pub(in crate::ui) fn logs_toggle_selection(&mut self) {
         if self.logs.select_anchor.take().is_none() {
             self.logs.select_anchor = Some(self.logs.cursor);
         }
     }
 
-    pub(super) fn logs_clear_selection(&mut self) {
+    pub(in crate::ui) fn logs_clear_selection(&mut self) {
         self.logs.select_anchor = None;
     }
 
-    pub(super) fn logs_selection_range(&self) -> Option<(usize, usize)> {
+    pub(in crate::ui) fn logs_selection_range(&self) -> Option<(usize, usize)> {
         let anchor = self.logs.select_anchor?;
         let a = anchor.min(self.logs.cursor);
         let b = anchor.max(self.logs.cursor);
         Some((a, b))
     }
 
-    pub(super) fn logs_copy_selection(&mut self) {
+    pub(in crate::ui) fn logs_copy_selection(&mut self) {
         let Some(text) = self.logs.text.as_deref() else {
             self.set_warn("no logs loaded");
             return;
@@ -106,7 +106,7 @@ impl App {
         }
     }
 
-    pub(super) fn logs_rebuild_matches(&mut self) {
+    pub(in crate::ui) fn logs_rebuild_matches(&mut self) {
         let q = match self.logs.mode {
             LogsMode::Search => self.logs.input.trim(),
             LogsMode::Normal | LogsMode::Command => self.logs.query.trim(),
@@ -164,7 +164,7 @@ impl App {
         }
     }
 
-    pub(super) fn logs_commit_search(&mut self) {
+    pub(in crate::ui) fn logs_commit_search(&mut self) {
         self.logs.query = self.logs.input.clone();
         self.logs.mode = LogsMode::Normal;
         self.logs.input.clear();
@@ -175,14 +175,14 @@ impl App {
         }
     }
 
-    pub(super) fn logs_cancel_search(&mut self) {
+    pub(in crate::ui) fn logs_cancel_search(&mut self) {
         self.logs.mode = LogsMode::Normal;
         self.logs.input.clear();
         self.logs.input_cursor = 0;
         self.logs_rebuild_matches();
     }
 
-    pub(super) fn logs_next_match(&mut self) {
+    pub(in crate::ui) fn logs_next_match(&mut self) {
         if self.logs.mode != LogsMode::Normal {
             return;
         }
@@ -201,7 +201,7 @@ impl App {
         self.logs.cursor = next;
     }
 
-    pub(super) fn logs_prev_match(&mut self) {
+    pub(in crate::ui) fn logs_prev_match(&mut self) {
         if self.logs.mode != LogsMode::Normal {
             return;
         }

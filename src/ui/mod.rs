@@ -11,21 +11,6 @@
 //! - UI code should use semantic theme roles (`theme::ThemeSpec`) instead of hard-coded colors.
 
 mod actions;
-mod app_logging;
-mod app_logs;
-mod app_inspect;
-mod app_registry;
-mod app_registry_http;
-mod app_secrets;
-mod app_server_switch;
-mod app_keymap;
-mod app_init;
-mod app_ops;
-mod app_selection;
-mod app_state;
-mod app_stacks;
-mod app_theme_selector;
-mod app_view;
 mod core;
 mod features;
 mod commands;
@@ -58,7 +43,7 @@ pub(in crate::ui) use render::tables::{
     draw_shell_volumes_table, shell_header_style,
 };
 pub(in crate::ui) use actions::{service_name_from_label_list, stack_compose_dirs, template_name_from_stack};
-pub(in crate::ui) use app_view::{shell_cycle_focus, shell_module_shortcut};
+pub(in crate::ui) use core::view::{shell_cycle_focus, shell_module_shortcut};
 pub(in crate::ui) use helpers::{
     deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, extract_container_ip,
     extract_template_id, parse_kv_args, shell_quote_with_home, shell_single_quote,
@@ -78,7 +63,7 @@ use render::utils::{
 };
 use render::stacks::stack_name_from_labels;
 use cmd_history::CmdHistory;
-use app_ops::{perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy};
+use core::ops::{perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy};
 use core::runtime::{current_docker_cmd_from_app, current_runner_from_app, current_server_label, restore_terminal, run_interactive_command, run_interactive_local_command, setup_terminal};
 pub use core::run::run_tui;
 pub(in crate::ui) use core::clock::{now_local, now_unix};
@@ -94,16 +79,14 @@ pub(in crate::ui) use core::types::{
     classify_action_error,
 };
 use features::dashboard::{dashboard_command, parse_dashboard_output};
-use app_registry_http::registry_test;
-pub(in crate::ui) use features::dashboard::init_dashboard_image;
-pub(in crate::ui) use core::local_state::load_local_state;
-pub(in crate::ui) use app_secrets::{
+use features::registry::registry_test;
+pub(in crate::ui) use core::secrets::{
     decrypt_age_secret, encrypt_age_secret, ensure_age_identity, load_age_identities,
 };
 pub(in crate::ui) use features::templates::{
     render_compose_with_template_id, template_commit_from_labels, template_id_from_labels,
 };
-pub(in crate::ui) use app_keymap::{cmdline_is_destructive, is_single_letter_without_modifiers};
+pub(in crate::ui) use core::keymap::{cmdline_is_destructive, is_single_letter_without_modifiers};
 pub(in crate::ui) use text_edit::{
     backspace_at_cursor, clamp_cursor_to_text, delete_at_cursor, insert_char_at_cursor,
     set_text_and_cursor,

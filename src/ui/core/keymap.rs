@@ -1,6 +1,4 @@
-use super::{
-    App, KeyCodeNorm, KeySpec, MsgLevel, parse_key_spec, parse_scope,
-};
+use crate::ui::{App, KeyCodeNorm, KeySpec, MsgLevel, build_default_keymap, parse_key_spec, parse_scope};
 
 pub(in crate::ui) fn is_single_letter_without_modifiers(spec: KeySpec) -> bool {
     spec.mods == 0 && matches!(spec.code, KeyCodeNorm::Char(c) if c.is_ascii_alphabetic())
@@ -38,9 +36,9 @@ pub(in crate::ui) fn cmdline_is_destructive(raw: &str) -> bool {
 }
 
 impl App {
-    pub(super) fn rebuild_keymap(&mut self) {
+    pub(in crate::ui) fn rebuild_keymap(&mut self) {
         self.keymap_parsed.clear();
-        self.keymap_defaults = super::build_default_keymap();
+        self.keymap_defaults = build_default_keymap();
         let mut invalid: Vec<(String, String)> = Vec::new();
         for kb in &self.keymap {
             let cmd = kb.cmd.trim();
