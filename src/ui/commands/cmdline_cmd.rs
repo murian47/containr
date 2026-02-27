@@ -4,12 +4,15 @@ use super::{
     container_cmd, dashboard_cmd, git_cmd, image_cmd, keymap_cmd, layout_cmd, logs_cmd, network_cmd,
     registry_cmd, server_cmd, set_cmd, sidebar_cmd, templates_cmd, theme_cmd, volume_cmd,
 };
+use crate::docker::DockerCfg;
 use crate::ui::render::stacks::stack_name_from_labels;
-use crate::ui::{
-    service_name_from_label_list, ActiveView,
-    current_docker_cmd_from_app, current_runner_from_app, shell_begin_confirm, stack_compose_dirs,
-    template_name_from_stack, ActionRequest, App, Connection, DeployMarker, DockerCfg, InspectTarget,
-    MsgLevel, ShellConfirm, ShellFocus, ShellView, StackUpdateService, TemplatesKind,
+use crate::ui::actions::{service_name_from_label_list, stack_compose_dirs, template_name_from_stack};
+use crate::ui::core::requests::{ActionRequest, Connection, ShellConfirm};
+use crate::ui::core::runtime::{current_docker_cmd_from_app, current_runner_from_app};
+use crate::ui::core::types::{DeployMarker, InspectTarget, StackUpdateService};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{
+    ActiveView, MsgLevel, ShellFocus, ShellView, TemplatesKind, shell_begin_confirm,
 };
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};

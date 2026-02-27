@@ -9,7 +9,8 @@ use crate::ui::render::messages::format_session_ts;
 use crate::ui::render::format::{bar_spans_gradient, bar_spans_threshold, format_bytes_short};
 use crate::ui::render::utils::{theme_color, truncate_end};
 use crate::ui::theme;
-use crate::ui::{current_server_label, App};
+use crate::ui::core::runtime::current_server_label;
+use crate::ui::state::app::App;
 
 /// Dashboard render implementation (moved from render.inc.rs).
 pub(in crate::ui) fn render_dashboard_impl(

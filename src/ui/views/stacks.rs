@@ -10,7 +10,8 @@ use crate::ui::render::status::{action_error_label, action_status_prefix};
 use crate::ui::render::utils::shell_row_highlight;
 use crate::ui::state::image_updates::resolve_stack_update_state;
 use crate::ui::render::stacks::stack_name_from_labels;
-use crate::ui::{ActionErrorKind, App};
+use crate::ui::core::types::ActionErrorKind;
+use crate::ui::state::app::App;
 
 /// Render Stacks table (moved from render.inc.rs)
 pub fn render_stacks_impl(

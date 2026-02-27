@@ -1,6 +1,7 @@
 //! Shared helpers for command handlers.
 
-use crate::ui::{shell_begin_confirm, App};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::shell_begin_confirm;
 
 pub(super) fn subcommand<'a>(args: &'a [&'a str], default: &'a str) -> &'a str {
     args.first().copied().unwrap_or(default)
