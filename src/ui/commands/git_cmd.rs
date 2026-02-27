@@ -64,7 +64,7 @@ fn remove_empty_templates_scaffold(root: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn git_available() -> bool {
+pub(in crate::ui) fn git_available() -> bool {
     Command::new("git").arg("--version").output().is_ok()
 }
 
@@ -117,7 +117,7 @@ fn prompt_git_identity(app: &mut App, ctx_raw: &str, dir: &Path) -> bool {
     false
 }
 
-pub(crate) fn is_git_repo(dir: &Path) -> bool {
+pub(in crate::ui) fn is_git_repo(dir: &Path) -> bool {
     if !git_available() {
         return false;
     }
@@ -134,7 +134,7 @@ pub(crate) fn is_git_repo(dir: &Path) -> bool {
     }
 }
 
-pub(crate) fn run_git(dir: &Path, args: &[&str]) -> anyhow::Result<String> {
+pub(in crate::ui) fn run_git(dir: &Path, args: &[&str]) -> anyhow::Result<String> {
     let out = Command::new("git")
         .args(args)
         .current_dir(dir)
@@ -162,14 +162,14 @@ pub(crate) fn run_git(dir: &Path, args: &[&str]) -> anyhow::Result<String> {
     }
 }
 
-pub(crate) fn git_head(dir: &Path) -> Option<String> {
+pub(in crate::ui) fn git_head(dir: &Path) -> Option<String> {
     if !is_git_repo(dir) {
         return None;
     }
     run_git(dir, &["rev-parse", "HEAD"]).ok()
 }
 
-pub(crate) fn git_head_short(dir: &Path) -> Option<String> {
+pub(in crate::ui) fn git_head_short(dir: &Path) -> Option<String> {
     if !is_git_repo(dir) {
         return None;
     }
