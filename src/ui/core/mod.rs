@@ -1,6 +1,7 @@
 pub(in crate::ui) mod clock;
 pub(in crate::ui) mod init;
 pub(in crate::ui) mod keymap;
+pub(in crate::ui) mod key_types;
 pub(in crate::ui) mod local_state;
 pub(in crate::ui) mod logging;
 pub(in crate::ui) mod ops;

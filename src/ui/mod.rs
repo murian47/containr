@@ -83,6 +83,10 @@ use features::registry::registry_test;
 pub(in crate::ui) use core::secrets::{
     decrypt_age_secret, encrypt_age_secret, ensure_age_identity, load_age_identities,
 };
+pub(in crate::ui) use core::key_types::{
+    BindingHit, KeyCodeNorm, KeyScope, KeySpec, build_default_keymap, key_spec_from_event,
+    lookup_binding, lookup_scoped_binding, parse_key_spec, parse_scope, scope_to_string,
+};
 pub(in crate::ui) use features::templates::{
     render_compose_with_template_id, template_commit_from_labels, template_id_from_labels,
 };
@@ -97,9 +101,6 @@ use crate::docker::{
     ContainerAction, ContainerRow, DockerCfg, ImageRow, NetworkRow, VolumeRow,
 };
 use crate::runner::Runner;
-use crossterm::{
-    event::{KeyCode, KeyModifiers},
-};
 use ratatui_image::picker::Picker;
 use regex::Regex;
 use serde_json::Value;
@@ -109,40 +110,6 @@ use std::{
     collections::{HashMap, HashSet},
 };
 use time::OffsetDateTime;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct KeySpec {
-    mods: u8, // bitmask: 1=Ctrl 2=Shift 4=Alt
-    code: KeyCodeNorm,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum KeyScope {
-    Always,
-    Global,
-    View(ShellView),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum KeyCodeNorm {
-    Char(char),
-    F(u8),
-    Enter,
-    Esc,
-    Tab,
-    Backspace,
-    Delete,
-    Home,
-    End,
-    PageUp,
-    PageDown,
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-include!("keys.inc.rs");
 
 #[derive(Debug, Default, Clone)]
 struct ShellCmdlineState {
@@ -671,6 +638,8 @@ struct App {
 }
 
 #[cfg(test)]
+#[path = "../tests/ui_tests.rs"]
 mod tests;
 #[cfg(all(test, feature = "integration"))]
+#[path = "../tests/ui_integration_tests.rs"]
 mod integration_tests;

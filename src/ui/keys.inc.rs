@@ -1,4 +1,4 @@
-fn key_spec_from_event(key: crossterm::event::KeyEvent) -> Option<KeySpec> {
+pub(in crate::ui) fn key_spec_from_event(key: crossterm::event::KeyEvent) -> Option<KeySpec> {
     let mut mods: u8 = 0;
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         mods |= 1;
@@ -40,7 +40,7 @@ fn key_spec_from_event(key: crossterm::event::KeyEvent) -> Option<KeySpec> {
     Some(KeySpec { mods, code })
 }
 
-fn parse_key_spec(s: &str) -> Result<KeySpec, String> {
+pub(in crate::ui) fn parse_key_spec(s: &str) -> Result<KeySpec, String> {
     let raw = s.trim();
     if raw.is_empty() {
         return Err("empty key".to_string());
@@ -214,7 +214,7 @@ fn parse_key_spec(s: &str) -> Result<KeySpec, String> {
     Ok(KeySpec { mods, code })
 }
 
-fn parse_scope(raw: &str) -> Option<KeyScope> {
+pub(in crate::ui) fn parse_scope(raw: &str) -> Option<KeyScope> {
     let s = raw.trim().to_ascii_lowercase();
     if s == "always" || s == "allways" || s == "any" {
         return Some(KeyScope::Always);
@@ -250,7 +250,7 @@ fn parse_view_name(s: &str) -> Option<ShellView> {
     }
 }
 
-fn scope_to_string(scope: KeyScope) -> &'static str {
+pub(in crate::ui) fn scope_to_string(scope: KeyScope) -> &'static str {
     match scope {
         KeyScope::Always => "always",
         KeyScope::Global => "global",
@@ -270,7 +270,7 @@ fn scope_to_string(scope: KeyScope) -> &'static str {
     }
 }
 
-fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
+pub(in crate::ui) fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
     // Defaults are built-in and can be overridden by user keymap.
     let mut out: HashMap<(KeyScope, KeySpec), String> = HashMap::new();
     let mut add = |scope: KeyScope, key: &str, cmd: &str| {
@@ -350,12 +350,16 @@ fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), String> {
     out
 }
 
-enum BindingHit {
+pub(in crate::ui) enum BindingHit {
     Disabled,
     Cmd(String),
 }
 
-fn lookup_binding(app: &App, scope: KeyScope, spec: KeySpec) -> Option<BindingHit> {
+pub(in crate::ui) fn lookup_binding(
+    app: &App,
+    scope: KeyScope,
+    spec: KeySpec,
+) -> Option<BindingHit> {
     if let Some(cmd) = app.keymap_parsed.get(&(scope, spec)) {
         if cmd.trim().is_empty() {
             return Some(BindingHit::Disabled);
@@ -368,7 +372,7 @@ fn lookup_binding(app: &App, scope: KeyScope, spec: KeySpec) -> Option<BindingHi
     None
 }
 
-fn lookup_scoped_binding(app: &App, spec: KeySpec) -> Option<BindingHit> {
+pub(in crate::ui) fn lookup_scoped_binding(app: &App, spec: KeySpec) -> Option<BindingHit> {
     let view_scope = KeyScope::View(app.shell_view);
     lookup_binding(app, KeyScope::Always, spec)
         .or_else(|| lookup_binding(app, view_scope, spec))

@@ -4,6 +4,7 @@
 - Shrink `src/ui/render.inc.rs` further; move remaining helpers to focused modules.
 - Reduce `src/ui/mod.rs` monolith (split by domain/view where practical).
 - Keep UI logic separated from domain ops where possible.
+- Execute readability plan: `docs/readability-refactor-pr-plan.md`.
 
 ## Stability Pass
 - Manual smoke test of core flows:
@@ -25,4 +26,3 @@
 
 ## Version & Tag
 - Bump version and create tag (e.g., `v0.5.0`).
-
