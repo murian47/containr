@@ -1,14 +1,15 @@
 use crate::domain::image_refs::{
     NormalizedImageRef, is_digest_only_image, normalize_image_ref_for_updates,
 };
-use crate::ui::{App, ImageUpdateKind};
+use crate::ui::core::types::{ImageUpdateEntry, ImageUpdateKind};
 use crate::ui::render::stacks::stack_name_from_labels;
+use crate::ui::state::app::App;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(in crate::ui) struct ImageUpdateResult {
     pub image: String,
-    pub entry: crate::ui::ImageUpdateEntry,
+    pub entry: ImageUpdateEntry,
     pub debug: Option<String>,
 }
 

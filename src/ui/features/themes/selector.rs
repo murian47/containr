@@ -1,7 +1,8 @@
 use crate::ui::render::sidebar::shell_sidebar_select_item;
-use crate::ui::{commands, theme};
-
-use crate::ui::{App, ShellFocus, ShellSidebarItem, ShellView};
+use crate::ui::commands;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellFocus, ShellSidebarItem, ShellView};
+use crate::ui::theme;
 
 impl App {
     pub(in crate::ui) fn theme_selector_selected_name(&self) -> Option<&str> {

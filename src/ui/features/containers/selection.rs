@@ -4,8 +4,9 @@ use std::time::Instant;
 use crate::docker::{ContainerAction, ContainerRow, ImageRow, NetworkRow, VolumeRow};
 use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::render::utils::is_container_stopped;
-
-use crate::ui::{ActiveView, App, InspectKind, InspectTarget, ListMode, ViewEntry};
+use crate::ui::core::types::{InspectKind, InspectTarget, ViewEntry};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ActiveView, ListMode};
 
 impl App {
     pub(in crate::ui) fn selected_container(&self) -> Option<&ContainerRow> {

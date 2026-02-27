@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use crate::config;
 use crate::docker::ImageRow;
 use crate::ui::render::utils::expand_user_path;
-
-use crate::ui::{App, MsgLevel, RegistryAuthResolved, decrypt_age_secret, load_age_identities};
+use crate::ui::core::secrets::{decrypt_age_secret, load_age_identities};
+use crate::ui::core::types::RegistryAuthResolved;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::MsgLevel;
 
 impl App {
     pub(in crate::ui) fn registry_env_secret(&self, key: &str) -> anyhow::Result<String> {

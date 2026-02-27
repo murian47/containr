@@ -1,9 +1,10 @@
 //! Stack-centric App helpers.
 
 use crate::docker::ContainerRow;
-use crate::ui::{App, StackEntry};
+use crate::ui::core::types::StackEntry;
 use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::render::utils::is_container_stopped;
+use crate::ui::state::app::App;
 
 impl App {
     pub(in crate::ui) fn rebuild_stacks(&mut self) {

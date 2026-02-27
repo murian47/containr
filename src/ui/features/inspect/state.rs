@@ -5,8 +5,8 @@ use crate::ui::render::inspect::{
     ancestors_of_pointer, build_inspect_lines, collect_expandable_paths, collect_match_paths,
     collect_path_rank,
 };
-
-use crate::ui::{App, InspectMode, InspectTarget};
+use crate::ui::core::types::{InspectMode, InspectTarget};
+use crate::ui::state::app::App;
 
 impl App {
     pub(in crate::ui) fn open_inspect_state(&mut self, target: InspectTarget) {

@@ -1,7 +1,8 @@
 use crate::ui::render::clipboard::copy_to_clipboard;
 use regex::RegexBuilder;
 
-use crate::ui::{App, LogsMode};
+use crate::ui::core::types::LogsMode;
+use crate::ui::state::app::App;
 
 impl App {
     pub(in crate::ui) fn open_logs_state(&mut self, id: String) {

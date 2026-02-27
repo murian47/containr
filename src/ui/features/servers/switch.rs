@@ -4,7 +4,11 @@ use crate::runner::Runner;
 use crate::ssh::Ssh;
 
 use crate::ui::render::sidebar::shell_sidebar_select_item;
-use crate::ui::{App, Connection, DashboardHostState, DockerCfg, ShellSidebarItem, ShellView};
+use crate::docker::DockerCfg;
+use crate::ui::core::requests::Connection;
+use crate::ui::core::types::DashboardHostState;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellSidebarItem, ShellView};
 
 impl App {
     pub(in crate::ui) fn switch_server(

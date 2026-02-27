@@ -3,12 +3,12 @@ use std::fs;
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
 
-use crate::ui::{
-    App, GitRemoteStatus, MsgLevel, NetTemplateEntry, TemplateEditSnapshot, TemplateEntry,
-    TemplatesKind,
-};
+use crate::ui::commands;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{GitRemoteStatus, MsgLevel, TemplateEditSnapshot, TemplatesKind};
+use crate::ui::core::types::{NetTemplateEntry, TemplateEntry};
+use crate::ui::helpers::extract_template_id;
 use super::{extract_net_template_description, extract_template_description};
-use crate::ui::{commands, extract_template_id};
 
 impl App {
     pub(in crate::ui) fn refresh_templates(&mut self) {

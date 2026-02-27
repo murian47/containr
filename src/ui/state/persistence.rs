@@ -4,12 +4,16 @@ use std::path::PathBuf;
 
 use crate::config::{self, ContainrConfig, ServerEntry};
 use crate::domain::image_refs::image_registry_for_ref;
-use crate::ui::render::messages::format_session_ts;
-use crate::ui::{
-    now_unix, template_commit_from_labels, template_id_from_labels, App, ImageUpdateEntry,
-    LocalState, MsgLevel, ShellSplitMode, TemplateDeployEntry,
+use crate::ui::core::clock::{now_unix};
+use crate::ui::core::types::{
+    IMAGE_UPDATE_TTL_SECS, RATE_LIMIT_MAX, RATE_LIMIT_WARN, RATE_LIMIT_WINDOW_SECS,
+    ImageUpdateEntry, LocalState, TemplateDeployEntry,
 };
+use crate::ui::features::templates::{template_commit_from_labels, template_id_from_labels};
+use crate::ui::render::messages::format_session_ts;
 use crate::ui::render::utils::write_text_file;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{MsgLevel, ShellSplitMode};
 
 impl App {
     pub(in crate::ui) fn persist_config(&mut self) {
@@ -246,13 +250,14 @@ impl App {
     pub(in crate::ui) fn prune_image_updates(&mut self) {
         let now = now_unix();
         self.image_updates
-            .retain(|_, v| now.saturating_sub(v.checked_at) <= crate::ui::IMAGE_UPDATE_TTL_SECS);
+            .retain(|_, v| now.saturating_sub(v.checked_at) <= IMAGE_UPDATE_TTL_SECS);
     }
 
     pub(in crate::ui) fn prune_rate_limits(&mut self) {
         let now = now_unix();
         self.rate_limits.retain(|_, v| {
-            v.hits.retain(|ts| now.saturating_sub(*ts) <= crate::ui::RATE_LIMIT_WINDOW_SECS);
+            v.hits
+                .retain(|ts| now.saturating_sub(*ts) <= RATE_LIMIT_WINDOW_SECS);
             if let Some(until) = v.limited_until {
                 if now >= until {
                     v.limited_until = None;
@@ -269,14 +274,14 @@ impl App {
         entry.hits.push(now);
         entry
             .hits
-            .retain(|ts| now.saturating_sub(*ts) <= crate::ui::RATE_LIMIT_WINDOW_SECS);
+            .retain(|ts| now.saturating_sub(*ts) <= RATE_LIMIT_WINDOW_SECS);
     }
 
     pub(in crate::ui) fn note_rate_limit_error(&mut self, image_ref: &str) {
         let now = now_unix();
         let registry = image_registry_for_ref(image_ref);
         let entry = self.rate_limits.entry(registry).or_default();
-        entry.limited_until = Some(now + crate::ui::RATE_LIMIT_WINDOW_SECS);
+        entry.limited_until = Some(now + RATE_LIMIT_WINDOW_SECS);
     }
 
     pub(in crate::ui) fn status_banner(&mut self) -> Option<String> {
@@ -305,7 +310,7 @@ impl App {
                 }
             }
             let count = entry.hits.len();
-            if count >= crate::ui::RATE_LIMIT_WARN {
+            if count >= RATE_LIMIT_WARN {
                 if warn.as_ref().map(|(_, c)| count > *c).unwrap_or(true) {
                     warn = Some((reg.clone(), count));
                 }
@@ -320,7 +325,7 @@ impl App {
         if let Some((reg, count)) = warn {
             return Some(format!(
                 "Rate limit nearing for {reg}: {count}/{} in 6h window.",
-                crate::ui::RATE_LIMIT_MAX
+                RATE_LIMIT_MAX
             ));
         }
         None
@@ -329,7 +334,7 @@ impl App {
     pub(in crate::ui) fn image_update_entry(&self, key: &str) -> Option<&ImageUpdateEntry> {
         let entry = self.image_updates.get(key)?;
         let now = now_unix();
-        if now.saturating_sub(entry.checked_at) > crate::ui::IMAGE_UPDATE_TTL_SECS {
+        if now.saturating_sub(entry.checked_at) > IMAGE_UPDATE_TTL_SECS {
             return None;
         }
         Some(entry)

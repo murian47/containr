@@ -21,5 +21,5 @@ pub(in crate::ui) use super::super::core::runtime::{
     run_interactive_command, run_interactive_local_command, setup_terminal,
 };
 pub(in crate::ui) use super::super::core::secrets::{
-    decrypt_age_secret, encrypt_age_secret, ensure_age_identity, load_age_identities,
+    encrypt_age_secret, ensure_age_identity,
 };

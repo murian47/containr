@@ -1,7 +1,8 @@
 use crate::docker::ContainerAction;
-use crate::ui::{
-    App, ActionMarker, ActionRequest, SimpleMarker, template_id_from_labels,
-};
+use crate::ui::core::requests::ActionRequest;
+use crate::ui::core::types::{ActionMarker, SimpleMarker};
+use crate::ui::features::templates::template_id_from_labels;
+use crate::ui::state::app::App;
 use std::collections::HashSet;
 use tokio::sync::mpsc;
 use std::time::{Duration, Instant};

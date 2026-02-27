@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 
 use crate::config::DockerCmd;
-use crate::ui::{DashboardSnapshot, DiskEntry, NicEntry, now_local};
+use crate::ui::core::clock::now_local;
+use crate::ui::core::types::{DashboardSnapshot, DiskEntry, NicEntry};
 
 pub(in crate::ui) fn dashboard_command(docker_cmd: &DockerCmd) -> String {
     if docker_cmd.is_empty() {

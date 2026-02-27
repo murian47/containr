@@ -2,7 +2,8 @@ use image::{Rgba, RgbaImage};
 use ratatui_image::picker::{Picker, ProtocolType};
 
 use crate::ui::render::utils::theme_color_rgba;
-use crate::ui::{DashboardImageState, theme};
+use crate::ui::core::types::DashboardImageState;
+use crate::ui::theme;
 
 pub(in crate::ui) fn init_dashboard_image(mut picker: Picker, theme: &theme::ThemeSpec) -> DashboardImageState {
     let fallback = Rgba([16, 16, 16, 255]);
