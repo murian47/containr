@@ -10,6 +10,30 @@ Principles:
 - each PR must pass `cargo test`
 - move first, optimize second
 
+## Current Status (2026-02-27)
+
+Completed:
+- PR 1 (`ui/mod.rs` thinning): done in multiple steps (state/shell type extraction and reduced central wiring burden).
+- PR 2 (`core/run.rs` split, spawn): done (`run_spawn` extraction).
+- PR 3 (`core/run.rs` split, apply handlers): done (`run_apply` extraction).
+- PR 4 (input split by context): done (dispatcher + focused input modules).
+- PR 5 (templates ops split): done (ops tree split by concern).
+- PR 6 (details render split): done (view-focused detail render modules).
+- PR 7 (command normalization): mostly done (shared helper patterns, consistent handler shape).
+- PR 8 (visibility tightening): in progress (broad tightening done, final pass still open).
+
+Open:
+- PR 8 final pass:
+  - reduce remaining broad `pub(in crate::ui)` where feasible
+  - prune residual re-exports in `ui/mod.rs`
+  - ensure only intentional module APIs stay public
+- Optional PR 9:
+  - add `docs/code-map-ui.md` for contributor onboarding
+
+Notes:
+- Refactor sequence so far stayed behavior-preserving and test-backed.
+- Remaining work is mostly API-surface cleanup and contributor-facing documentation.
+
 ## PR 1: Thin `ui/mod.rs` Further
 
 Target:
