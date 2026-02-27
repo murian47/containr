@@ -1,7 +1,7 @@
 # Release Prep (GitHub)
 
 ## Refactor / Structure
-- Keep reducing `src/ui/mod.rs` monolith (split by domain/view where practical).
+- Keep module boundaries clean and avoid new UI monoliths.
 - Keep UI logic separated from domain ops where possible.
 - Track refactor completion in: `docs/readability-refactor-pr-plan.md`.
 - Contributor code map: `docs/code-map-ui.md`.

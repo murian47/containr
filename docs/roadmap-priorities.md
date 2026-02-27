@@ -13,19 +13,15 @@ This document captures the agreed sequencing for remaining work.
 
 ## Priority Order (Remaining)
 
-1. `ui/mod.rs` final decomposition
-   - keep shrinking central wiring surface
-   - move remaining mixed concerns into focused modules
-
-2. Deployment history + rollback UX
+1. Deployment history + rollback UX
    - improve history visibility in templates/stacks views
    - add practical rollback workflow on top of current deploy metadata
 
-3. Registry auth UX hardening
+2. Registry auth UX hardening
    - clearer setup flow for keyring/ENV/age fallback
    - clearer error/action hints in UI and messages
 
-4. Release hardening
+3. Release hardening
    - final smoke checklist pass
    - CI baseline (`test`, `fmt --check`, `clippy -D warnings`)
    - package/docs polish

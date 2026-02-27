@@ -21,15 +21,14 @@ This file reflects the current implementation status.
 
 ## Partial / Limited
 
-- Deeper UI/domain separation is still ongoing (`ui/mod.rs` still relatively large)
 - Advanced rollback/history UX for deployments is still open
+- Further UI/domain decoupling can still be improved (service boundaries and view-model cleanup)
 
 ## Open TODOs (Near-term)
 
-1. Continue refactoring `src/ui/mod.rs` into smaller domain-focused modules.
-2. Expand deployment history/rollback UX in templates/stacks workflows.
-3. Polish registry auth UX (clearer guidance/error states for keyring/ENV/age setup).
-4. Final release hardening pass (CI gates, docs polish, smoke checklist execution).
+1. Expand deployment history/rollback UX in templates/stacks workflows.
+2. Polish registry auth UX (clearer guidance/error states for keyring/ENV/age setup).
+3. Final release hardening pass (CI gates, docs polish, smoke checklist execution).
 
 ## Deprioritized
 

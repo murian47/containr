@@ -26,7 +26,7 @@ Completed:
 Open:
 - Follow-up cleanup only (no blocker for this readability plan):
   - continue reducing remaining broad `pub(in crate::ui)` where feasible
-  - keep pruning re-exports in `ui/mod.rs` as modules are touched
+  - keep pruning broad re-export facades (`ui/internal/*`) as modules are touched
 
 Notes:
 - Refactor sequence so far stayed behavior-preserving and test-backed.
@@ -41,7 +41,7 @@ Target:
   - `parse_key_spec`, `parse_scope`, default keymap builder
 
 Why:
-- `mod.rs` is still a central navigation bottleneck.
+- Historical rationale: `mod.rs` was a central navigation bottleneck before extraction.
 
 Acceptance:
 - `mod.rs` size reduced significantly.

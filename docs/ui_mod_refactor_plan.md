@@ -1,21 +1,21 @@
 # UI `mod.rs` Refactor Plan
 
-Status: active (partially completed).
+Status: completed (kept for traceability).
 Current companion docs:
 - `docs/readability-refactor-pr-plan.md` (execution status)
 - `docs/code-map-ui.md` (contributor navigation)
 
-Goal: reduce `src/ui/mod.rs` from a monolith to a thin entrypoint that wires modules together.
+Goal (completed): reduce `src/ui/mod.rs` from a monolith to a thin entrypoint that wires modules together.
 
-## Current pain points
-- `mod.rs` mixes concerns:
-  - type declarations (`App`, enums, state structs)
-  - helper/parsing utilities
-  - large `impl App` with unrelated domains
-  - dashboard data collection/parsing
-  - deploy/registry/crypto helpers
-  - runtime orchestration (`run_tui`, async tasks, channels)
-- This slows down navigation, review, and safe edits.
+Current outcome:
+- `src/ui/mod.rs` is now a small wiring/entrypoint module.
+- Domain logic was moved into focused modules under `ui/core`, `ui/features`, `ui/render`, `ui/input`, and `ui/state`.
+
+## Current note
+- The original pain points from this plan have been addressed.
+- Remaining readability work is tracked in:
+  - `docs/readability-refactor-pr-plan.md`
+  - `docs/ui-logic-separation-plan.md`
 
 ## Target architecture
 - `mod.rs` contains only:
@@ -69,7 +69,7 @@ Goal: reduce `src/ui/mod.rs` from a monolith to a thin entrypoint that wires mod
 2. Ensure module ownership is obvious and documented.
 3. Keep `mod.rs` thin (target: well below current size).
 
-## Rules during migration
+## Rules used during migration
 - No behavior changes unless explicitly intended.
 - Small, reversible commits.
 - Run `cargo test` after each meaningful step.

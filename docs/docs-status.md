@@ -34,11 +34,10 @@ Purpose: quick relevance map for all files in `docs/`.
 
 - `ui_refactor_plan.md` (legacy plan around `render.inc.rs`, kept for traceability)
 - `ui-logic-separation-plan.md` (high-level long-term architecture notes)
-- `ui_mod_refactor_plan.md` (historical plan; still partially relevant for remaining modularization)
+- `ui_mod_refactor_plan.md` (historical plan; completed and kept for traceability)
 
 ## Open TODO Summary
 
-1. Finish `ui/mod.rs` decomposition and reduce central wiring surface.
-2. Extend deployment history/rollback UX.
-3. Improve registry auth UX (keyring/ENV/age setup guidance and error clarity).
-4. Execute release hardening checklist and CI baseline.
+1. Extend deployment history/rollback UX.
+2. Improve registry auth UX (keyring/ENV/age setup guidance and error clarity).
+3. Execute release hardening checklist and CI baseline.
