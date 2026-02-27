@@ -143,8 +143,7 @@ fn docker_cmd_to_shell_escapes_tokens() {
 
 #[test]
 fn parse_cmdline_tokens_supports_mixed_quotes() {
-    let tokens = parse_cmdline_tokens("cmd \"a b\" 'c d' \"e \\\"f\\\"\"")
-        .expect("parse cmdline");
+    let tokens = parse_cmdline_tokens("cmd \"a b\" 'c d' \"e \\\"f\\\"\"").expect("parse cmdline");
     assert_eq!(tokens, vec!["cmd", "a b", "c d", "e \"f\""]);
 }
 

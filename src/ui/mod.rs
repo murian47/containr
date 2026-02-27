@@ -28,9 +28,9 @@ pub use core::run::run_tui;
 
 pub(in crate::ui) use internal::*;
 
-#[cfg(test)]
-#[path = "../tests/ui_tests.rs"]
-mod tests;
 #[cfg(all(test, feature = "integration"))]
 #[path = "../tests/ui_integration_tests.rs"]
 mod integration_tests;
+#[cfg(test)]
+#[path = "../tests/ui_tests.rs"]
+mod tests;
