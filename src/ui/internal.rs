@@ -1,4 +1,3 @@
-pub(in crate::ui) use crate::config;
 pub(in crate::ui) use crate::docker::{
     ContainerAction, ContainerRow, DockerCfg, ImageRow, NetworkRow, VolumeRow,
 };
@@ -59,7 +58,6 @@ pub(in crate::ui) use super::render::utils::{
     expand_user_path, is_container_stopped, shell_escape_sh_arg,
 };
 pub(in crate::ui) use super::state::app::App;
-pub(in crate::ui) use super::state::image_updates::{is_rate_limit_error, ImageUpdateResult};
 pub(in crate::ui) use super::state::persistence::{ensure_unique_server_name, find_server_by_name};
 pub(in crate::ui) use super::state::shell_types::{
     input_window_with_cursor, shell_begin_confirm, ActiveView, GitRemoteStatus, InspectState,
