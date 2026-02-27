@@ -1,23 +1,16 @@
+use super::context::InputCtx;
 use crate::ui::actions;
 use crate::ui::render::sidebar::{shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item};
 use crate::ui::{
-    shell_module_shortcut, ActiveView, ActionRequest, App, InspectTarget, ListMode,
+    shell_module_shortcut, ActiveView, App, ListMode,
     LogsMode, ShellFocus, ShellSidebarItem, ShellView, StackDetailsFocus, TemplatesKind,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tokio::sync::{mpsc, watch};
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn handle_view_navigation(
     app: &mut App,
     key: KeyEvent,
-    conn_tx: &watch::Sender<crate::ui::Connection>,
-    refresh_tx: &mpsc::UnboundedSender<()>,
-    dash_refresh_tx: &mpsc::UnboundedSender<()>,
-    dash_all_enabled_tx: &watch::Sender<bool>,
-    inspect_req_tx: &mpsc::UnboundedSender<InspectTarget>,
-    logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
-    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
+    ctx: &InputCtx<'_>,
 ) {
     if key.modifiers.is_empty() {
         if let KeyCode::Char(mut ch) = key.code {
@@ -31,10 +24,10 @@ pub(super) fn handle_view_navigation(
                 if ch == hint {
                     app.switch_server(
                         i,
-                        conn_tx,
-                        refresh_tx,
-                        dash_refresh_tx,
-                        dash_all_enabled_tx,
+                        ctx.conn_tx,
+                        ctx.refresh_tx,
+                        ctx.dash_refresh_tx,
+                        ctx.dash_all_enabled_tx,
                     );
                     return;
                 }
@@ -74,22 +67,28 @@ pub(super) fn handle_view_navigation(
                     ShellSidebarItem::Server(i) => {
                         app.switch_server(
                             i,
-                            conn_tx,
-                            refresh_tx,
-                            dash_refresh_tx,
-                            dash_all_enabled_tx,
+                            ctx.conn_tx,
+                            ctx.refresh_tx,
+                            ctx.dash_refresh_tx,
+                            ctx.dash_all_enabled_tx,
                         )
                     }
                     ShellSidebarItem::Module(v) => match v {
-                        ShellView::Inspect => app.enter_inspect(inspect_req_tx),
-                        ShellView::Logs => app.enter_logs(logs_req_tx),
+                        ShellView::Inspect => app.enter_inspect(ctx.inspect_req_tx),
+                        ShellView::Logs => app.enter_logs(ctx.logs_req_tx),
                         _ => {
                             app.set_main_view(v);
                             shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
                         }
                     },
                     ShellSidebarItem::Action(a) => {
-                        actions::execute_action(app, a, inspect_req_tx, logs_req_tx, action_req_tx)
+                        actions::execute_action(
+                            app,
+                            a,
+                            ctx.inspect_req_tx,
+                            ctx.logs_req_tx,
+                            ctx.action_req_tx,
+                        )
                     }
                     ShellSidebarItem::Separator => {}
                     ShellSidebarItem::Gap => {}

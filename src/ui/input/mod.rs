@@ -1,5 +1,9 @@
 //! Key handling / input dispatch.
 
+mod cmdline;
+mod context;
+mod global;
+mod modes;
 mod navigation;
 mod views;
 
