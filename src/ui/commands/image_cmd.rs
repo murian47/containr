@@ -3,6 +3,7 @@
 use super::super::{ActionRequest, App};
 use super::super::shell_begin_confirm;
 use crate::domain::image_refs::{image_registry_for_ref, image_repo_name};
+use tokio::sync::mpsc;
 
 fn tag_from_ref(image_ref: &str) -> Option<String> {
     let name = image_ref.split_once('@').map(|(n, _)| n).unwrap_or(image_ref);
@@ -11,7 +12,6 @@ fn tag_from_ref(image_ref: &str) -> Option<String> {
         _ => None,
     }
 }
-use tokio::sync::mpsc;
 
 pub fn handle_image(
     app: &mut App,

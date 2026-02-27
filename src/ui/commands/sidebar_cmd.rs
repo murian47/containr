@@ -1,9 +1,12 @@
 //! Sidebar command (`:sidebar ...`).
 
+use super::common::{subcommand, warn_usage};
 use super::super::{App, ShellFocus, ShellView};
 
+const USAGE: &str = ":sidebar toggle|compact";
+
 pub fn handle_sidebar(app: &mut App, args: &[&str]) -> bool {
-    let sub = args.first().copied().unwrap_or("toggle");
+    let sub = subcommand(args, "toggle");
     match sub.to_ascii_lowercase().as_str() {
         "toggle" => {
             app.shell_sidebar_hidden = !app.shell_sidebar_hidden;
@@ -16,7 +19,7 @@ pub fn handle_sidebar(app: &mut App, args: &[&str]) -> bool {
             }
         }
         "compact" => app.shell_sidebar_collapsed = !app.shell_sidebar_collapsed,
-        _ => app.set_warn("usage: :sidebar toggle|compact"),
+        _ => warn_usage(app, USAGE),
     }
     true
 }

@@ -1,8 +1,10 @@
 //! Volume commands (`:volume ...` / `:vol ...`).
 
+use super::common::{force_or_confirm, subcommand, warn_usage};
 use super::super::App;
-use super::super::shell_begin_confirm;
 use tokio::sync::mpsc;
+
+const USAGE: &str = ":volume rm";
 
 pub fn handle_volume(
     app: &mut App,
@@ -11,16 +13,14 @@ pub fn handle_volume(
     args: &[&str],
     action_req_tx: &mpsc::UnboundedSender<super::super::ActionRequest>,
 ) -> bool {
-    let sub = args.first().copied().unwrap_or("");
+    let sub = subcommand(args, "");
     match sub {
         "rm" | "remove" | "delete" => {
-            if force {
+            force_or_confirm(app, force, "volume rm", cmdline_full, |app| {
                 crate::ui::state::actions::exec_volume_remove(app, action_req_tx);
-            } else {
-                shell_begin_confirm(app, "volume rm", cmdline_full);
-            }
+            });
         }
-        _ => app.set_warn("usage: :volume rm"),
+        _ => warn_usage(app, USAGE),
     }
     true
 }

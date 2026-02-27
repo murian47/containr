@@ -1,7 +1,10 @@
 //! Dashboard command handler (`:dashboard ...`).
 
+use super::common::{subcommand, warn_usage};
 use super::super::{App, Connection};
 use tokio::sync::{mpsc, watch};
+
+const USAGE: &str = ":dashboard (all|single|toggle|simulate-error [name])";
 
 pub fn handle_dashboard(
     app: &mut App,
@@ -12,7 +15,7 @@ pub fn handle_dashboard(
     dash_all_refresh_tx: &mpsc::UnboundedSender<()>,
     dash_all_enabled_tx: &watch::Sender<bool>,
 ) -> bool {
-    let mode = args.first().copied().unwrap_or("toggle");
+    let mode = subcommand(args, "toggle");
     match mode {
         "all" => {
             app.switch_server_all(dash_all_enabled_tx, dash_all_refresh_tx);
@@ -63,7 +66,7 @@ pub fn handle_dashboard(
             }
         }
         _ => {
-            app.set_warn("usage: :dashboard (all|single|toggle|simulate-error [name])");
+            warn_usage(app, USAGE);
         }
     }
     true

@@ -1,8 +1,10 @@
 //! Network commands (`:network ...` / `:net ...`).
 
+use super::common::{force_or_confirm, subcommand, warn_usage};
 use super::super::App;
-use super::super::shell_begin_confirm;
 use tokio::sync::mpsc;
+
+const USAGE: &str = ":network rm";
 
 pub fn handle_network(
     app: &mut App,
@@ -11,30 +13,28 @@ pub fn handle_network(
     args: &[&str],
     action_req_tx: &mpsc::UnboundedSender<super::super::ActionRequest>,
 ) -> bool {
-    let sub = args.first().copied().unwrap_or("");
+    let sub = subcommand(args, "");
     match sub {
         "rm" | "remove" | "delete" => {
-            if force {
-                crate::ui::state::actions::exec_network_remove(app, action_req_tx);
+            // Avoid prompting when only system networks are selected/marked.
+            let any_removable = if !app.marked_networks.is_empty() {
+                app.marked_networks
+                    .iter()
+                    .any(|id| !app.is_system_network_id(id))
             } else {
-                // Avoid prompting when only system networks are selected/marked.
-                let any_removable = if !app.marked_networks.is_empty() {
-                    app.marked_networks
-                        .iter()
-                        .any(|id| !app.is_system_network_id(id))
-                } else {
-                    app.selected_network()
-                        .map(|n| !App::is_system_network(n))
-                        .unwrap_or(false)
-                };
-                if !any_removable {
-                    app.set_warn("system networks cannot be modified");
-                    return true;
-                }
-                shell_begin_confirm(app, "network rm", cmdline_full);
+                app.selected_network()
+                    .map(|n| !App::is_system_network(n))
+                    .unwrap_or(false)
+            };
+            if !any_removable {
+                app.set_warn("system networks cannot be modified");
+                return true;
             }
+            force_or_confirm(app, force, "network rm", cmdline_full, |app| {
+                crate::ui::state::actions::exec_network_remove(app, action_req_tx);
+            });
         }
-        _ => app.set_warn("usage: :network rm"),
+        _ => warn_usage(app, USAGE),
     }
     true
 }

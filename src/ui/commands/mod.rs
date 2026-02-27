@@ -6,6 +6,7 @@
 
 pub mod container_cmd;
 pub mod cmdline_cmd;
+pub(crate) mod common;
 pub mod dashboard_cmd;
 pub mod git_cmd;
 pub mod image_cmd;
