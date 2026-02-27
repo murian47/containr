@@ -1,5 +1,10 @@
 # UI `mod.rs` Refactor Plan
 
+Status: active (partially completed).
+Current companion docs:
+- `docs/readability-refactor-pr-plan.md` (execution status)
+- `docs/code-map-ui.md` (contributor navigation)
+
 Goal: reduce `src/ui/mod.rs` from a monolith to a thin entrypoint that wires modules together.
 
 ## Current pain points

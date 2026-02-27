@@ -1,39 +1,34 @@
 # Features & Status
 
-Status: 2025-12-22
+Status: 2026-02-27
 
-This list reflects the current implementation and what is planned next.
+This file reflects the current implementation status.
 
 ## Implemented
 
-- UI shell: sidebar, header, status/command line, messages view, themes
-- Theme selector UI with preview
-- Keymaps with scopes (`always`, `global`, `view:<name>`) via `:map`/`:unmap`
-- Servers: list/use/add/remove, SSH shell (`:server shell`)
-- Views: Dashboard, Containers, Images, Volumes, Networks, Templates, Logs, Inspect, Registries, Stacks
-- List/details split (horizontal/vertical), per-view layout persisted
-- Dashboard: multi-server view via `:dashboard (all|single|toggle)`
-- Containers: start/stop/restart/rm/check, console, bulk selection
-- Stack tree view for containers
-- Logs viewer: search (regex/literal), highlight, save, line numbers, jump-to-line, copy
-- Inspect viewer: tree/folding, search, save, copy value/path
-- Templates: stacks/networks, add/edit/rm, deploy, generate from stack/container
-- Git integration for templates repo (status/diff/log/commit/pull/push/init/clone)
-- Registries: config/test, age-backed secrets, registry view
-- AI templates: external agent runner for interactive edits (CONTAINR_AI_CMD)
+- Modular TUI shell with sidebar, header, status/command line, messages view, optional log dock
+- Theme system with selector + preview, persisted active theme
+- Scoped keymap system (`always`, `global`, `view:<name>`) via `:map`/`:unmap`
+- Server management (`ssh` + `local`) including `:server shell`
+- Views: dashboard (single/all), stacks, containers, images, volumes, networks, templates, registries, logs, inspect, help, messages
+- Per-view split layout persistence (horizontal/vertical)
+- Container and stack actions, bulk selection, tree view, stack update/recreate flows
+- Logs/inspect viewers with search, save, copy, and navigation helpers
+- Templates (stacks + networks): create/edit/remove/deploy/redeploy/import from stack/container/network
+- Template Git integration: status/diff/log/commit/pull/push/init/clone + optional autocommit
+- Registry management and auth testing (keyring/ENV/age fallback chain)
+- External AI-agent integration for interactive template editing (`CONTAINR_AI_CMD`)
 
 ## Partial / Limited
 
-- Registry auth UX (keyring integration) not complete
-- Template deploy metadata (last deploy target) not shown in list yet
+- Deeper UI/domain separation is still ongoing (`ui/mod.rs` still relatively large)
+- Command placeholder expansion (`${server.*}`, `${selection.*}`, `${marks.*}`) is not implemented yet
+- Advanced rollback/history UX for deployments is still open
 
-## Planned (Roadmap)
+## Open TODOs (Near-term)
 
-- Update/rollback UI + registry auth via keyring (age fallback)
-- AI-assisted template creation/editing (beyond interactive edits)
-
-## Deferred
-
-- Image update checks (manual); full update/rollback workflow not complete
-- Template deployment metadata in list view
-- Command placeholders for CLI + keybindings (server/container/selection vars)
+1. Continue refactoring `src/ui/mod.rs` into smaller domain-focused modules.
+2. Implement command placeholder expansion for command line + keybindings.
+3. Expand deployment history/rollback UX in templates/stacks workflows.
+4. Polish registry auth UX (clearer guidance/error states for keyring/ENV/age setup).
+5. Final release hardening pass (CI gates, docs polish, smoke checklist execution).

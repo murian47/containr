@@ -21,7 +21,7 @@ Ziel: Vor der ersten Veröffentlichung kritische Risiken minimieren und Nutzer v
 - Schnelltest-Kommando dokumentieren (z. B. `cargo test --lib ui::integration_tests::smoke`).
 
 ### 5) Wartbarkeit vor Release
-- Monolith `render.inc.rs` in view-spezifische Module aufteilen.
+- UI-Rendering modular halten (kein neuer Monolith).
 - Services für Aktionen (Start/Stop/Deploy) von UI entkoppeln.
 - Dokumentation: kurze „How to Contribute“ + Coding-Guidelines (Fehlerbehandlung, Logging, Tests).
 

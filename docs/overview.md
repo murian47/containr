@@ -97,4 +97,6 @@ Registries: `~/.config/containr/registries.json` (siehe `docs/registry_auth.md`)
 ---
 
 ## Roadmap (Kurz)
-- Siehe `docs/release_plan_security.md` (Pre-Release Check) und `docs/ui_refactor_plan.md` (Render-Splitting & Services).
+- Siehe `docs/release_plan_security.md` (Pre-Release Check),
+  `docs/roadmap-priorities.md` (aktuelle offene Punkte) und
+  `docs/readability-refactor-pr-plan.md` (Refactor-Status).

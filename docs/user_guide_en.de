@@ -1,0 +1,114 @@
+# containr User Guide (EN)
+
+## 1. Overview
+- containr is a terminal UI (TUI) for managing Docker/Podman hosts over SSH.
+- It provides views for stacks, containers, images, volumes, networks, templates, registries, logs, inspect, themes, and messages.
+
+## 2. Requirements
+- Docker or Podman on target hosts, reachable via SSH.
+- SSH key access (passwordless recommended).
+- Rust toolchain for builds; OS keyring support (macOS Keychain, Linux Secret Service, Windows Credential Manager).
+- Default paths:
+  - Config: `~/.config/containr/config.json`
+  - Registries: `~/.config/containr/registries.json`
+  - Templates: `~/.config/containr/templates/{stacks,networks}`
+
+## 3. Layout & Navigation
+- Views: Dashboard, Stacks, Containers, Images, Volumes, Networks, Templates, Registries, Inspect, Logs, Help, Messages, Themes.
+- Focus: Sidebar ↔ List ↔ Details ↔ Dock (logs), switch with `Tab`/`Shift-Tab`, `b`, `d`.
+- Layout: `C-p` toggles split mode (horizontal/vertical) per view.
+- Quit: `:q` (with y/n prompt) or `:q!` (immediate).
+
+## 4. Servers & Connections
+- Add server:
+  - `:server add <name> --target <ssh_target> [--cmd "<docker_cmd>"] [--identity <path>]`
+- Select server via sidebar + Enter/shortcut.
+- Reconnect: `:server reconnect`
+- Shell: `:server shell` (opens remote shell for configured server).
+
+## 5. Stacks
+- List in `Stacks` view.
+- Actions: start, stop, restart, delete.
+- Recreate: `:stack recreate [--pull]`
+- Update: `:stack update`
+
+## 6. Containers
+- List in `Containers` view.
+- Actions: start, stop, restart, delete, logs, inspect, console, mark/unmark.
+- Multi-select: mark with Space, actions apply to marked entries.
+
+## 7. Images
+- List in `Images` view.
+- Actions: remove, untag, inspect.
+- Update check: `:image check` (24h TTL).
+
+## 8. Volumes & Networks
+- Volumes: remove, inspect, details.
+- Networks: remove, inspect.
+
+## 9. Templates (Compose)
+- Paths: `~/.config/containr/templates/stacks` and `.../networks`.
+- Identity marker: `# containr_template_id=<uuid>` for deploy tracking.
+- Deploy: `:template deploy [--recreate] [--pull]`
+- Edit: Enter opens editor (`editor_cmd` -> `$EDITOR` -> `vi`).
+- Git: template directory supports optional git autocommit.
+
+## 10. Registries & Auth
+- File: `registries.json`
+- Auth types: `anonymous`, `basic`, `bearer-token`, `github-pat`
+- Prefer keyring:
+  1. `keyring set containr "<host>/<label>"`
+  2. `:registry set <host> secret-keyring "<host>/<label>"`
+  3. `:registry set <host> auth basic` / `:registry set <host> user <name>`
+- Test: `:registry test <host>`
+
+## 11. Themes
+- Switch: `:theme select`
+- Files: `themes/*.toml`
+- Active theme: `active_theme` in `config.json`
+
+## 12. Messages & Logs
+- Open: `C-g` or `:messages`
+- Save: `:messages save <path>`
+- Docked log panel: `log_dock_enabled` in config
+
+## 13. Image Updates
+- Check: `:image check`
+- Markers: green=ok, yellow=update, red=error, blue=rate-limit
+
+## 14. Git Autocommit (Templates)
+- `:git auto on|off`
+- Header indicator: `Commit: auto|manual`
+
+## 15. Configuration
+Key fields:
+- `servers`, `templates_dir`, `active_theme`, `editor_cmd`
+- `git_autocommit`, `git_autocommit_confirm`
+- `image_update_concurrency`, `image_update_autocheck`, `image_update_debug`
+- `kitty_graphics`, `log_dock_enabled`, `log_dock_height`
+- `view_layout`, `keymap`
+
+## 16. Keyboard Shortcuts (excerpt)
+- Navigation: `Tab`/`Shift-Tab`, `b`, `d`
+- Layout: `C-p`
+- Global: `F1` help, `C-g` messages, `C-b` sidebar toggle
+- Containers: `C-s`, `C-o`, `C-r`, `C-d`, `C-l`, `C-i`
+- Stacks: `C-s`, `C-o`, `C-r`, `C-d`, `C-u`
+- Templates: `C-e`, `C-n`, `C-y`, `C-S-Y`
+
+## 17. Troubleshooting
+- Connection issues: check `:messages`, `docker_cmd`, SSH identity.
+- Red/blue image update status: rate limits or missing digests; configure registry auth.
+
+## 18. Tests
+- Local: `cargo test --locked`
+- Optional integration: `integration` feature
+
+## 19. Security
+- Store secrets in keyring, not plaintext.
+- AGE-encrypted secrets are supported as fallback.
+
+## 20. Roadmap
+- `docs/release_plan_security.md`
+- `docs/roadmap-priorities.md`
+- `docs/readability-refactor-pr-plan.md`

@@ -1,10 +1,9 @@
 # Release Prep (GitHub)
 
 ## Refactor / Structure
-- Shrink `src/ui/render.inc.rs` further; move remaining helpers to focused modules.
-- Reduce `src/ui/mod.rs` monolith (split by domain/view where practical).
+- Keep reducing `src/ui/mod.rs` monolith (split by domain/view where practical).
 - Keep UI logic separated from domain ops where possible.
-- Execute readability plan: `docs/readability-refactor-pr-plan.md`.
+- Track refactor completion in: `docs/readability-refactor-pr-plan.md`.
 - Contributor code map: `docs/code-map-ui.md`.
 
 ## Stability Pass
@@ -19,6 +18,7 @@
 - README: install, quick start, keybindings, commands, config/theme locations.
 - Changelog: short list of notable features/changes.
 - License + contribution guidelines.
+- Docs relevance matrix: `docs/docs-status.md`.
 
 ## Polish / Edge Cases
 - Reduce log noise and confusing warnings.

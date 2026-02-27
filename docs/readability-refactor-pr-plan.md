@@ -20,7 +20,6 @@ Completed:
 - PR 5 (templates ops split): done (ops tree split by concern).
 - PR 6 (details render split): done (view-focused detail render modules).
 - PR 7 (command normalization): mostly done (shared helper patterns, consistent handler shape).
-- PR 8 (visibility tightening): in progress (broad tightening done, final pass still open).
 - PR 8 (visibility tightening): done.
 - Optional PR 9 (focused contributor docs): done (`docs/code-map-ui.md`).
 
@@ -31,7 +30,7 @@ Open:
 
 Notes:
 - Refactor sequence so far stayed behavior-preserving and test-backed.
-- Remaining work is mostly API-surface cleanup and contributor-facing documentation.
+- Remaining work is mostly API-surface cleanup.
 
 ## PR 1: Thin `ui/mod.rs` Further
 

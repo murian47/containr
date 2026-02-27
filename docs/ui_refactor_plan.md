@@ -1,5 +1,8 @@
 ## Plan: Aufspaltung von `render.inc.rs` und Entkopplung UI/Logik
 
+Status: historical reference (major parts completed; `render.inc.rs` no longer exists).
+Aktueller Arbeitsstand: `docs/readability-refactor-pr-plan.md` und `docs/code-map-ui.md`.
+
 Ziel: Wartbarkeit und Testbarkeit erhöhen, ohne die App längerfristig unbenutzbar zu machen. Schritte sind so geschnitten, dass nach jedem Meilenstein `cargo test` läuft und die TUI startet.
 
 ### Phase 1 – Struktur trennen, keine Logik ändern

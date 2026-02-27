@@ -1,44 +1,43 @@
 # Roadmap: Priorities & Sequencing
 
-Status: 2025-12-21
+Status: 2026-02-27
 
-This document captures the agreed sequencing for upcoming work so we avoid rework
-on themes and UI previews.
-
-Note: For reliable key mappings (function keys, Ctrl+Shift), ensure your terminal
-reports `xterm-256color` (e.g. iTerm2 via Profile → Terminal → Report Terminal Type).
+This document captures the agreed sequencing for remaining work.
 
 ## Versioning policy
 
-- Pre-1.0: Patch for fixes/docs/internal changes, minor for user-facing features.
-- First public release target: 0.8.0 (when the feature set is stable).
-- Post-0.8.0 public release: Breaking changes bump at least the minor version.
+- Pre-1.0:
+  - Patch: fixes/docs/internal refactors
+  - Minor: user-visible feature additions
+- Do not auto-bump patch for pure doc-only commits.
 
 ## Priority Order (Remaining)
 
-1. Deployment metadata
-   - Show last deploy target per template in the Templates list
+1. `ui/mod.rs` final decomposition
+   - keep shrinking central wiring surface
+   - move remaining mixed concerns into focused modules
 
-2. Update/Rollback + registry auth
-   - Rollback/history UI for template deploys
-   - Registry auth via keyring (primary) + optional age fallback for headless/WSL
-   - Stack update (image-based recreate): see `concept-stack-update.md`
-   - Stack update MVP plan: see `plan-stack-update-mvp.md`
+2. Command placeholders
+   - implement placeholder expansion for command line + keybindings
+   - initial scope: `${server.*}`, `${selection.*}`, `${marks.*}`, `${view}`
+   - keep behavior deterministic and fail-safe
 
-3. Command placeholders
-   - Implement placeholder expansion for command line + keybindings
-   - Integrate with new views/context (selection, marks, stack)
+3. Deployment history + rollback UX
+   - improve history visibility in templates/stacks views
+   - add practical rollback workflow on top of current deploy metadata
 
-4. Theme regeneration (post schema)
-   - Regenerate Ghostty themes only after schema is stable
+4. Registry auth UX hardening
+   - clearer setup flow for keyring/ENV/age fallback
+   - clearer error/action hints in UI and messages
 
-5. AI support (beyond interactive edits)
-   - Assist with template creation/refactors, summaries, and guidance
+5. Release hardening
+   - final smoke checklist pass
+   - CI baseline (`test`, `fmt --check`, `clippy -D warnings`)
+   - package/docs polish
 
-## Rationale
+## Recently completed (for context)
 
-- Deployment metadata unblocks visibility in Templates.
-- Registry auth improves update checks without rate-limit friction.
-- Placeholders add strong UX leverage across all commands.
-- Theme selection + mass theme generation should happen after schema changes
-  to avoid double work.
+- PR8 visibility tightening pass
+- PR9 contributor code map (`docs/code-map-ui.md`)
+- render decomposition (legacy `render.inc.rs` removed)
+- dashboard all-servers view and stack update workflows

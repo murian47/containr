@@ -1,5 +1,8 @@
 # containr UI/Logic Separation (Incremental Plan)
 
+Status: active long-term architecture note (parts already completed, not a strict step-by-step backlog).
+For current actionable refactor tasks, see `docs/readability-refactor-pr-plan.md`.
+
 Goal: decouple UI (ratatui) from domain logic so we can maintain TUI easily and prepare future GUIs (Swift/Avalonia/etc). Each step should leave the app runnable.
 
 ## Principles
@@ -14,7 +17,7 @@ Goal: decouple UI (ratatui) from domain logic so we can maintain TUI easily and 
 - Service/Controller/Event-Architektur ist noch nicht eingefuehrt.
 
 ## Phase 1: Stabilize TUI Structure
-1) Finish render decomposition: lists, details, overlays, helpers already split; keep shrinking `render.inc.rs` into focused modules without changing behavior.
+1) Keep render decomposition modular (legacy `render.inc.rs` is already removed); avoid new monoliths.
 2) Isolate UI state vs. domain data in `App`: mark UI-only fields (scroll, focus, selection) vs. domain (containers, stacks, templates, registries, actions, errors).
 3) Introduce a thin ViewModel layer (structs independent of ratatui) for things like “display rows” (status text, update markers, inflight/error flags) so rendering only maps ViewModel → widgets.
 
@@ -50,13 +53,13 @@ Goal: decouple UI (ratatui) from domain logic so we can maintain TUI easily and 
 5) Remove legacy hooks after parity is confirmed.
 
 ## Short-term fast-track (keep app runnable)
-- Catalog render.inc.rs helpers: split pure formatting/badge/table helpers from logic-heavy parts.
+- Keep cataloging helper responsibilities and move logic-heavy parts out of render modules.
 - Extract pure render helpers into dedicated modules (`render/format.rs`, `render/badges.rs`, `render/table.rs`), adjust call sites, then `cargo test`.
 - Move status/marker/update derivation into UI-free state/domain helpers so rendering consumes prepared data only.
 - Refine `render/utils.rs` gradually (text/scroll/fs), avoid new monoliths; remove duplicates.
 - After each chunk: document briefly, keep version patch-bumped for code changes, run tests, then commit.
 
-## Helper catalog (first pass – render.inc.rs)
+## Helper catalog (first pass, historical context)
 - Pure formatting/render candidates (move to `render/format.rs`, `render/badges.rs`, `render/table.rs`):
   - text/layout: `wrap_text`, `pad_right`, `truncate_start`, `spinner_char`, `loading_spinner`
   - units/bars: `format_bytes_short`, `bar_spans_threshold`, `bar_spans_gradient`
