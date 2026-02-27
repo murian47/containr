@@ -3,7 +3,8 @@
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::collections::HashMap;
 
-use crate::ui::{App, ShellView};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::ShellView;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(in crate::ui) struct KeySpec {

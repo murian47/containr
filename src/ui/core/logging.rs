@@ -1,16 +1,17 @@
 //! Logging / status message helpers on App.
 
+use crate::ui::core::clock::now_local;
 use crate::ui::render::messages::format_session_ts;
-use crate::ui::{App, MsgLevel};
 use crate::ui::render::clipboard::copy_to_clipboard;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{MsgLevel, SessionMsg, ShellView};
 
 impl App {
     pub(in crate::ui) fn log_msg(&mut self, level: MsgLevel, text: impl Into<String>) {
         let text = text.into();
-        let at = crate::ui::now_local();
-        self.session_msgs
-            .push(crate::ui::SessionMsg { at, level, text });
-        if self.log_dock_enabled || self.shell_view == crate::ui::ShellView::Messages {
+        let at = now_local();
+        self.session_msgs.push(SessionMsg { at, level, text });
+        if self.log_dock_enabled || self.shell_view == ShellView::Messages {
             self.shell_msgs.scroll = usize::MAX;
             self.shell_msgs.hscroll = 0;
         }

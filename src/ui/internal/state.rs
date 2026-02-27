@@ -13,8 +13,8 @@ pub(in crate::ui) use super::super::state::persistence::{
     ensure_unique_server_name, find_server_by_name,
 };
 pub(in crate::ui) use super::super::state::shell_types::{
-    ActiveView, GitRemoteStatus, InspectState, ListMode, LogsState, MsgLevel, SessionMsg,
-    ShellAction, ShellCmdlineState, ShellFocus, ShellHelpState, ShellInteractive,
+    ActiveView, GitRemoteStatus, InspectState, ListMode, LogsState, MsgLevel, ShellAction,
+    ShellCmdlineState, ShellFocus, ShellHelpState, ShellInteractive,
     ShellMessagesState, ShellSidebarItem, ShellSplitMode, ShellView, TemplateEditSnapshot,
     TemplatesKind, TemplatesState, ThemeSelectorState, input_window_with_cursor,
     shell_begin_confirm,

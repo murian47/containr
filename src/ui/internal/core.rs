@@ -7,8 +7,7 @@ pub(in crate::ui) use ratatui_image::picker::Picker;
 pub(in crate::ui) use super::super::cmd_history::CmdHistory;
 pub(in crate::ui) use super::super::core::clock::{now_local, now_unix};
 pub(in crate::ui) use super::super::core::key_types::{
-    KeyCodeNorm, KeyScope, KeySpec, build_default_keymap, parse_key_spec, parse_scope,
-    scope_to_string,
+    KeyCodeNorm, KeyScope, KeySpec, parse_key_spec, parse_scope, scope_to_string,
 };
 pub(in crate::ui) use super::super::core::keymap::{
     cmdline_is_destructive, is_single_letter_without_modifiers,

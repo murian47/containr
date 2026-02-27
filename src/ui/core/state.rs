@@ -1,6 +1,7 @@
 //! Generic App state helpers.
 
-use crate::ui::{App, ShellSplitMode, ShellView};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellSplitMode, ShellView};
 
 impl App {
     pub(in crate::ui) fn editor_cmd(&self) -> String {

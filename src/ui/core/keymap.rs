@@ -1,4 +1,8 @@
-use crate::ui::{App, KeyCodeNorm, KeySpec, MsgLevel, build_default_keymap, parse_key_spec, parse_scope};
+use crate::ui::core::key_types::{
+    KeyCodeNorm, KeySpec, build_default_keymap, parse_key_spec, parse_scope,
+};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::MsgLevel;
 
 pub(in crate::ui) fn is_single_letter_without_modifiers(spec: KeySpec) -> bool {
     spec.mods == 0 && matches!(spec.code, KeyCodeNorm::Char(c) if c.is_ascii_alphabetic())
