@@ -1,8 +1,9 @@
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
-use crate::ui::{App, ShellView};
 use crate::ui::render::text::truncate_end;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::ShellView;
 use crate::ui::theme;
 
 pub(in crate::ui) fn draw_shell_footer(

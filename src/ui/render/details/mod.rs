@@ -5,7 +5,8 @@ mod resources;
 mod stacks;
 mod templates;
 
-use crate::ui::{App, ShellFocus, ShellView};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellFocus, ShellView};
 use ratatui::style::Style;
 
 pub(in crate::ui) fn draw_shell_main_details(

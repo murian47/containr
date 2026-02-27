@@ -1,4 +1,6 @@
-use crate::ui::{theme, App, TemplatesKind};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::TemplatesKind;
+use crate::ui::theme;
 
 pub(in crate::ui) struct CmdlineCompletionContext {
     pub(in crate::ui) tokens_before: Vec<String>,

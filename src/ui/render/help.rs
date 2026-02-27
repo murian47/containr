@@ -1,4 +1,5 @@
-use crate::ui::{theme, App};
+use crate::ui::state::app::App;
+use crate::ui::theme;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph, Wrap};

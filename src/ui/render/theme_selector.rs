@@ -1,8 +1,9 @@
 use crate::ui::core::view::shell_module_shortcut;
-use crate::ui::{App, ShellFocus, ShellView};
 use crate::ui::render::scroll::draw_shell_scrollbar_v;
 use crate::ui::render::text::truncate_end;
 use crate::ui::render::utils::shell_row_highlight;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellFocus, ShellView};
 use crate::ui::theme;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};

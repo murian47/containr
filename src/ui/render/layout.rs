@@ -2,8 +2,9 @@ use crate::ui::render::details::draw_shell_main_details;
 use crate::ui::render::messages::draw_shell_messages_dock;
 use crate::ui::render::shell::draw_shell_main_list;
 use crate::ui::render::sidebar::draw_shell_sidebar;
-use crate::ui::{App, ShellSplitMode, ShellView};
 use crate::ui::render::theme_selector::draw_theme_selector;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellSplitMode, ShellView};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 

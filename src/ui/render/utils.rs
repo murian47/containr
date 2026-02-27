@@ -1,9 +1,11 @@
 use anyhow::Context as _;
-use crate::ui::{App, theme};
 use image::Rgba;
 use ratatui::style::{Color, Style};
 use std::fs;
 use std::path::PathBuf;
+
+use crate::ui::state::app::App;
+use crate::ui::theme;
 
 pub(in crate::ui) fn shell_escape_sh_arg(text: &str) -> String {
     if text

@@ -1,7 +1,8 @@
 use super::panel_bg;
 use crate::ui::render::status::{action_error_details, action_error_label};
 use crate::ui::render::table::{render_detail_table, DetailRow};
-use crate::ui::{ActionErrorKind, App};
+use crate::ui::core::types::ActionErrorKind;
+use crate::ui::state::app::App;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::Block;
 

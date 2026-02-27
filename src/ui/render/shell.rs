@@ -4,9 +4,12 @@ use crate::ui::render::format::{dot_spinner, split_at_chars, spinner_char, trunc
 use crate::ui::render::header::draw_rate_limit_banner;
 use crate::ui::render::utils::truncate_end;
 use crate::ui::views;
-use crate::ui::{
-    commands, current_server_label, input_window_with_cursor, App, InspectMode, LogsMode,
-    ShellFocus, ShellView, TemplatesKind,
+use crate::ui::commands;
+use crate::ui::core::runtime::current_server_label;
+use crate::ui::core::types::{InspectMode, LogsMode};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{
+    ShellFocus, ShellView, TemplatesKind, input_window_with_cursor,
 };
 use crate::ui::theme;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};

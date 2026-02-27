@@ -1,7 +1,8 @@
-use crate::ui::{App, MsgLevel, ShellFocus};
 use crate::ui::render::scroll::draw_shell_scrollbar_v;
-use crate::ui::render::utils::shell_row_highlight;
 use crate::ui::render::text::window_hscroll;
+use crate::ui::render::utils::shell_row_highlight;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{MsgLevel, ShellFocus};
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};

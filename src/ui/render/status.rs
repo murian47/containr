@@ -1,8 +1,8 @@
 use crate::ui::render::format::format_action_ts;
 use crate::ui::ContainerAction;
-use crate::ui::{ActionErrorKind, LastActionError};
 use crate::ui::state::image_updates::ImageUpdateView;
-use crate::ui::App;
+use crate::ui::core::types::{ActionErrorKind, LastActionError};
+use crate::ui::state::app::App;
 use ratatui::style::Style;
 
 pub(in crate::ui) fn action_error_label(err: &LastActionError) -> &'static str {

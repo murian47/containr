@@ -1,4 +1,5 @@
-use crate::ui::{App, LogsMode};
+use crate::ui::core::types::LogsMode;
+use crate::ui::state::app::App;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::Style;
 use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Wrap};

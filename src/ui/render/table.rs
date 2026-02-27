@@ -4,7 +4,8 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::ui::render::format::{pad_right, wrap_text};
 use crate::ui::render::text::truncate_end;
-use crate::ui::{App, ShellFocus};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::ShellFocus;
 
 #[derive(Debug, Clone)]
 pub(in crate::ui) struct DetailRow {

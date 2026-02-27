@@ -1,4 +1,5 @@
-use crate::ui::{App, MsgLevel, TemplatesKind};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{MsgLevel, TemplatesKind, shell_begin_confirm};
 
 pub(in crate::ui) fn maybe_autocommit_templates(
     app: &mut App,
@@ -75,8 +76,4 @@ fn shell_escape_sh_arg(text: &str) -> String {
     }
     let escaped = text.replace('\'', r"'\''");
     format!("'{}'", escaped)
-}
-
-fn shell_begin_confirm(app: &mut App, label: &str, cmdline: String) {
-    crate::ui::shell_begin_confirm(app, label, cmdline);
 }

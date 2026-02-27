@@ -3,7 +3,8 @@ use crate::ui::render::status::{action_error_details, action_error_label, action
 use crate::ui::render::table::{render_detail_table, DetailRow};
 use crate::ui::state::image_updates::resolve_image_update_state;
 use crate::ui::render::status::image_update_indicator;
-use crate::ui::{ActionErrorKind, App};
+use crate::ui::core::types::ActionErrorKind;
+use crate::ui::state::app::App;
 use ratatui::layout::Margin;
 use ratatui::widgets::{Block, Paragraph, Wrap};
 

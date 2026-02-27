@@ -2,9 +2,10 @@ use super::panel_bg;
 use crate::ui::commands::git_cmd;
 use crate::ui::render::status::action_error_label;
 use crate::ui::render::text::short_commit;
-use crate::ui::{
-    json_highlight_line, yaml_highlight_line, ActionErrorKind, App, TemplatesKind,
-};
+use crate::ui::core::types::ActionErrorKind;
+use crate::ui::render::highlight::{json_highlight_line, yaml_highlight_line};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::TemplatesKind;
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span, Text};

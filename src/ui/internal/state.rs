@@ -1,8 +1,8 @@
 pub(in crate::ui) use super::super::core::types::{
-    ActionErrorKind, ActionMarker, DashboardAllState, DashboardHostState, DashboardImageState,
-    DashboardSnapshot, DashboardState, DeployMarker, DiskEntry, IMAGE_UPDATE_TTL_SECS,
-    ImageUpdateEntry, ImageUpdateKind, InspectKind, InspectLine, InspectMode, InspectTarget,
-    LastActionError, LocalState, LogsMode, NetTemplateEntry, NetworkTemplateIpv4,
+    ActionMarker, DashboardAllState, DashboardHostState, DashboardImageState, DashboardSnapshot,
+    DashboardState, DeployMarker, DiskEntry, IMAGE_UPDATE_TTL_SECS, ImageUpdateEntry,
+    ImageUpdateKind, InspectKind, InspectMode, InspectTarget, LastActionError, LocalState,
+    LogsMode, NetTemplateEntry, NetworkTemplateIpv4,
     NetworkTemplateSpec, NicEntry, RATE_LIMIT_MAX, RATE_LIMIT_WARN, RATE_LIMIT_WINDOW_SECS,
     RegistryAuthResolved, RegistryTestEntry, SimpleMarker, StackDetailsFocus, StackEntry,
     StackUpdateService, TemplateDeployEntry, TemplateEntry, UsageSnapshot, ViewEntry,
@@ -16,6 +16,5 @@ pub(in crate::ui) use super::super::state::shell_types::{
     ActiveView, GitRemoteStatus, InspectState, ListMode, LogsState, MsgLevel, ShellAction,
     ShellCmdlineState, ShellFocus, ShellHelpState, ShellInteractive,
     ShellMessagesState, ShellSidebarItem, ShellSplitMode, ShellView, TemplateEditSnapshot,
-    TemplatesKind, TemplatesState, ThemeSelectorState, input_window_with_cursor,
-    shell_begin_confirm,
+    TemplatesKind, TemplatesState, ThemeSelectorState, shell_begin_confirm,
 };

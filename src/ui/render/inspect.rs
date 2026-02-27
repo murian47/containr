@@ -3,7 +3,8 @@ use std::fmt::Write as _;
 
 use serde_json::Value;
 
-use crate::ui::{App, InspectLine, InspectMode};
+use crate::ui::core::types::{InspectLine, InspectMode};
+use crate::ui::state::app::App;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::{Block, List, ListItem, ListState};
 

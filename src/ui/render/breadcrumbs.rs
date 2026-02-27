@@ -1,5 +1,6 @@
 use crate::ui::render::stacks::stack_name_from_labels;
-use crate::ui::{App, ShellView, TemplatesKind};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellView, TemplatesKind};
 
 pub(in crate::ui) fn shell_breadcrumbs(app: &App) -> String {
     match app.shell_view {
