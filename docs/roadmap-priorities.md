@@ -17,23 +17,22 @@ This document captures the agreed sequencing for remaining work.
    - keep shrinking central wiring surface
    - move remaining mixed concerns into focused modules
 
-2. Command placeholders
-   - implement placeholder expansion for command line + keybindings
-   - initial scope: `${server.*}`, `${selection.*}`, `${marks.*}`, `${view}`
-   - keep behavior deterministic and fail-safe
-
-3. Deployment history + rollback UX
+2. Deployment history + rollback UX
    - improve history visibility in templates/stacks views
    - add practical rollback workflow on top of current deploy metadata
 
-4. Registry auth UX hardening
+3. Registry auth UX hardening
    - clearer setup flow for keyring/ENV/age fallback
    - clearer error/action hints in UI and messages
 
-5. Release hardening
+4. Release hardening
    - final smoke checklist pass
    - CI baseline (`test`, `fmt --check`, `clippy -D warnings`)
    - package/docs polish
+
+## Deprioritized / Out of scope for current release
+
+- Command placeholders (`${server.*}`, `${selection.*}`, `${marks.*}`, `${view}`)
 
 ## Recently completed (for context)
 

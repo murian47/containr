@@ -1,6 +1,7 @@
 # Konzept: Platzhalter in Kommandos (Keybindings / Commandline)
 
 Stand: 2025-12-16
+Status: depriorisiert (aktuell out of scope).
 
 Dieses Dokument beschreibt ein Konzept, um Kommandos (Commandline und Keybindings) mit Platzhaltern zu versehen.
 Ziel: Keybindings sollen kontextsensitiv sein, ohne dass der Nutzer fuer jeden Server/Container eigene fixe Strings pflegen muss.
@@ -121,4 +122,3 @@ Optional spaeter:
 - Einheitliche Identifier: `selection.id` soll bei Images evtl. `sha256:...` sein; bei Images ist `selection.ref` oft besser.
 - Quote/Escaping: Wenn Werte Leerzeichen enthalten, braucht es definierte Quote-Regeln (z.B. immer shell-escapen fuer `:exec`).
 - Mehrfachselektion pro View sauber modellieren (IDs vs Names vs Keys).
-

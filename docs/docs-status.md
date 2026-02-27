@@ -22,10 +22,13 @@ Purpose: quick relevance map for all files in `docs/`.
 ## Active (feature concepts / implementation guidance)
 
 - `concept-ai-templates.md`
-- `concept-command-placeholders.md`
 - `concept-stack-update.md`
 - `concept-stacks-templates.md`
 - `plan-stack-update-mvp.md`
+
+## Deprioritized concepts
+
+- `concept-command-placeholders.md` (currently out of scope)
 
 ## Historical / superseded planning context
 
@@ -36,7 +39,6 @@ Purpose: quick relevance map for all files in `docs/`.
 ## Open TODO Summary
 
 1. Finish `ui/mod.rs` decomposition and reduce central wiring surface.
-2. Implement command placeholders (`${server.*}`, `${selection.*}`, `${marks.*}`).
-3. Extend deployment history/rollback UX.
-4. Improve registry auth UX (keyring/ENV/age setup guidance and error clarity).
-5. Execute release hardening checklist and CI baseline.
+2. Extend deployment history/rollback UX.
+3. Improve registry auth UX (keyring/ENV/age setup guidance and error clarity).
+4. Execute release hardening checklist and CI baseline.
