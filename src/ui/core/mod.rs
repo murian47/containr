@@ -8,6 +8,8 @@ pub(in crate::ui) mod ops;
 pub(in crate::ui) mod requests;
 pub(in crate::ui) mod runtime;
 pub(in crate::ui) mod run;
+pub(in crate::ui) mod run_apply;
+pub(in crate::ui) mod run_spawn;
 pub(in crate::ui) mod secrets;
 pub(in crate::ui) mod state;
 pub(in crate::ui) mod tasks;
