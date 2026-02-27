@@ -5,6 +5,7 @@
 - Reduce `src/ui/mod.rs` monolith (split by domain/view where practical).
 - Keep UI logic separated from domain ops where possible.
 - Execute readability plan: `docs/readability-refactor-pr-plan.md`.
+- Contributor code map: `docs/code-map-ui.md`.
 
 ## Stability Pass
 - Manual smoke test of core flows:

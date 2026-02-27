@@ -21,14 +21,13 @@ Completed:
 - PR 6 (details render split): done (view-focused detail render modules).
 - PR 7 (command normalization): mostly done (shared helper patterns, consistent handler shape).
 - PR 8 (visibility tightening): in progress (broad tightening done, final pass still open).
+- PR 8 (visibility tightening): done.
+- Optional PR 9 (focused contributor docs): done (`docs/code-map-ui.md`).
 
 Open:
-- PR 8 final pass:
-  - reduce remaining broad `pub(in crate::ui)` where feasible
-  - prune residual re-exports in `ui/mod.rs`
-  - ensure only intentional module APIs stay public
-- Optional PR 9:
-  - add `docs/code-map-ui.md` for contributor onboarding
+- Follow-up cleanup only (no blocker for this readability plan):
+  - continue reducing remaining broad `pub(in crate::ui)` where feasible
+  - keep pruning re-exports in `ui/mod.rs` as modules are touched
 
 Notes:
 - Refactor sequence so far stayed behavior-preserving and test-backed.
