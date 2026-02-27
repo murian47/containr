@@ -12,7 +12,7 @@ fn parse_toggle(value: &str) -> Option<bool> {
     }
 }
 
-pub fn handle_set(
+pub(in crate::ui) fn handle_set(
     app: &mut App,
     args: &[&str],
     refresh_interval_tx: &watch::Sender<Duration>,

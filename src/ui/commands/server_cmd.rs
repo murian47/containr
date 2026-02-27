@@ -9,7 +9,7 @@ use crate::config::ServerEntry;
 use std::fmt::Write as _;
 use tokio::sync::{mpsc, watch};
 
-pub fn handle_server(
+pub(in crate::ui) fn handle_server(
     app: &mut App,
     force: bool,
     cmdline_full: String,

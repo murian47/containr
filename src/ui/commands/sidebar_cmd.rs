@@ -5,7 +5,7 @@ use super::super::{App, ShellFocus, ShellView};
 
 const USAGE: &str = ":sidebar toggle|compact";
 
-pub fn handle_sidebar(app: &mut App, args: &[&str]) -> bool {
+pub(in crate::ui) fn handle_sidebar(app: &mut App, args: &[&str]) -> bool {
     let sub = subcommand(args, "toggle");
     match sub.to_ascii_lowercase().as_str() {
         "toggle" => {

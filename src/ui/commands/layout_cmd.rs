@@ -5,7 +5,7 @@ use super::super::{App, ShellSplitMode, ShellView};
 
 const USAGE: &str = ":layout [horizontal|vertical|toggle]";
 
-pub fn handle_layout(app: &mut App, args: &[&str]) -> bool {
+pub(in crate::ui) fn handle_layout(app: &mut App, args: &[&str]) -> bool {
     let sub = subcommand(args, "toggle");
     let target_view = if matches!(
         app.shell_view,

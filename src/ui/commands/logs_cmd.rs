@@ -15,7 +15,7 @@ fn request_reload(app: &mut App, logs_req_tx: &mpsc::UnboundedSender<(String, us
     }
 }
 
-pub fn handle_logs(
+pub(in crate::ui) fn handle_logs(
     app: &mut App,
     args: &[&str],
     logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,

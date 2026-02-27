@@ -13,7 +13,7 @@ fn tag_from_ref(image_ref: &str) -> Option<String> {
     }
 }
 
-pub fn handle_image(
+pub(in crate::ui) fn handle_image(
     app: &mut App,
     force: bool,
     cmdline_full: String,

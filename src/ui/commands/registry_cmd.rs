@@ -63,7 +63,7 @@ fn ensure_default_identity_path(app: &mut App) -> String {
     app.registries_cfg.age_identity.clone()
 }
 
-pub fn handle_registries(app: &mut App, args: &[&str]) -> bool {
+pub(in crate::ui) fn handle_registries(app: &mut App, args: &[&str]) -> bool {
     let sub = args.first().copied().unwrap_or("");
     match sub {
         "" | "view" => {
@@ -107,7 +107,7 @@ pub fn handle_registries(app: &mut App, args: &[&str]) -> bool {
     }
 }
 
-pub fn handle_registry(
+pub(in crate::ui) fn handle_registry(
     app: &mut App,
     force: bool,
     args: &[&str],

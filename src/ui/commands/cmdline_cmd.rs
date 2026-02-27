@@ -102,7 +102,7 @@ pub(in crate::ui) fn stack_update(
     app.log_msg(MsgLevel::Info, format!("stack update started: {target}"));
 }
 
-pub fn execute_cmdline(
+pub(in crate::ui) fn execute_cmdline(
     app: &mut App,
     cmdline: &str,
     conn_tx: &watch::Sender<Connection>,

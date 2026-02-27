@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 
 const USAGE: &str = ":volume rm";
 
-pub fn handle_volume(
+pub(in crate::ui) fn handle_volume(
     app: &mut App,
     force: bool,
     cmdline_full: String,

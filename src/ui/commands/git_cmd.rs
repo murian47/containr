@@ -191,7 +191,7 @@ fn show_git_output(app: &mut App, title: &str, output: &str) {
     app.shell_msgs.scroll = usize::MAX;
 }
 
-pub fn handle_git(app: &mut App, args: &[&str]) -> bool {
+pub(in crate::ui) fn handle_git(app: &mut App, args: &[&str]) -> bool {
     if !git_available() {
         return true;
     }

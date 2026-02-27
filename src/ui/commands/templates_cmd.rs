@@ -55,7 +55,7 @@ fn set_templates_kind(app: &mut App, v: &str) -> bool {
     true
 }
 
-pub fn handle_templates(app: &mut App, args: &[&str]) -> bool {
+pub(in crate::ui) fn handle_templates(app: &mut App, args: &[&str]) -> bool {
     let sub = args.first().copied().unwrap_or("");
     if sub.is_empty() {
         app.set_info(format!(
@@ -79,7 +79,7 @@ pub fn handle_templates(app: &mut App, args: &[&str]) -> bool {
     true
 }
 
-pub fn handle_template(
+pub(in crate::ui) fn handle_template(
     app: &mut App,
     force: bool,
     cmdline_full: String,
@@ -417,7 +417,7 @@ pub fn handle_template(
     }
 }
 
-pub fn handle_nettemplate(
+pub(in crate::ui) fn handle_nettemplate(
     app: &mut App,
     force: bool,
     cmdline_full: String,
@@ -526,7 +526,7 @@ pub fn handle_nettemplate(
     }
 }
 
-pub fn handle_template_ai(app: &mut App) -> bool {
+pub(in crate::ui) fn handle_template_ai(app: &mut App) -> bool {
     if app.shell_view != ShellView::Templates {
         app.set_warn("AI is only available in Templates");
         return true;

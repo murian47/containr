@@ -6,7 +6,7 @@ use tokio::sync::{mpsc, watch};
 
 const USAGE: &str = ":dashboard (all|single|toggle|simulate-error [name])";
 
-pub fn handle_dashboard(
+pub(in crate::ui) fn handle_dashboard(
     app: &mut App,
     args: &[&str],
     conn_tx: &watch::Sender<Connection>,

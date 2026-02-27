@@ -24,7 +24,7 @@ fn validate_theme_name(raw: &str) -> anyhow::Result<String> {
     Ok(name.to_string())
 }
 
-pub fn set_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
+pub(in crate::ui) fn set_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
     let name = validate_theme_name(name)?;
     let spec = theme::load_theme(&app.config_path, &name)?;
     app.theme_name = name.clone();
@@ -34,7 +34,7 @@ pub fn set_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn new_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
+pub(in crate::ui) fn new_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
     let name = validate_theme_name(name)?;
     if name == "default" {
         anyhow::bail!("theme name is reserved: default");
@@ -50,7 +50,7 @@ pub fn new_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn edit_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
+pub(in crate::ui) fn edit_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
     let name = validate_theme_name(name)?;
     theme::ensure_default_theme_exists(&app.config_path)?;
     let path = theme::theme_path(&app.config_path, &name);
@@ -73,7 +73,7 @@ pub fn edit_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn delete_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
+pub(in crate::ui) fn delete_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
     let name = validate_theme_name(name)?;
     anyhow::ensure!(name != "default", "cannot delete default theme");
     let path = theme::theme_path(&app.config_path, &name);
@@ -93,7 +93,7 @@ pub fn delete_theme(app: &mut App, name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn reload_active_theme_after_edit(app: &mut App, name: &str) {
+pub(in crate::ui) fn reload_active_theme_after_edit(app: &mut App, name: &str) {
     match theme::load_theme(&app.config_path, name) {
         Ok(spec) => {
             if app.theme_name == name {

@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 
 const USAGE: &str = ":network rm";
 
-pub fn handle_network(
+pub(in crate::ui) fn handle_network(
     app: &mut App,
     force: bool,
     cmdline_full: String,

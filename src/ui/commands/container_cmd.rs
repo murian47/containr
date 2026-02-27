@@ -5,7 +5,7 @@ use crate::docker::ContainerAction;
 use std::collections::HashSet;
 use tokio::sync::mpsc;
 
-pub fn handle_container(
+pub(in crate::ui) fn handle_container(
     app: &mut App,
     force: bool,
     cmdline_full: String,

@@ -44,7 +44,7 @@ fn format_key_spec(spec: KeySpec) -> String {
     }
 }
 
-pub fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bool {
+pub(in crate::ui) fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bool {
     let sub = first;
     if sub.is_empty() {
         app.set_warn(
@@ -178,7 +178,7 @@ pub fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bool {
     true
 }
 
-pub fn handle_unmap(app: &mut App, first: &str, rest: &[&str]) -> bool {
+pub(in crate::ui) fn handle_unmap(app: &mut App, first: &str, rest: &[&str]) -> bool {
     if first.is_empty() {
         app.set_warn("usage: :unmap [scope] <KEY>");
         return true;
