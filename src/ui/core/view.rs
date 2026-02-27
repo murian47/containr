@@ -1,10 +1,12 @@
 //! View navigation and view-scoped helpers for App.
 
 use crate::ui::render::sidebar::shell_sidebar_select_item;
-use crate::ui::{
-    theme, ActiveView, App, InspectTarget, ListMode, ShellFocus, ShellSidebarItem, ShellView,
-    ViewEntry,
+use crate::ui::core::types::{InspectTarget, ViewEntry};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{
+    ActiveView, ListMode, ShellFocus, ShellSidebarItem, ShellView,
 };
+use crate::ui::theme;
 use tokio::sync::{mpsc, watch};
 
 pub(in crate::ui) fn shell_module_shortcut(view: ShellView) -> char {

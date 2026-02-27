@@ -5,13 +5,19 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use ratatui_image::picker::Picker;
 
 use crate::config::{self, KeyBinding, ServerEntry};
-use crate::ui::{
-    theme, ActiveView, App, CmdHistory, DashboardAllState, DashboardHostState, DashboardState,
-    IMAGE_UPDATE_TTL_SECS, InspectMode, InspectState, ListMode, LogsMode, LogsState,
-    RATE_LIMIT_WINDOW_SECS, ShellCmdlineState, ShellFocus, ShellHelpState, ShellMessagesState,
-    ShellSplitMode, ShellView, StackDetailsFocus, TemplatesKind, TemplatesState,
-    ThemeSelectorState, build_server_shortcuts,
+use crate::ui::cmd_history::CmdHistory;
+use crate::ui::core::types::{
+    DashboardAllState, DashboardHostState, DashboardState, IMAGE_UPDATE_TTL_SECS, InspectMode,
+    LogsMode, RATE_LIMIT_WINDOW_SECS, StackDetailsFocus,
 };
+use crate::ui::helpers::build_server_shortcuts;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{
+    ActiveView, InspectState, ListMode, LogsState, ShellCmdlineState, ShellFocus,
+    ShellHelpState, ShellMessagesState, ShellSplitMode, ShellView, TemplatesKind,
+    TemplatesState, ThemeSelectorState,
+};
+use crate::ui::theme;
 
 use crate::ui::core::clock::now_unix;
 use crate::ui::core::local_state::load_local_state;

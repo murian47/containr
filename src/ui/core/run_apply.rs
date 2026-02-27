@@ -5,13 +5,18 @@ use tokio::sync::{mpsc, watch};
 
 use crate::docker::{ContainerRow, ImageRow, NetworkRow, VolumeRow};
 use crate::ui::actions;
-use crate::ui::state::image_updates::{ImageUpdateResult, is_rate_limit_error};
-use crate::ui::{
-    ActionRequest, App, DashboardSnapshot, MsgLevel, RegistryTestEntry,
-    TemplateDeployEntry, UsageSnapshot, classify_action_error, images_from_compose,
-    is_container_stopped, normalize_image_id, now_local, now_unix, truncate_msg,
-    ImageUpdateEntry, ImageUpdateKind, LastActionError,
+use crate::ui::core::clock::{now_local, now_unix};
+use crate::ui::core::requests::ActionRequest;
+use crate::ui::core::types::{
+    DashboardSnapshot, ImageUpdateEntry, ImageUpdateKind, LastActionError, RegistryTestEntry,
+    TemplateDeployEntry, UsageSnapshot, classify_action_error,
 };
+use crate::ui::features::templates::images_from_compose;
+use crate::ui::helpers::{normalize_image_id, truncate_msg};
+use crate::ui::render::utils::is_container_stopped;
+use crate::ui::state::app::App;
+use crate::ui::state::image_updates::{ImageUpdateResult, is_rate_limit_error};
+use crate::ui::state::shell_types::MsgLevel;
 
 type OverviewResult = anyhow::Result<(Vec<ContainerRow>, Vec<ImageRow>, Vec<VolumeRow>, Vec<NetworkRow>)>;
 

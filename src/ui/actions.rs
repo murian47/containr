@@ -3,12 +3,17 @@
 use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::render::utils::{is_container_stopped, shell_escape_sh_arg};
 use crate::ui::state::actions as state_actions;
-use crate::ui::{
+use crate::ui::core::requests::ActionRequest;
+use crate::ui::core::runtime::{
     current_docker_cmd_from_app, current_runner_from_app, current_server_label,
-    ensure_template_id, shell_begin_confirm, shell_single_quote, ActionRequest, App,
-    ContainerAction, DeployMarker, DockerCfg, InspectTarget, MsgLevel, ShellAction,
-    ShellInteractive, ShellView, TemplatesKind,
 };
+use crate::ui::core::types::{DeployMarker, InspectTarget};
+use crate::ui::helpers::{ensure_template_id, shell_single_quote};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{
+    MsgLevel, ShellAction, ShellInteractive, ShellView, TemplatesKind, shell_begin_confirm,
+};
+use crate::docker::{ContainerAction, DockerCfg};
 use std::time::Instant;
 use tokio::sync::mpsc;
 

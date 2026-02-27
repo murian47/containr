@@ -11,13 +11,16 @@ use crate::runner::Runner;
 use crate::services::image_update::ImageUpdateService;
 use crate::ssh::Ssh;
 use crate::ui::core::tasks::BackgroundTasks;
-use crate::ui::{
-    ActionRequest, Connection, DashboardSnapshot, InspectKind, InspectTarget,
-    UsageSnapshot, dashboard_command, export_net_template, export_stack_template,
-    extract_container_ip, normalize_image_id, parse_dashboard_output,
+use crate::ui::core::ops::{
     perform_image_push, perform_net_template_deploy, perform_stack_update,
-    perform_template_deploy, registry_test,
+    perform_template_deploy,
 };
+use crate::ui::core::requests::{ActionRequest, Connection};
+use crate::ui::core::types::{DashboardSnapshot, InspectKind, InspectTarget, UsageSnapshot};
+use crate::ui::features::dashboard::{dashboard_command, parse_dashboard_output};
+use crate::ui::features::registry::registry_test;
+use crate::ui::features::templates::{export_net_template, export_stack_template};
+use crate::ui::helpers::{extract_container_ip, normalize_image_id};
 
 type OverviewResult = anyhow::Result<(Vec<ContainerRow>, Vec<ImageRow>, Vec<VolumeRow>, Vec<NetworkRow>)>;
 
