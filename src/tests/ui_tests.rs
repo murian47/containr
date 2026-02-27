@@ -1,8 +1,9 @@
 use super::*;
-use crate::config::{DockerCmd, RegistriesConfig};
+use crate::config::{DockerCmd, RegistriesConfig, ServerEntry};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use serde_json::json;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 

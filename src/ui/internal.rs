@@ -1,10 +1,9 @@
-pub(in crate::ui) use crate::config::{self, ServerEntry};
+pub(in crate::ui) use crate::config;
 pub(in crate::ui) use crate::docker::{
     ContainerAction, ContainerRow, DockerCfg, ImageRow, NetworkRow, VolumeRow,
 };
 pub(in crate::ui) use crate::runner::Runner;
 pub(in crate::ui) use ratatui_image::picker::Picker;
-pub(in crate::ui) use std::collections::HashMap;
 
 pub(in crate::ui) use super::actions::{
     service_name_from_label_list, stack_compose_dirs, template_name_from_stack,
