@@ -1,7 +1,7 @@
 use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::{App, ShellView, TemplatesKind};
 
-pub(crate) fn shell_breadcrumbs(app: &App) -> String {
+pub(in crate::ui) fn shell_breadcrumbs(app: &App) -> String {
     match app.shell_view {
         ShellView::Dashboard => String::new(),
         ShellView::Stacks => app

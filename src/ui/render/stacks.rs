@@ -1,4 +1,4 @@
-pub(crate) fn stack_name_from_labels(labels: &str) -> Option<String> {
+pub(in crate::ui) fn stack_name_from_labels(labels: &str) -> Option<String> {
     // docker ps --format exposes labels as a comma-separated "k=v" list.
     // Compose stacks typically set:
     // - com.docker.compose.project=<stack>

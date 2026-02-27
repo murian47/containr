@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 
 use crate::ui::render::utils::truncate_end;
 
-pub(crate) fn wrap_text(text: &str, width: usize) -> Vec<String> {
+pub(in crate::ui) fn wrap_text(text: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
     let mut out: Vec<String> = Vec::new();
     let mut line = String::new();
@@ -35,7 +35,7 @@ pub(crate) fn wrap_text(text: &str, width: usize) -> Vec<String> {
     out
 }
 
-pub(crate) fn pad_right(text: &str, width: usize) -> String {
+pub(in crate::ui) fn pad_right(text: &str, width: usize) -> String {
     let len = text.chars().count();
     if len >= width {
         return truncate_end(text, width);
@@ -45,7 +45,7 @@ pub(crate) fn pad_right(text: &str, width: usize) -> String {
     out
 }
 
-pub(crate) fn truncate_start(s: &str, max: usize) -> String {
+pub(in crate::ui) fn truncate_start(s: &str, max: usize) -> String {
     let max = max.max(1);
     let len = s.chars().count();
     if len <= max {
@@ -72,7 +72,7 @@ pub(crate) fn truncate_start(s: &str, max: usize) -> String {
     format!("...{tail}")
 }
 
-pub(crate) fn format_bytes_short(bytes: u64) -> String {
+pub(in crate::ui) fn format_bytes_short(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut v = bytes as f64;
     let mut u = 0usize;
@@ -89,7 +89,7 @@ pub(crate) fn format_bytes_short(bytes: u64) -> String {
     }
 }
 
-pub(crate) fn format_action_ts(at: OffsetDateTime) -> String {
+pub(in crate::ui) fn format_action_ts(at: OffsetDateTime) -> String {
     static FMT: OnceLock<Vec<time::format_description::FormatItem<'static>>> = OnceLock::new();
     let fmt = FMT.get_or_init(|| {
         time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
@@ -99,7 +99,7 @@ pub(crate) fn format_action_ts(at: OffsetDateTime) -> String {
         .unwrap_or_else(|_| at.unix_timestamp().to_string())
 }
 
-pub(crate) fn split_at_chars(s: &str, n: usize) -> (&str, &str) {
+pub(in crate::ui) fn split_at_chars(s: &str, n: usize) -> (&str, &str) {
     if n == 0 {
         return ("", s);
     }
@@ -120,7 +120,7 @@ pub(crate) fn split_at_chars(s: &str, n: usize) -> (&str, &str) {
     }
 }
 
-pub(crate) fn bar_spans_threshold(
+pub(in crate::ui) fn bar_spans_threshold(
     width: usize,
     ratio: f32,
     ascii_only: bool,
@@ -146,7 +146,7 @@ pub(crate) fn bar_spans_threshold(
     out
 }
 
-pub(crate) fn bar_spans_gradient(
+pub(in crate::ui) fn bar_spans_gradient(
     width: usize,
     ratio: f32,
     ascii_only: bool,
@@ -195,7 +195,7 @@ pub(crate) fn bar_spans_gradient(
     out
 }
 
-pub(crate) fn loading_spinner(since: Option<Instant>) -> &'static str {
+pub(in crate::ui) fn loading_spinner(since: Option<Instant>) -> &'static str {
     const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     let Some(since) = since else {
         return FRAMES[0];
@@ -204,7 +204,7 @@ pub(crate) fn loading_spinner(since: Option<Instant>) -> &'static str {
     FRAMES[idx]
 }
 
-pub(crate) fn spinner_char(started: Instant, ascii_only: bool) -> char {
+pub(in crate::ui) fn spinner_char(started: Instant, ascii_only: bool) -> char {
     let ms = started.elapsed().as_millis() as u64;
     if ascii_only {
         let frames = ['|', '/', '-', '\\'];
@@ -215,7 +215,7 @@ pub(crate) fn spinner_char(started: Instant, ascii_only: bool) -> char {
     }
 }
 
-pub(crate) fn dot_spinner(ascii_only: bool) -> &'static str {
+pub(in crate::ui) fn dot_spinner(ascii_only: bool) -> &'static str {
     const FRAMES_ASCII: [&str; 3] = ["·..", ".·.", "..·"];
     const FRAMES_UNI: [&str; 3] = ["●··", "·●·", "··●"];
     let ms = std::time::SystemTime::now()

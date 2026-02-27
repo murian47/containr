@@ -5,7 +5,7 @@ use ratatui::widgets::Wrap;
 use crate::ui::render::utils::truncate_end;
 use crate::ui::App;
 
-pub(crate) fn draw_rate_limit_banner(
+pub(in crate::ui) fn draw_rate_limit_banner(
     f: &mut ratatui::Frame,
     app: &App,
     banner: Option<String>,

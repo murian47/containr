@@ -4,7 +4,7 @@ use ratatui::text::Span;
 use crate::ui::App;
 use crate::ui::theme;
 
-pub(crate) fn header_logo_spans(app: &App, base: Style, shown: &str) -> Vec<Span<'static>> {
+pub(in crate::ui) fn header_logo_spans(app: &App, base: Style, shown: &str) -> Vec<Span<'static>> {
     // Render the "CONTAINR" logo in per-run colors without changing background.
     let bg = theme::parse_color(&app.theme.header.bg);
     let bg_rgb = match bg {

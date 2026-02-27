@@ -5,14 +5,14 @@ use crate::ui::state::image_updates::ImageUpdateView;
 use crate::ui::App;
 use ratatui::style::Style;
 
-pub(crate) fn action_error_label(err: &LastActionError) -> &'static str {
+pub(in crate::ui) fn action_error_label(err: &LastActionError) -> &'static str {
     match err.kind {
         ActionErrorKind::InUse => "in use",
         ActionErrorKind::Other => "error",
     }
 }
 
-pub(crate) fn action_error_details(err: &LastActionError) -> String {
+pub(in crate::ui) fn action_error_details(err: &LastActionError) -> String {
     let ts = format_action_ts(err.at);
     if err.action.trim().is_empty() {
         ts
@@ -21,7 +21,7 @@ pub(crate) fn action_error_details(err: &LastActionError) -> String {
     }
 }
 
-pub(crate) fn action_status_prefix(action: ContainerAction) -> &'static str {
+pub(in crate::ui) fn action_status_prefix(action: ContainerAction) -> &'static str {
     match action {
         ContainerAction::Start => "Starting...",
         ContainerAction::Stop => "Stopping...",

@@ -1,6 +1,6 @@
 use crate::ui::{App, MsgLevel, TemplatesKind};
 
-pub(crate) fn maybe_autocommit_templates(
+pub(in crate::ui) fn maybe_autocommit_templates(
     app: &mut App,
     kind: TemplatesKind,
     action: &str,

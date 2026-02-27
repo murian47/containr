@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};
 use super::tables::shell_header_style;
 use super::utils::shell_row_highlight;
 
-pub(crate) fn registry_auth_label(auth: &config::RegistryAuth) -> &'static str {
+pub(in crate::ui) fn registry_auth_label(auth: &config::RegistryAuth) -> &'static str {
     match auth {
         config::RegistryAuth::Anonymous => "anonymous",
         config::RegistryAuth::Basic => "basic",

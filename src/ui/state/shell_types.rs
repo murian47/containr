@@ -133,7 +133,7 @@ pub(in crate::ui) struct TemplateEditSnapshot {
 }
 
 #[allow(private_interfaces)]
-pub(crate) fn shell_begin_confirm(
+pub(in crate::ui) fn shell_begin_confirm(
     app: &mut crate::ui::App,
     label: impl Into<String>,
     cmdline: impl Into<String>,

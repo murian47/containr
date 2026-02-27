@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use tokio::sync::mpsc;
 use std::time::{Duration, Instant};
 
-pub(crate) fn exec_stack_action(
+pub(in crate::ui) fn exec_stack_action(
     app: &mut App,
     action: ContainerAction,
     name: Option<&str>,
@@ -90,7 +90,7 @@ pub(crate) fn exec_stack_action(
     }
 }
 
-pub(crate) fn exec_image_action(
+pub(in crate::ui) fn exec_image_action(
     app: &mut App,
     untag: bool,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
@@ -158,7 +158,7 @@ pub(crate) fn exec_image_action(
     }
 }
 
-pub(crate) fn exec_volume_remove(
+pub(in crate::ui) fn exec_volume_remove(
     app: &mut App,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
@@ -185,7 +185,7 @@ pub(crate) fn exec_volume_remove(
     }
 }
 
-pub(crate) fn exec_network_remove(
+pub(in crate::ui) fn exec_network_remove(
     app: &mut App,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
@@ -216,7 +216,7 @@ pub(crate) fn exec_network_remove(
     }
 }
 
-pub(crate) fn exec_container_action(
+pub(in crate::ui) fn exec_container_action(
     app: &mut App,
     action: ContainerAction,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,

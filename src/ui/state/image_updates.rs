@@ -33,7 +33,7 @@ fn normalize_image_id(id: &str) -> String {
     format!("sha256:{}", s)
 }
 
-pub(crate) fn resolve_image_ref_for_updates(app: &App, image: &str) -> Option<NormalizedImageRef> {
+pub(in crate::ui) fn resolve_image_ref_for_updates(app: &App, image: &str) -> Option<NormalizedImageRef> {
     if image.trim().is_empty() {
         return None;
     }
@@ -51,7 +51,7 @@ pub(crate) fn resolve_image_ref_for_updates(app: &App, image: &str) -> Option<No
     normalize_image_ref_for_updates(image)
 }
 
-pub(crate) fn resolve_image_update_state(
+pub(in crate::ui) fn resolve_image_update_state(
     app: &App,
     image: &str,
 ) -> (Option<String>, ImageUpdateView) {
@@ -80,7 +80,7 @@ pub(crate) fn resolve_image_update_state(
     (Some(key), view)
 }
 
-pub(crate) fn resolve_stack_update_state(app: &App, stack_name: &str) -> ImageUpdateView {
+pub(in crate::ui) fn resolve_stack_update_state(app: &App, stack_name: &str) -> ImageUpdateView {
     let mut has_update = false;
     let mut has_error = false;
     let mut has_unknown = false;
@@ -121,7 +121,7 @@ pub(crate) fn resolve_stack_update_state(app: &App, stack_name: &str) -> ImageUp
     }
 }
 
-pub(crate) fn is_rate_limit_error(err: Option<&str>) -> bool {
+pub(in crate::ui) fn is_rate_limit_error(err: Option<&str>) -> bool {
     let Some(err) = err else {
         return false;
     };

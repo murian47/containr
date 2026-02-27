@@ -3,7 +3,7 @@ use ratatui::text::{Line, Span};
 
 use crate::ui::theme::ThemeSpec;
 
-pub(crate) fn highlight_log_line_regex(line: &str, matcher: Option<&regex::Regex>) -> Line<'static> {
+pub(in crate::ui) fn highlight_log_line_regex(line: &str, matcher: Option<&regex::Regex>) -> Line<'static> {
     let Some(re) = matcher else {
         return Line::from(line.to_string());
     };
@@ -37,7 +37,7 @@ pub(crate) fn highlight_log_line_regex(line: &str, matcher: Option<&regex::Regex
     Line::from(spans)
 }
 
-pub(crate) fn highlight_log_line_literal(line: &str, query: &str) -> Line<'static> {
+pub(in crate::ui) fn highlight_log_line_literal(line: &str, query: &str) -> Line<'static> {
     let q = query.trim();
     if q.is_empty() {
         return Line::from(line.to_string());
@@ -75,7 +75,7 @@ pub(crate) fn highlight_log_line_literal(line: &str, query: &str) -> Line<'stati
     Line::from(spans)
 }
 
-pub(crate) fn yaml_highlight_line(line: &str, base: Style, theme: &ThemeSpec) -> Vec<Span<'static>> {
+pub(in crate::ui) fn yaml_highlight_line(line: &str, base: Style, theme: &ThemeSpec) -> Vec<Span<'static>> {
     // Very small YAML-ish highlighter:
     // - comments: dim
     // - mapping keys: light blue
@@ -108,7 +108,7 @@ pub(crate) fn yaml_highlight_line(line: &str, base: Style, theme: &ThemeSpec) ->
     spans
 }
 
-pub(crate) fn json_highlight_line(line: &str, base: Style, theme: &ThemeSpec) -> Vec<Span<'static>> {
+pub(in crate::ui) fn json_highlight_line(line: &str, base: Style, theme: &ThemeSpec) -> Vec<Span<'static>> {
     // Minimal JSON-ish highlighter:
     // - keys ("...":) in light blue
     let normal = base.patch(theme.syntax_text.to_style());
@@ -146,7 +146,7 @@ pub(crate) fn json_highlight_line(line: &str, base: Style, theme: &ThemeSpec) ->
     spans
 }
 
-pub(crate) fn split_yaml_comment(line: &str) -> (&str, Option<&str>) {
+pub(in crate::ui) fn split_yaml_comment(line: &str) -> (&str, Option<&str>) {
     // Find a '#' that is not inside single/double quotes.
     let mut in_s = false;
     let mut in_d = false;
@@ -173,7 +173,7 @@ pub(crate) fn split_yaml_comment(line: &str) -> (&str, Option<&str>) {
     (line, None)
 }
 
-pub(crate) fn split_yaml_key(line: &str) -> Option<(&str, &str, &str)> {
+pub(in crate::ui) fn split_yaml_key(line: &str) -> Option<(&str, &str, &str)> {
     // Attempts to split "<prefix><key>:<rest>" where key is outside quotes.
     let mut in_s = false;
     let mut in_d = false;

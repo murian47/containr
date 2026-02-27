@@ -7,13 +7,13 @@ use crate::ui::render::text::truncate_end;
 use crate::ui::{App, ShellFocus};
 
 #[derive(Debug, Clone)]
-pub(crate) struct DetailRow {
+pub(in crate::ui) struct DetailRow {
     pub key: &'static str,
     pub value: String,
     pub style: ratatui::style::Style,
 }
 
-pub(crate) fn render_detail_table(
+pub(in crate::ui) fn render_detail_table(
     f: &mut ratatui::Frame,
     app: &App,
     area: ratatui::layout::Rect,

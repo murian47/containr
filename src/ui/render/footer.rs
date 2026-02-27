@@ -5,7 +5,7 @@ use crate::ui::{App, ShellView};
 use crate::ui::render::text::truncate_end;
 use crate::ui::theme;
 
-pub(crate) fn draw_shell_footer(
+pub(in crate::ui) fn draw_shell_footer(
     f: &mut ratatui::Frame,
     app: &App,
     area: ratatui::layout::Rect,

@@ -1,4 +1,4 @@
-pub(crate) fn truncate_end(s: &str, max: usize) -> String {
+pub(in crate::ui) fn truncate_end(s: &str, max: usize) -> String {
     let max = max.max(1);
     let len = s.chars().count();
     if len <= max {
@@ -12,12 +12,12 @@ pub(crate) fn truncate_end(s: &str, max: usize) -> String {
     out
 }
 
-pub(crate) fn short_commit(s: &str) -> String {
+pub(in crate::ui) fn short_commit(s: &str) -> String {
     s.chars().take(7).collect()
 }
 
 // Horizontal window with ellipsis; used in messages/log views.
-pub(crate) fn window_hscroll(s: &str, start: usize, max: usize) -> String {
+pub(in crate::ui) fn window_hscroll(s: &str, start: usize, max: usize) -> String {
     let max = max.max(1);
     let chars: Vec<char> = s.chars().collect();
     if chars.len() <= max {
@@ -63,7 +63,7 @@ pub(crate) fn window_hscroll(s: &str, start: usize, max: usize) -> String {
 }
 
 // Simple slice of a string by chars; used for logs/inspect horizontal cropping.
-pub(crate) fn slice_window(s: &str, start: usize, width: usize) -> String {
+pub(in crate::ui) fn slice_window(s: &str, start: usize, width: usize) -> String {
     let width = width.max(1);
     let chars: Vec<char> = s.chars().collect();
     if width >= chars.len() {

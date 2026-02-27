@@ -12,7 +12,7 @@ use super::scroll::draw_shell_scrollbar_v;
 use super::text::slice_window;
 use super::utils::shell_row_highlight;
 
-pub(crate) fn build_inspect_lines(
+pub(in crate::ui) fn build_inspect_lines(
     root: Option<&Value>,
     expanded: &HashSet<String>,
     match_set: &HashSet<String>,
@@ -38,13 +38,13 @@ pub(crate) fn build_inspect_lines(
     out
 }
 
-pub(crate) fn collect_expandable_paths(root: &Value) -> HashSet<String> {
+pub(in crate::ui) fn collect_expandable_paths(root: &Value) -> HashSet<String> {
     let mut out = HashSet::new();
     collect_expandable_paths_inner(root, "", &mut out);
     out
 }
 
-pub(crate) fn collect_match_paths(root: Option<&Value>, query: &str) -> Vec<String> {
+pub(in crate::ui) fn collect_match_paths(root: Option<&Value>, query: &str) -> Vec<String> {
     let Some(root) = root else {
         return Vec::new();
     };
@@ -58,7 +58,7 @@ pub(crate) fn collect_match_paths(root: Option<&Value>, query: &str) -> Vec<Stri
     out
 }
 
-pub(crate) fn ancestors_of_pointer(pointer: &str) -> Vec<String> {
+pub(in crate::ui) fn ancestors_of_pointer(pointer: &str) -> Vec<String> {
     if pointer.is_empty() {
         return vec!["".to_string()];
     }
@@ -72,7 +72,7 @@ pub(crate) fn ancestors_of_pointer(pointer: &str) -> Vec<String> {
     out
 }
 
-pub(crate) fn collect_path_rank(root: Option<&Value>) -> HashMap<String, usize> {
+pub(in crate::ui) fn collect_path_rank(root: Option<&Value>) -> HashMap<String, usize> {
     let Some(root) = root else {
         return HashMap::new();
     };
@@ -82,7 +82,7 @@ pub(crate) fn collect_path_rank(root: Option<&Value>) -> HashMap<String, usize> 
     out
 }
 
-pub(crate) fn current_match_pos(app: &App) -> (usize, usize) {
+pub(in crate::ui) fn current_match_pos(app: &App) -> (usize, usize) {
     let total = app.inspect.match_paths.len();
     if total == 0 {
         return (0, 0);

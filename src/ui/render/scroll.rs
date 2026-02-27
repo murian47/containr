@@ -2,7 +2,7 @@ use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
 
 use crate::ui::theme::ThemeSpec;
 
-pub(crate) fn draw_shell_scrollbar_v(
+pub(in crate::ui) fn draw_shell_scrollbar_v(
     f: &mut ratatui::Frame,
     area: ratatui::layout::Rect,
     scroll_top: usize,
@@ -34,7 +34,7 @@ pub(crate) fn draw_shell_scrollbar_v(
     f.render_stateful_widget(sb, area, &mut sb_state);
 }
 
-pub(crate) fn draw_shell_scrollbar_h(
+pub(in crate::ui) fn draw_shell_scrollbar_h(
     f: &mut ratatui::Frame,
     area: ratatui::layout::Rect,
     scroll_left: usize,
