@@ -1,4 +1,5 @@
-use crate::ui::{App, ShellFocus, ShellView, shell_module_shortcut};
+use crate::ui::core::view::shell_module_shortcut;
+use crate::ui::{App, ShellFocus, ShellView};
 use crate::ui::render::scroll::draw_shell_scrollbar_v;
 use crate::ui::render::text::truncate_end;
 use crate::ui::render::utils::shell_row_highlight;

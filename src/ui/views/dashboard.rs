@@ -5,7 +5,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 use ratatui_image::{Resize, StatefulImage};
 
-use crate::ui::format_session_ts;
+use crate::ui::render::messages::format_session_ts;
 use crate::ui::render::format::{bar_spans_gradient, bar_spans_threshold, format_bytes_short};
 use crate::ui::render::utils::{theme_color, truncate_end};
 use crate::ui::theme;

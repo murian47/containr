@@ -1,7 +1,8 @@
-use crate::ui::{
-    App, ShellSplitMode, ShellView, draw_shell_main_details, draw_shell_main_list,
-    draw_shell_messages_dock, draw_shell_sidebar,
-};
+use crate::ui::render::details::draw_shell_main_details;
+use crate::ui::render::messages::draw_shell_messages_dock;
+use crate::ui::render::shell::draw_shell_main_list;
+use crate::ui::render::sidebar::draw_shell_sidebar;
+use crate::ui::{App, ShellSplitMode, ShellView};
 use crate::ui::render::theme_selector::draw_theme_selector;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};

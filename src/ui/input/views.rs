@@ -1,9 +1,10 @@
 use super::context::InputCtx;
 use crate::ui::actions;
+use crate::ui::core::view::shell_module_shortcut;
 use crate::ui::render::sidebar::{shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item};
 use crate::ui::{
-    shell_module_shortcut, ActiveView, App, ListMode,
-    LogsMode, ShellFocus, ShellSidebarItem, ShellView, StackDetailsFocus, TemplatesKind,
+    ActiveView, App, ListMode, LogsMode, ShellFocus, ShellSidebarItem, ShellView,
+    StackDetailsFocus, TemplatesKind,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 

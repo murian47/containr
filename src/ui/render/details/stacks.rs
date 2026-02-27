@@ -1,10 +1,10 @@
 use super::panel_bg;
 use crate::docker::{ContainerRow, NetworkRow};
 use crate::ui::render::status::{action_error_label, action_status_prefix};
+use crate::ui::render::tables::shell_header_style;
 use crate::ui::render::utils::shell_row_highlight;
 use crate::ui::{
-    draw_shell_hr, shell_header_style, stack_name_from_labels, ActionErrorKind, App, ShellFocus,
-    StackDetailsFocus,
+    draw_shell_hr, stack_name_from_labels, ActionErrorKind, App, ShellFocus, StackDetailsFocus,
 };
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};

@@ -1,6 +1,7 @@
 use crate::ui::{
-    App, ShellAction, ShellFocus, ShellSidebarItem, ShellView, shell_module_shortcut,
+    App, ShellAction, ShellFocus, ShellSidebarItem, ShellView,
 };
+use crate::ui::core::view::shell_module_shortcut;
 use crate::ui::render::utils::shell_row_highlight;
 use crate::ui::render::text::truncate_end;
 use crate::ui::theme;

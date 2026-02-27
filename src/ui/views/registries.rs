@@ -4,7 +4,8 @@
 use ratatui::layout::Rect;
 use ratatui::Frame;
 
-use crate::ui::{draw_shell_registries_table, App};
+use crate::ui::render::registries::draw_shell_registries_table;
+use crate::ui::App;
 
 pub fn render_registries(f: &mut Frame, app: &mut App, area: Rect) {
     draw_shell_registries_table(f, app, area);

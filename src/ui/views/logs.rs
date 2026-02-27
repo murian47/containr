@@ -4,7 +4,8 @@
 use ratatui::layout::Rect;
 use ratatui::Frame;
 
-use crate::ui::{draw_shell_logs_view, App};
+use crate::ui::render::logs::draw_shell_logs_view;
+use crate::ui::App;
 
 pub fn render_logs(f: &mut Frame, app: &mut App, area: Rect) {
     draw_shell_logs_view(f, app, area);

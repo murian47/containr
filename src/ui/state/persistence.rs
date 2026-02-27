@@ -4,9 +4,10 @@ use std::path::PathBuf;
 
 use crate::config::{self, ContainrConfig, ServerEntry};
 use crate::domain::image_refs::image_registry_for_ref;
+use crate::ui::render::messages::format_session_ts;
 use crate::ui::{
     now_unix, template_commit_from_labels, template_id_from_labels, App, ImageUpdateEntry,
-    LocalState, MsgLevel, ShellSplitMode, TemplateDeployEntry, format_session_ts,
+    LocalState, MsgLevel, ShellSplitMode, TemplateDeployEntry,
 };
 use crate::ui::render::utils::write_text_file;
 

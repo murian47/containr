@@ -10,9 +10,9 @@ use ratatui::style::Modifier;
 use std::time::Instant;
 
 use crate::ui::render::status::action_error_label;
-use crate::ui::{
-    shell_header_style, shell_row_highlight, ActionErrorKind, App, GitRemoteStatus, TemplatesKind,
-};
+use crate::ui::render::tables::shell_header_style;
+use crate::ui::render::utils::shell_row_highlight;
+use crate::ui::{ActionErrorKind, App, GitRemoteStatus, TemplatesKind};
 
 pub fn render_templates(f: &mut Frame, app: &mut App, area: Rect) {
     match app.templates_state.kind {

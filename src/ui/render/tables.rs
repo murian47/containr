@@ -1,9 +1,9 @@
 use crate::ui::{ActionErrorKind, App, ContainerRow, ListMode, ViewEntry};
 use crate::ui::render::format::loading_spinner;
+use crate::ui::render::status::image_update_indicator;
 use crate::ui::render::status::{action_error_label, action_status_prefix};
 use crate::ui::render::utils::{is_container_stopped, shell_row_highlight, truncate_end};
 use crate::ui::state::image_updates::{resolve_image_update_state, resolve_stack_update_state};
-use crate::ui::image_update_indicator;
 use ratatui::layout::{Constraint, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};

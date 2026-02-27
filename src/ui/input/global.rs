@@ -1,7 +1,8 @@
 use super::context::InputCtx;
+use crate::ui::core::view::shell_cycle_focus;
 use crate::ui::{
-    is_single_letter_without_modifiers, key_spec_from_event, lookup_scoped_binding,
-    shell_cycle_focus, App, BindingHit, KeyScope, LogsMode, ShellFocus, ShellView,
+    is_single_letter_without_modifiers, key_spec_from_event, lookup_scoped_binding, App,
+    BindingHit, KeyScope, LogsMode, ShellFocus, ShellView,
 };
 use crossterm::event::{KeyCode, KeyEvent};
 

@@ -4,7 +4,8 @@ use ratatui::layout::Constraint;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};
 
-use crate::ui::{shell_header_style, image_update_indicator};
+use crate::ui::render::status::image_update_indicator;
+use crate::ui::render::tables::shell_header_style;
 use crate::ui::render::status::{action_error_label, action_status_prefix};
 use crate::ui::render::utils::shell_row_highlight;
 use crate::ui::state::image_updates::resolve_stack_update_state;

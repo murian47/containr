@@ -1,6 +1,7 @@
 //! Logging / status message helpers on App.
 
-use crate::ui::{App, MsgLevel, format_session_ts};
+use crate::ui::render::messages::format_session_ts;
+use crate::ui::{App, MsgLevel};
 use crate::ui::render::clipboard::copy_to_clipboard;
 
 impl App {

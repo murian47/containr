@@ -24,26 +24,10 @@ mod text_edit;
 pub mod theme;
 
 use render::layout::draw_shell_hr;
-use render::details::draw_shell_main_details;
-use render::sidebar::{
-    draw_shell_sidebar, shell_sidebar_select_item,
-};
+use render::sidebar::shell_sidebar_select_item;
 use crate::ui::state::image_updates::{ImageUpdateResult, is_rate_limit_error};
-use render::shell::draw_shell_main_list;
-pub(in crate::ui) use render::messages::{
-    draw_shell_messages_dock, draw_shell_messages_view, format_session_ts,
-};
 pub(in crate::ui) use render::root::draw;
-pub(in crate::ui) use render::help::draw_shell_help_view;
-pub(in crate::ui) use render::inspect::draw_shell_inspect_view;
-pub(in crate::ui) use render::logs::draw_shell_logs_view;
-pub(in crate::ui) use render::registries::draw_shell_registries_table;
-pub(in crate::ui) use render::tables::{
-    draw_shell_containers_table, draw_shell_images_table, draw_shell_networks_table,
-    draw_shell_volumes_table, shell_header_style,
-};
 pub(in crate::ui) use actions::{service_name_from_label_list, stack_compose_dirs, template_name_from_stack};
-pub(in crate::ui) use core::view::{shell_cycle_focus, shell_module_shortcut};
 pub(in crate::ui) use helpers::{
     deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, extract_container_ip,
     extract_template_id, parse_kv_args, shell_quote_with_home, shell_single_quote,
@@ -63,9 +47,8 @@ pub(in crate::ui) use features::templates::{
 #[cfg(test)]
 pub(crate) use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
 use render::highlight::{json_highlight_line, yaml_highlight_line};
-pub(in crate::ui) use render::status::image_update_indicator;
 use render::utils::{
-    expand_user_path, is_container_stopped, shell_escape_sh_arg, shell_row_highlight,
+    expand_user_path, is_container_stopped, shell_escape_sh_arg,
 };
 use render::stacks::stack_name_from_labels;
 use core::ops::{perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy};
