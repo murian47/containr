@@ -1,5 +1,6 @@
 use anyhow::Context as _;
 use crossterm::event::{self, Event, KeyEventKind};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};

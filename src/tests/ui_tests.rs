@@ -3,6 +3,7 @@ use crate::config::{DockerCmd, RegistriesConfig};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use serde_json::json;
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn mk_temp_path(prefix: &str) -> PathBuf {
