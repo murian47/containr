@@ -7,7 +7,9 @@ mod modes;
 mod navigation;
 mod views;
 
-use crate::ui::{ActionRequest, App, Connection, InspectTarget};
+use crate::ui::core::requests::{ActionRequest, Connection};
+use crate::ui::core::types::InspectTarget;
+use crate::ui::state::app::App;
 use crossterm::event::KeyEvent;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};

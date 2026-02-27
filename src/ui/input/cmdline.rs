@@ -1,7 +1,9 @@
 use super::context::InputCtx;
 use crate::ui::render::cmdline::cmdline_apply_completion;
-use crate::ui::{
-    backspace_at_cursor, clamp_cursor_to_text, delete_at_cursor, insert_char_at_cursor, App,
+use crate::ui::state::app::App;
+use crate::ui::text_edit::{
+    backspace_at_cursor, clamp_cursor_to_text, delete_at_cursor, insert_char_at_cursor,
+    set_text_and_cursor,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -52,7 +54,7 @@ pub(super) fn handle_cmdline_mode(app: &mut App, key: KeyEvent, ctx: &InputCtx<'
         }
         KeyCode::Up => {
             if let Some(s) = app.shell_cmdline.history.prev(&app.shell_cmdline.input) {
-                crate::ui::set_text_and_cursor(
+                set_text_and_cursor(
                     &mut app.shell_cmdline.input,
                     &mut app.shell_cmdline.cursor,
                     s,
@@ -61,7 +63,7 @@ pub(super) fn handle_cmdline_mode(app: &mut App, key: KeyEvent, ctx: &InputCtx<'
         }
         KeyCode::Down => {
             if let Some(s) = app.shell_cmdline.history.next() {
-                crate::ui::set_text_and_cursor(
+                set_text_and_cursor(
                     &mut app.shell_cmdline.input,
                     &mut app.shell_cmdline.cursor,
                     s,

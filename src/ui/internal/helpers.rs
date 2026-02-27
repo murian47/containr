@@ -4,6 +4,5 @@ pub(in crate::ui) use super::super::helpers::{
     shell_quote_with_home, shell_single_quote, truncate_msg,
 };
 pub(in crate::ui) use super::super::text_edit::{
-    backspace_at_cursor, clamp_cursor_to_text, delete_at_cursor, insert_char_at_cursor,
     set_text_and_cursor,
 };

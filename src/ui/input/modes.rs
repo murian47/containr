@@ -1,8 +1,11 @@
 use super::context::InputCtx;
 use crate::ui::render::utils::write_text_file;
-use crate::ui::{
+use crate::ui::core::types::{InspectMode, LogsMode};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::ShellView;
+use crate::ui::text_edit::{
     backspace_at_cursor, clamp_cursor_to_text, delete_at_cursor, insert_char_at_cursor,
-    set_text_and_cursor, App, InspectMode, LogsMode, ShellView,
+    set_text_and_cursor,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 

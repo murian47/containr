@@ -1,5 +1,7 @@
 use crate::ui::commands;
-use crate::ui::{ActionRequest, App, Connection, InspectTarget};
+use crate::ui::core::requests::{ActionRequest, Connection};
+use crate::ui::core::types::InspectTarget;
+use crate::ui::state::app::App;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 
