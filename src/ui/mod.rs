@@ -29,9 +29,6 @@ pub use core::run::run_tui;
 pub(in crate::ui) use internal::*;
 
 #[cfg(test)]
-pub(crate) use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
-
-#[cfg(test)]
 #[path = "../tests/ui_tests.rs"]
 mod tests;
 #[cfg(all(test, feature = "integration"))]

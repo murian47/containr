@@ -1,5 +1,6 @@
 use super::*;
 use crate::config::{DockerCmd, RegistriesConfig, ServerEntry};
+use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use serde_json::json;
