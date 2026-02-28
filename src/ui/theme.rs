@@ -8,6 +8,7 @@
 use anyhow::Context as _;
 use ratatui::style::{Color, Modifier, Style};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -416,22 +417,104 @@ pub fn themes_dir_from_config_path(config_path: &Path) -> PathBuf {
         .join("themes")
 }
 
-pub fn list_theme_names(config_path: &Path) -> anyhow::Result<Vec<String>> {
-    let dir = themes_dir_from_config_path(config_path);
-    if !dir.exists() {
-        return Ok(vec![]);
+fn push_unique_dir(dirs: &mut Vec<PathBuf>, seen: &mut HashSet<PathBuf>, dir: PathBuf) {
+    if seen.insert(dir.clone()) {
+        dirs.push(dir);
     }
+}
+
+fn executable_theme_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut seen = HashSet::new();
+
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(exe_dir) = exe.parent()
+    {
+        push_unique_dir(&mut dirs, &mut seen, exe_dir.join("themes"));
+        push_unique_dir(&mut dirs, &mut seen, exe_dir.join("../themes"));
+        push_unique_dir(&mut dirs, &mut seen, exe_dir.join("../../themes"));
+        push_unique_dir(
+            &mut dirs,
+            &mut seen,
+            exe_dir.join("../share/containr/themes"),
+        );
+        push_unique_dir(
+            &mut dirs,
+            &mut seen,
+            exe_dir.join("../../share/containr/themes"),
+        );
+        push_unique_dir(&mut dirs, &mut seen, exe_dir.join("../Resources/themes"));
+    }
+
+    dirs
+}
+
+fn system_theme_dirs() -> Vec<PathBuf> {
+    vec![
+        PathBuf::from("/usr/local/share/containr/themes"),
+        PathBuf::from("/usr/share/containr/themes"),
+    ]
+}
+
+pub fn theme_search_dirs(config_path: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut seen = HashSet::new();
+
+    push_unique_dir(
+        &mut dirs,
+        &mut seen,
+        themes_dir_from_config_path(config_path),
+    );
+
+    if let Some(manifest_dir) = option_env!("CARGO_MANIFEST_DIR") {
+        push_unique_dir(&mut dirs, &mut seen, Path::new(manifest_dir).join("themes"));
+    }
+
+    for dir in executable_theme_dirs() {
+        push_unique_dir(&mut dirs, &mut seen, dir);
+    }
+    for dir in system_theme_dirs() {
+        push_unique_dir(&mut dirs, &mut seen, dir);
+    }
+
+    dirs
+}
+
+fn theme_path_in_dir(dir: &Path, name: &str) -> PathBuf {
+    dir.join(format!("{name}.json"))
+}
+
+pub fn find_theme_path(config_path: &Path, name: &str) -> Option<PathBuf> {
+    for dir in theme_search_dirs(config_path) {
+        let path = theme_path_in_dir(&dir, name);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+pub fn list_theme_names(config_path: &Path) -> anyhow::Result<Vec<String>> {
     let mut out: Vec<String> = Vec::new();
-    for ent in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
-        let ent = ent?;
-        if !ent.file_type()?.is_file() {
+    let mut seen = HashSet::new();
+    for dir in theme_search_dirs(config_path) {
+        if !dir.exists() {
             continue;
         }
-        let name = ent.file_name().to_string_lossy().to_string();
-        if let Some(stem) = name.strip_suffix(".json")
-            && !stem.starts_with('.')
+        for ent in
+            fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))?
         {
-            out.push(stem.to_string());
+            let ent = ent?;
+            if !ent.file_type()?.is_file() {
+                continue;
+            }
+            let name = ent.file_name().to_string_lossy().to_string();
+            if let Some(stem) = name.strip_suffix(".json")
+                && !stem.starts_with('.')
+                && seen.insert(stem.to_string())
+            {
+                out.push(stem.to_string());
+            }
         }
     }
     out.sort_by_key(|a| a.to_lowercase());
@@ -441,29 +524,24 @@ pub fn list_theme_names(config_path: &Path) -> anyhow::Result<Vec<String>> {
 pub fn ensure_default_theme_exists(config_path: &Path) -> anyhow::Result<()> {
     let dir = themes_dir_from_config_path(config_path);
     fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;
-    let path = dir.join("default.json");
-    if path.exists() {
+    if find_theme_path(config_path, "default").is_some() {
         return Ok(());
     }
-    save_theme(config_path, "default", &default_theme_spec())?;
-    Ok(())
+    let path = theme_path_in_dir(&dir, "default");
+    let bytes =
+        serde_json::to_vec_pretty(&default_theme_spec()).context("failed to serialize theme")?;
+    fs::write(&path, bytes).with_context(|| format!("failed to write {}", path.display()))
 }
 
 pub fn theme_path(config_path: &Path, name: &str) -> PathBuf {
-    themes_dir_from_config_path(config_path).join(format!("{name}.json"))
+    theme_path_in_dir(&themes_dir_from_config_path(config_path), name)
 }
 
 pub fn load_theme(config_path: &Path, name: &str) -> anyhow::Result<ThemeSpec> {
     ensure_default_theme_exists(config_path)?;
-    let path = theme_path(config_path, name);
-    if !path.exists() {
-        // Fallback to default.
-        let fallback = theme_path(config_path, "default");
-        let bytes = fs::read(&fallback)
-            .with_context(|| format!("failed to read {}", fallback.display()))?;
-        return serde_json::from_slice(&bytes)
-            .with_context(|| format!("failed to parse {}", fallback.display()));
-    }
+    let path = find_theme_path(config_path, name)
+        .or_else(|| find_theme_path(config_path, "default"))
+        .ok_or_else(|| anyhow::anyhow!("no theme files found"))?;
     let bytes = fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let mut spec: ThemeSpec = serde_json::from_slice(&bytes)
         .with_context(|| format!("failed to parse {}", path.display()))?;

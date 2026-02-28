@@ -64,7 +64,8 @@
 
 ## 11. Themes
 - Switch: `:theme select`
-- Files: `themes/*.toml`
+- Files: user overrides under `~/.config/containr/themes/*.json`
+- Built-in themes: loaded from `themes/` relative to the bundle/workspace or from system paths like `/usr/share/containr/themes`
 - Active theme: `active_theme` in `config.json`
 
 ## 12. Messages & Logs

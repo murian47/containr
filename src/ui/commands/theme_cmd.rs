@@ -1,8 +1,10 @@
 //! Theme command implementation (`:theme ...`).
 //!
-//! Theme files are stored next to the main config:
-//! - `$XDG_CONFIG_HOME/containr/themes/<name>.json`
-//! - fallback: `$HOME/.config/containr/themes/<name>.json`
+//! Theme files are loaded from multiple sources:
+//! - user overrides: `$XDG_CONFIG_HOME/containr/themes/<name>.json`
+//! - fallback user dir: `$HOME/.config/containr/themes/<name>.json`
+//! - development/package dirs like `themes/` next to the workspace or binary
+//! - system install dirs like `/usr/local/share/containr/themes` and `/usr/share/containr/themes`
 //!
 //! The active theme name is persisted in the main config file.
 
@@ -55,8 +57,9 @@ pub(in crate::ui) fn edit_theme(app: &mut App, name: &str) -> anyhow::Result<()>
     theme::ensure_default_theme_exists(&app.config_path)?;
     let path = theme::theme_path(&app.config_path, &name);
     if !path.exists() {
-        // Create as copy of default.
-        let mut spec = theme::default_theme_spec();
+        // Editing a built-in theme creates a writable user override copy.
+        let mut spec = theme::load_theme(&app.config_path, &name)
+            .unwrap_or_else(|_| theme::default_theme_spec());
         spec.name = name.clone();
         theme::save_theme(&app.config_path, &name, &spec)?;
     }
@@ -77,7 +80,11 @@ pub(in crate::ui) fn delete_theme(app: &mut App, name: &str) -> anyhow::Result<(
     let name = validate_theme_name(name)?;
     anyhow::ensure!(name != "default", "cannot delete default theme");
     let path = theme::theme_path(&app.config_path, &name);
-    anyhow::ensure!(path.exists(), "theme does not exist: {}", path.display());
+    anyhow::ensure!(
+        path.exists(),
+        "theme does not exist in user overrides: {}",
+        path.display()
+    );
     let dir = theme::themes_dir_from_config_path(&app.config_path);
     let root = fs::canonicalize(&dir)?;
     let target = fs::canonicalize(&path)?;
