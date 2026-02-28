@@ -14,14 +14,15 @@ pub(in crate::ui) struct ShellCmdlineState {
     pub(in crate::ui) mode: bool,
     pub(in crate::ui) input: String,
     pub(in crate::ui) cursor: usize,
+    // When set, Enter resolves the confirmation instead of parsing the current input buffer.
     pub(in crate::ui) confirm: Option<ShellConfirm>,
     pub(in crate::ui) history: CmdHistory,
 }
 
 #[derive(Debug, Clone)]
 pub(in crate::ui) struct ShellMessagesState {
-    pub(in crate::ui) scroll: usize, // cursor (absolute); usize::MAX = last
-    pub(in crate::ui) hscroll: usize, // horizontal scroll
+    pub(in crate::ui) scroll: usize, // absolute cursor; usize::MAX means "follow newest"
+    pub(in crate::ui) hscroll: usize, // horizontal scroll offset for long log/message lines
     pub(in crate::ui) return_view: ShellView,
 }
 
@@ -39,6 +40,7 @@ pub(in crate::ui) struct ThemeSelectorState {
     pub(in crate::ui) page_size: usize,
     pub(in crate::ui) center_on_open: bool,
     pub(in crate::ui) return_view: ShellView,
+    // The selector previews themes transiently. base_theme_name is restored on cancel.
     pub(in crate::ui) base_theme_name: String,
     pub(in crate::ui) preview_theme: theme::ThemeSpec,
     pub(in crate::ui) error: Option<String>,
@@ -59,6 +61,7 @@ pub(in crate::ui) struct InspectState {
     pub(in crate::ui) scroll_top: usize,
     pub(in crate::ui) scroll: usize,
     pub(in crate::ui) query: String,
+    // expanded stores JSON pointer paths. Rebuilding lines preserves fold state across refreshes.
     pub(in crate::ui) expanded: HashSet<String>,
     pub(in crate::ui) match_paths: Vec<String>,
     pub(in crate::ui) path_rank: HashMap<String, usize>,
@@ -75,6 +78,7 @@ pub(in crate::ui) struct LogsState {
     pub(in crate::ui) text: Option<String>,
     pub(in crate::ui) for_id: Option<String>,
     pub(in crate::ui) tail: usize,
+    // cursor is the logical line cursor; scroll_top is the first visible line.
     pub(in crate::ui) cursor: usize,
     pub(in crate::ui) scroll_top: usize,
     pub(in crate::ui) select_anchor: Option<usize>,
@@ -87,6 +91,7 @@ pub(in crate::ui) struct LogsState {
     pub(in crate::ui) input_cursor: usize,
     pub(in crate::ui) command_cursor: usize,
     pub(in crate::ui) cmd_history: CmdHistory,
+    // Regex mode is optional and may hold a compile error while the raw query stays intact.
     pub(in crate::ui) use_regex: bool,
     pub(in crate::ui) regex: Option<Regex>,
     pub(in crate::ui) regex_error: Option<String>,
@@ -99,6 +104,8 @@ pub(in crate::ui) struct TemplatesState {
     pub(in crate::ui) dir: PathBuf,
     pub(in crate::ui) kind: TemplatesKind,
 
+    // Stack templates and network templates intentionally share one state object because the UI
+    // exposes them through the same module and command surface.
     pub(in crate::ui) templates: Vec<TemplateEntry>,
     pub(in crate::ui) templates_selected: usize,
     pub(in crate::ui) templates_error: Option<String>,
@@ -124,6 +131,7 @@ pub(in crate::ui) struct TemplatesState {
 
 #[derive(Clone, Debug)]
 pub(in crate::ui) struct TemplateEditSnapshot {
+    // Snapshot used to detect whether an external editor/AI tool actually changed the file.
     pub(in crate::ui) kind: TemplatesKind,
     pub(in crate::ui) name: String,
     pub(in crate::ui) path: PathBuf,
@@ -136,6 +144,8 @@ pub(in crate::ui) fn shell_begin_confirm(
     label: impl Into<String>,
     cmdline: impl Into<String>,
 ) {
+    // Confirmations always take over the command line instead of opening a separate dialog. This
+    // keeps destructive confirmation flows consistent with the rest of the keyboard-driven UI.
     app.shell_cmdline.mode = true;
     app.shell_cmdline.input.clear();
     app.shell_cmdline.cursor = 0;
@@ -150,6 +160,8 @@ pub(in crate::ui) fn input_window_with_cursor(
     cursor: usize,
     width: usize,
 ) -> (String, String, String) {
+    // Returns a windowed view around the cursor: text before the cursor cell, the cursor cell
+    // itself, and the remaining visible tail. Renderers can style the middle cell as the cursor.
     let width = width.max(1);
     let chars: Vec<char> = text.chars().collect();
     let len = chars.len();

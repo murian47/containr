@@ -53,6 +53,8 @@ fn set_templates_kind(app: &mut App, v: &str) -> bool {
             return false;
         }
     }
+    // Template kind is view-global state. Switching it must refresh the corresponding list and
+    // move the shell into the Templates module so subsequent actions operate on the same context.
     if app.templates_state.kind == TemplatesKind::Stacks {
         app.refresh_templates();
     } else {
@@ -96,6 +98,8 @@ pub(in crate::ui) fn handle_template(
 ) -> bool {
     let sub = args.first().copied().unwrap_or("");
 
+    // The command handler intentionally routes stack and network templates through one shared
+    // entry point. The selected TemplatesKind decides which backing files and deploy flow apply.
     match sub {
         "kind" => {
             // Alias for :templates kind ...
@@ -167,6 +171,8 @@ pub(in crate::ui) fn handle_template(
                 begin_export_prompt(app, "from-stack");
                 return true;
             };
+            // Export operates on the visible stack selection, not on a free-form name lookup.
+            // That keeps the command aligned with the current UI focus and avoids ambiguous picks.
             let stack_name =
                 if app.shell_view == ShellView::Stacks || app.active_view == ActiveView::Stacks {
                     app.selected_stack_entry().map(|s| s.name.clone())
@@ -326,6 +332,7 @@ pub(in crate::ui) fn handle_template(
             match app.templates_state.kind {
                 TemplatesKind::Stacks => {
                     if recreate && !force {
+                        // Recreate is destructive enough to require the generic confirmation flow.
                         let label = format!("template recreate {name}");
                         shell_begin_confirm(app, label, cmdline_full);
                         return true;

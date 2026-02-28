@@ -26,6 +26,8 @@ pub(in crate::ui) async fn perform_template_deploy(
     if docker.docker_cmd.is_empty() {
         anyhow::bail!("no server configured");
     }
+    // Deploys always target a per-template application directory under the remote/local containr
+    // config tree. That avoids requiring privileged paths and keeps redeploy/update predictable.
     let remote_dir = match runner {
         Runner::Local => {
             let home = std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME is not set"))?;
@@ -67,6 +69,9 @@ pub(in crate::ui) async fn run_with_local_compose_fallback(
         Ok(out) => Ok(out),
         Err(e) => {
             let msg = format!("{:#}", e);
+            // Homebrew Docker on macOS may be configured with the Desktop credential helper even
+            // when Docker Desktop is not installed. For local runs we transparently retry with an
+            // isolated DOCKER_CONFIG that contains no helper configuration.
             let is_missing_desktop_helper = msg.contains("docker-credential-desktop")
                 && msg.contains("executable file not found");
             if !matches!(runner, Runner::Local) || !is_missing_desktop_helper {
@@ -104,6 +109,8 @@ pub(in crate::ui) async fn perform_stack_update(
     if docker.docker_cmd.is_empty() {
         anyhow::bail!("no server configured");
     }
+    // Stack updates are anchored to an already deployed compose directory. We probe the candidate
+    // paths in order because older deployments may still live under historical names.
     let mut selected_dir: Option<String> = None;
     for dir in compose_dirs {
         let dir = dir.trim();
@@ -173,6 +180,8 @@ pub(in crate::ui) async fn perform_stack_update(
     }
     let mut to_recreate: Vec<String> = Vec::new();
     if force {
+        // "Update all" means "recreate everything in the compose project" regardless of digest
+        // comparison. The service list is still used to keep the command scoped to the stack.
         for svc in services {
             if !svc.name.trim().is_empty() {
                 to_recreate.push(svc.name.clone());

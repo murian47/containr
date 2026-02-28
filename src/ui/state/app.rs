@@ -18,6 +18,7 @@ use crate::ui::state::shell_types::{
 use crate::ui::theme;
 
 pub(in crate::ui) struct App {
+    // Core Docker inventory and derived usage/reference caches.
     pub(in crate::ui) containers: Vec<ContainerRow>,
     pub(in crate::ui) images: Vec<ImageRow>,
     pub(in crate::ui) volumes: Vec<VolumeRow>,
@@ -72,6 +73,8 @@ pub(in crate::ui) struct App {
     pub(in crate::ui) net_template_action_error: HashMap<String, LastActionError>,
     pub(in crate::ui) inspect: InspectState,
 
+    // Server/connection state. current_target is the effective runner target string and may differ
+    // from active_server when the app is started without a named server entry.
     pub(in crate::ui) servers: Vec<ServerEntry>,
     pub(in crate::ui) active_server: Option<String>,
     pub(in crate::ui) server_selected: usize,
@@ -94,6 +97,8 @@ pub(in crate::ui) struct App {
     pub(in crate::ui) theme: theme::ThemeSpec,
     pub(in crate::ui) header_logo_seed: u64,
 
+    // Shell-* fields drive the outer TUI chrome and focus model. active_view remains the semantic
+    // list selection, while shell_view decides which top-level module or overlay is rendered.
     pub(in crate::ui) shell_view: ShellView,
     pub(in crate::ui) shell_last_main_view: ShellView,
     pub(in crate::ui) shell_focus: ShellFocus,
@@ -119,6 +124,7 @@ pub(in crate::ui) struct App {
     pub(in crate::ui) image_update_debug: bool,
     pub(in crate::ui) image_update_autocheck: bool,
 
+    // Session messages and the optional dock are append-only UI history for the current process.
     pub(in crate::ui) session_msgs: Vec<SessionMsg>,
     pub(in crate::ui) messages_seen_len: usize,
     pub(in crate::ui) shell_msgs: ShellMessagesState,
@@ -129,6 +135,7 @@ pub(in crate::ui) struct App {
     pub(in crate::ui) keymap_parsed: HashMap<(KeyScope, KeySpec), String>,
     pub(in crate::ui) keymap_defaults: HashMap<(KeyScope, KeySpec), String>,
 
+    // Template/Git/registry state is persisted separately and mirrored here for quick rendering.
     pub(in crate::ui) templates_state: TemplatesState,
     pub(in crate::ui) image_updates: HashMap<String, ImageUpdateEntry>,
     pub(in crate::ui) image_updates_inflight: HashSet<String>,

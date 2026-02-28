@@ -70,6 +70,9 @@ pub(in crate::ui) fn open_console(app: &mut App, user: Option<&str>, shell: &str
         .map(|u| format!("-u {}", shell_single_quote(u.trim())))
         .unwrap_or_default();
 
+    // We generate shell-specific prompt setup because interactive shells do not agree on how PS1
+    // escapes are interpreted. The command is later embedded into docker exec and possibly SSH,
+    // so quoting must remain conservative.
     let shell_cmd = if shell == "bash" {
         format!("env PS1={ps1_bash} bash --noprofile --norc -i")
     } else if shell == "sh" {
@@ -173,6 +176,8 @@ pub(in crate::ui) fn execute_action(
     logs_req_tx: &mpsc::UnboundedSender<(String, usize)>,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
+    // ShellAction is the UI-facing action vocabulary. This function is the narrow bridge between
+    // key/menu triggers and the lower-level command/request machinery.
     match a {
         ShellAction::Inspect => {
             app.enter_inspect(inspect_req_tx);
@@ -508,6 +513,8 @@ pub(in crate::ui) fn edit_selected_net_template(app: &mut App) {
 }
 
 pub(in crate::ui) fn template_name_from_stack(app: &App, stack_name: &str) -> Option<String> {
+    // A stack can be traced back to a local template only through the injected template label on
+    // one of its containers. If the label is absent, the stack is treated as externally managed.
     let id: String = app
         .containers
         .iter()
@@ -526,6 +533,8 @@ pub(in crate::ui) fn stack_compose_dirs(
     stack_name: &str,
     template_name: Option<&str>,
 ) -> Vec<String> {
+    // Update/redeploy needs a best-effort search path because stacks may have been deployed from
+    // the local template name, the stack name, or an older historical directory layout.
     let mut names: Vec<String> = Vec::new();
     let stack_name = stack_name.trim();
     if let Some(name) = template_name {

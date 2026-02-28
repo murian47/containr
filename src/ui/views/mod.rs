@@ -1,7 +1,7 @@
 //! View modules (Phase 1 scaffold)
 //!
-//! Ziel: render-spezifische Funktionen pro View kapseln, ohne Logik zu ändern.
-//! Aktuell nur Platzhalter; Rendering liegt in `ui/render/*`.
+//! Goal: keep view-specific entry points grouped by view without changing behavior.
+//! Rendering still lives in `ui/render/*`; these modules are the view-oriented layer.
 
 pub mod containers;
 pub mod dashboard;

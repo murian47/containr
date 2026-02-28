@@ -60,6 +60,8 @@ pub async fn run_tui(
     const SLEEP_GAP_SECS: u64 = 120;
     const ERROR_PAUSE_THRESHOLD: u32 = 3;
     let mut terminal = setup_terminal().context("failed to setup terminal")?;
+    // Image rendering is optional. When the terminal or config does not support kitty graphics,
+    // the dashboard falls back to the text/Unicode renderer and the rest of the UI keeps working.
     let dashboard_picker = if ascii_only || !kitty_graphics {
         None
     } else {
@@ -121,8 +123,9 @@ pub async fn run_tui(
     app.templates_state.dir = expand_user_path(&templates_dir);
     app.refresh_templates();
 
-    // Background fetch: container list, inspect, logs, and actions are done via
-    // background tasks so the UI stays responsive.
+    // All Docker/SSH work is routed through background tasks. The UI thread only sends requests,
+    // consumes results, and mutates App state. Keeping that split explicit avoids rendering code
+    // accidentally blocking on remote IO.
     let (result_tx, mut result_rx) = mpsc::unbounded_channel::<(
         String,
         anyhow::Result<(
@@ -208,7 +211,8 @@ pub async fn run_tui(
         if app.should_quit {
             break;
         }
-        // Avoid stale "in-progress" markers if the background action result gets lost.
+        // Markers are purely visual state. They expire locally so the UI can recover even if a
+        // background reply is lost or a remote command terminates without sending a final update.
         let now = Instant::now();
         if let Some(last) = app.last_loop_at {
             if now.duration_since(last) > Duration::from_secs(SLEEP_GAP_SECS) {
@@ -280,6 +284,9 @@ pub async fn run_tui(
                     );
                     if let Some(req) = app.shell_pending_interactive.take() {
                         let runner = current_runner_from_app(&app);
+                        // Interactive child processes own the terminal while they run. We must
+                        // restore the raw TUI terminal afterwards and then reconcile any state
+                        // that may have changed on disk while the user was in the editor/shell.
                         restore_terminal(&mut terminal)?;
                         let res = match req {
                             ShellInteractive::RunCommand { cmd } => {
@@ -292,6 +299,8 @@ pub async fn run_tui(
                         terminal = setup_terminal()?;
                         if let Some(name) = app.templates_state.templates_refresh_after_edit.take()
                         {
+                            // Editors and external AI tools mutate files outside the TUI. Reload,
+                            // reselect the edited template, then update derived Git/deploy state.
                             app.refresh_templates();
                             if let Some(idx) = app
                                 .templates_state
@@ -330,6 +339,8 @@ pub async fn run_tui(
                             );
                         }
                         if let Some(name) = app.theme_refresh_after_edit.take() {
+                            // Theme reload is local and cheap; the dashboard image must be rebuilt
+                            // because kitty images are themed raster output, not semantic widgets.
                             theme_cmd::reload_active_theme_after_edit(&mut app, &name);
                             app.reset_dashboard_image();
                         }
