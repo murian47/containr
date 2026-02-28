@@ -1,8 +1,6 @@
-use crate::ui::state::app::App;
 use crate::ui::theme;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Paragraph, Wrap};
 
 #[allow(clippy::vec_init_then_push)]
 pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
@@ -23,6 +21,31 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     };
 
     let mut out: Vec<Line<'static>> = Vec::new();
+
+    push_general(&mut out, &h, &item);
+    push_keymap(&mut out, &h, &item);
+    push_theme(&mut out, &h, &item);
+    push_messages(&mut out, &h, &item);
+    push_git(&mut out, &h, &item);
+    push_servers(&mut out, &h, &item);
+    push_templates(&mut out, &h, &item);
+    push_registries(&mut out, &h, &item);
+    push_stacks(&mut out, &h, &item);
+    push_containers(&mut out, &h, &item);
+    push_images(&mut out, &h, &item);
+    push_volumes(&mut out, &h, &item);
+    push_networks(&mut out, &h, &item);
+    push_logs(&mut out, &h, &item);
+    push_inspect(&mut out, &h, &item);
+
+    out
+}
+
+fn push_general(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("General"));
     out.push(item("Always", "F1", "Open help"));
     out.push(item("Global", ":q", "Quit (prompts y/n)"));
@@ -131,7 +154,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Enable Kitty graphics in dashboard (requires Kitty-compatible terminal)",
     ));
     out.push(Line::from(""));
+}
 
+fn push_keymap(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Keymap"));
     out.push(item("Note", "^x", "Means Ctrl-x (caret notation)"));
     out.push(item(
@@ -170,7 +199,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Destructive commands cannot be mapped to plain single letters",
     ));
     out.push(Line::from(""));
+}
 
+fn push_theme(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Theme"));
     out.push(item(
         "Global",
@@ -198,7 +233,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Delete theme (! skips confirmation)",
     ));
     out.push(Line::from(""));
+}
 
+fn push_messages(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Messages"));
     out.push(item("Global", "^g", "Open full messages view"));
     out.push(item(
@@ -213,7 +254,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Save messages to file",
     ));
     out.push(Line::from(""));
+}
 
+fn push_git(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Git"));
     out.push(item(
         "Git",
@@ -245,7 +292,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Clone repo (only if empty)",
     ));
     out.push(Line::from(""));
+}
 
+fn push_servers(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Servers"));
     out.push(item("Global", ":server list", "List configured servers"));
     out.push(item("Global", ":server use <name>", "Switch active server"));
@@ -266,7 +319,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Add local engine entry (quote --cmd if it contains spaces, e.g. --cmd \"sudo docker\"; use \\' inside single quotes)",
     ));
     out.push(Line::from(""));
+}
 
+fn push_templates(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Templates"));
     out.push(item(
         "Templates",
@@ -335,7 +394,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Create network on active server (! = recreate if already exists)",
     ));
     out.push(Line::from(""));
+}
 
+fn push_registries(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Registries"));
     out.push(item(
         "Registries",
@@ -398,7 +463,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Remove registry entry",
     ));
     out.push(Line::from(""));
+}
 
+fn push_stacks(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Stacks"));
     out.push(item(
         "Stacks",
@@ -421,7 +492,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Filter stacks list (running only or show all)",
     ));
     out.push(Line::from(""));
+}
 
+fn push_containers(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Containers"));
     out.push(item(
         "Containers",
@@ -444,7 +521,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Toggle stack (tree) view",
     ));
     out.push(Line::from(""));
+}
 
+fn push_images(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Images"));
     out.push(item(
         "Images",
@@ -462,7 +545,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Remove selected/marked image",
     ));
     out.push(Line::from(""));
+}
 
+fn push_volumes(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Volumes"));
     out.push(item(
         "Volumes",
@@ -470,7 +559,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Remove selected/marked volume",
     ));
     out.push(Line::from(""));
+}
 
+fn push_networks(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Networks"));
     out.push(item(
         "Networks",
@@ -479,7 +574,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     ));
     out.push(item("Networks", "^d", "Remove (default binding)"));
     out.push(Line::from(""));
+}
 
+fn push_logs(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Logs"));
     out.push(item("Logs", "^l", "Reload logs (default binding)"));
     out.push(item("Logs", "^c", "Copy selected lines to clipboard"));
@@ -500,7 +601,13 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Logs", "set regex", "Enable regex search"));
     out.push(item("Logs", "set noregex", "Disable regex search"));
     out.push(Line::from(""));
+}
 
+fn push_inspect(
+    out: &mut Vec<Line<'static>>,
+    h: &impl Fn(&str) -> Line<'static>,
+    item: &impl Fn(&str, &str, &str) -> Line<'static>,
+) {
     out.push(h("Inspect"));
     out.push(item("Inspect", "/", "Enter search mode"));
     out.push(item("Inspect", ":", "Enter command mode"));
@@ -520,34 +627,4 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     ));
     out.push(item("Inspect", "y", "Copy selected value (pretty)"));
     out.push(item("Inspect", "p", "Copy selected JSON pointer path"));
-    out
-}
-
-pub(in crate::ui) fn draw_shell_help_view(
-    f: &mut ratatui::Frame,
-    app: &mut App,
-    area: ratatui::layout::Rect,
-) {
-    let bg = app.theme.overlay.to_style();
-    f.render_widget(Block::default().style(bg), area);
-    let inner = area.inner(ratatui::layout::Margin {
-        vertical: 0,
-        horizontal: 1,
-    });
-
-    let lines = shell_help_lines(&app.theme);
-    let total = lines.len().max(1);
-    let view_h = inner.height.max(1) as usize;
-    let max_scroll = total.saturating_sub(view_h);
-    let top = if app.shell_help.scroll == usize::MAX {
-        max_scroll
-    } else {
-        app.shell_help.scroll.min(max_scroll)
-    };
-    app.shell_help.scroll = top;
-    let shown: Vec<Line> = lines.into_iter().skip(top).take(view_h).collect();
-    f.render_widget(
-        Paragraph::new(shown).style(bg).wrap(Wrap { trim: false }),
-        inner,
-    );
 }
