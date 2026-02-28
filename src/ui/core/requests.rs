@@ -1,3 +1,8 @@
+//! Request types sent from the UI thread to background workers.
+//!
+//! The UI constructs these enums and background tasks execute them asynchronously. This keeps the
+//! event loop responsive while preserving a strongly typed boundary between intent and execution.
+
 use std::path::PathBuf;
 
 use crate::docker::{ContainerAction, DockerCfg};

@@ -1,3 +1,8 @@
+//! Feature-oriented UI logic.
+//!
+//! Each submodule groups behavior around a domain concept such as templates, dashboard, registry,
+//! or container selection. These modules sit between raw state and rendering.
+
 pub(in crate::ui) mod containers;
 pub(in crate::ui) mod dashboard;
 pub(in crate::ui) mod inspect;

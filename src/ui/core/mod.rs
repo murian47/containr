@@ -1,3 +1,8 @@
+//! Core TUI runtime modules.
+//!
+//! The `core` layer provides the non-rendering plumbing for the UI: runtime, requests, state
+//! helpers, background task spawning, key handling primitives, and deploy/update operations.
+
 pub(in crate::ui) mod clock;
 pub(in crate::ui) mod init;
 pub(in crate::ui) mod key_types;

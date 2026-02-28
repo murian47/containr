@@ -1,3 +1,8 @@
+//! Shell chrome renderers.
+//!
+//! Header, title, main list dispatch, and command line rendering live here. These functions define
+//! the visual shell around the domain-specific list/detail views.
+
 use crate::ui::commands;
 use crate::ui::core::runtime::current_server_label;
 use crate::ui::core::types::{InspectMode, LogsMode};

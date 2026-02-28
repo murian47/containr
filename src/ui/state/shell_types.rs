@@ -1,3 +1,9 @@
+//! TUI-facing state types for shell views, overlays, and input modes.
+//!
+//! These types describe how the outer shell behaves: focus, overlays, command line, theme
+//! selector, logs, inspect, and template-specific view state. They intentionally do not contain
+//! Docker runner logic.
+
 use crate::ui::cmd_history::CmdHistory;
 use crate::ui::core::requests::ShellConfirm;
 use crate::ui::core::types::NetTemplateEntry;

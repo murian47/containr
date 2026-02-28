@@ -1,3 +1,8 @@
+//! Input mode dispatch for modal views.
+//!
+//! Logs, inspect, and the theme selector all have mode-specific editing/search behavior. This
+//! module decides whether a key press should be consumed by one of those modal handlers.
+
 mod inspect;
 mod logs;
 mod theme_selector;

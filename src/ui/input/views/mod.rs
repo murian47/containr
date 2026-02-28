@@ -1,3 +1,8 @@
+//! View-level navigation dispatch.
+//!
+//! This module routes generic navigation keys to the currently active shell area and then hands
+//! off to more specific submodules for sidebar, overlays, template view, or main list behavior.
+
 mod main_views;
 mod overlays;
 mod registries;

@@ -1,3 +1,9 @@
+//! Rendering layer for the shell UI.
+//!
+//! The render tree is organized by screen region and widget family. Rendering should read `App`
+//! state and produce styled output, but avoid mutating application logic except for minimal layout
+//! bookkeeping required by a view.
+
 pub mod badges;
 pub mod breadcrumbs;
 pub mod clipboard;

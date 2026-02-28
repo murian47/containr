@@ -1,3 +1,8 @@
+//! State mutation helpers for user-triggered actions.
+//!
+//! These functions translate a UI action into marker updates plus background requests. They do not
+//! perform Docker operations themselves; that work is delegated to background tasks.
+
 use crate::docker::ContainerAction;
 use crate::ui::core::requests::ActionRequest;
 use crate::ui::core::types::{ActionMarker, SimpleMarker};

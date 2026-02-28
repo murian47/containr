@@ -1,3 +1,8 @@
+//! Dashboard data collection and rendering support.
+//!
+//! Parsing and image rendering are kept separate so the dashboard can operate in plain text mode
+//! as well as enhanced kitty-image mode.
+
 mod data;
 mod image;
 mod state;

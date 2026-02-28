@@ -1,3 +1,8 @@
+//! Template feature surface.
+//!
+//! This module exposes stack/network template labeling, filesystem operations, export helpers, and
+//! derived metadata used by deploy, git, and UI flows.
+
 mod labels;
 pub(in crate::ui) mod ops;
 mod state;

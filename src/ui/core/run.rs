@@ -1,3 +1,8 @@
+//! TUI runtime entrypoint and event loop.
+//!
+//! This module owns terminal setup/teardown, background task wiring, the main event loop, and the
+//! reconciliation step after external interactive tools return control to the TUI.
+
 use anyhow::Context as _;
 use crossterm::event::{self, Event, KeyEventKind};
 use serde_json::Value;

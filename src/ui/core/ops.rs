@@ -1,3 +1,9 @@
+//! Background Docker/compose operations.
+//!
+//! These functions are executed from background tasks and perform the actual remote/local work for
+//! deploy, update, push, and export flows. They should stay free of UI rendering concerns and
+//! return structured text/results that the UI can surface.
+
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};

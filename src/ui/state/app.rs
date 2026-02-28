@@ -1,3 +1,10 @@
+//! Central in-memory UI state.
+//!
+//! `App` is the single mutable state object for the TUI. Rendering, input handling, background
+//! task result application, and persistence all operate on this structure. Keep it as a state
+//! container: orchestration belongs here, but heavy IO and rendering details belong in their
+//! dedicated modules.
+
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Instant;

@@ -1,3 +1,8 @@
+//! Shared UI/core data types.
+//!
+//! This module holds lightweight types exchanged between state, background tasks, rendering, and
+//! input handling. Keep it free of business logic except for tiny classification helpers.
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;

@@ -1,3 +1,8 @@
+//! Root renderer for the shell UI.
+//!
+//! This module lays out the top-level shell frame and delegates individual regions to specialized
+//! renderers. It is the highest-level rendering entrypoint used by the event loop.
+
 use std::time::Duration;
 
 use ratatui::layout::{Constraint, Direction, Layout};

@@ -1,3 +1,9 @@
+//! Image update state helpers and normalization.
+//!
+//! This module keeps the UI-side interpretation of image update results isolated from the registry
+//! fetching implementation. It is responsible for stable keys, display classification, and local
+//! state integration.
+
 use crate::domain::image_refs::{
     NormalizedImageRef, is_digest_only_image, normalize_image_ref_for_updates,
 };

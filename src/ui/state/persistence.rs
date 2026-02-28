@@ -1,3 +1,9 @@
+//! Persistence helpers for config and local runtime state.
+//!
+//! Configuration, deployment history, image update cache, and git-derived UI metadata are written
+//! from here. Callers should treat this module as the boundary between in-memory `App` state and
+//! files on disk.
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
