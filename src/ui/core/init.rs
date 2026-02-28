@@ -341,11 +341,11 @@ impl App {
             network_details_id: None,
         };
         app.shell_server_shortcuts = build_server_shortcuts(&app.servers);
-        if app.servers.len() > 1 {
-            app.shell_sidebar_selected = app.server_selected.saturating_add(1);
-        } else {
-            app.shell_sidebar_selected = app.server_selected;
-        }
+        let selected_server = app.server_selected;
+        crate::ui::render::sidebar::shell_sidebar_select_item(
+            &mut app,
+            crate::ui::state::shell_types::ShellSidebarItem::Server(selected_server),
+        );
         app.rebuild_keymap();
         if let Some(mode) = app.get_view_split_mode(app.shell_view) {
             app.shell_split_mode = mode;
