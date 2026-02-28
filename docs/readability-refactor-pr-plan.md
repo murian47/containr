@@ -26,14 +26,26 @@ Completed:
 Open:
 - Follow-up cleanup only (no blocker for this readability plan):
   - continue reducing remaining broad `pub(in crate::ui)` where feasible
-  - keep pruning broad re-export facades (`ui/internal/*`) as modules are touched
-  - split remaining mixed-purpose UI files before release:
-    - `src/ui/render/tables.rs` -> `render/tables/{containers,images,volumes,networks,common}.rs`
-    - `src/ui/input/views.rs` -> per-view handlers plus shared helpers
-    - `src/ui/render/help.rs` -> help sections by topic
-    - `src/ui/input/modes.rs` -> per-mode handlers
-    - `src/ui/render/theme_selector.rs` -> preview/sidebar/footer helpers
-    - `src/ui/commands/cmdline_cmd.rs` -> parser/dispatch/domain helpers
+  - keep narrowing module APIs as files are touched
+  - later naming cleanup candidates:
+    - `src/ui/commands/common.rs` -> `src/ui/commands/command_utils.rs`
+    - `src/ui/render/details/meta.rs` -> `src/ui/render/details/status_lines.rs`
+    - `src/ui/features/templates/ops/common.rs` -> `src/ui/features/templates/ops/compose_build.rs`
+    - `src/ui/keys.inc.rs` -> `src/ui/core/key_bindings.rs`
+
+Recently completed:
+- file naming cleanup for broad UI modules:
+  - `src/ui/actions.rs` -> `src/ui/ui_actions.rs`
+  - `src/ui/helpers.rs` -> `src/ui/shell_utils.rs`
+  - `src/ui/core/ops.rs` -> `src/ui/core/background_ops.rs`
+  - `src/ui/core/state.rs` -> `src/ui/core/state_helpers.rs`
+- split remaining mixed-purpose UI files before release:
+  - `src/ui/render/tables.rs` -> `render/tables/{containers,images,volumes,networks,common}.rs`
+  - `src/ui/input/views.rs` -> per-view handlers plus shared helpers
+  - `src/ui/render/help.rs` -> help sections by topic
+  - `src/ui/input/modes.rs` -> per-mode handlers
+  - `src/ui/render/theme_selector.rs` -> preview/sidebar/footer helpers
+  - `src/ui/commands/cmdline_cmd.rs` -> parser/dispatch/domain helpers
 
 Notes:
 - Refactor sequence so far stayed behavior-preserving and test-backed.

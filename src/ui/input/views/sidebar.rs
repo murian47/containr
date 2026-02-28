@@ -1,10 +1,10 @@
 use super::super::context::InputCtx;
-use crate::ui::actions;
 use crate::ui::render::sidebar::{
     shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ShellSidebarItem, ShellView};
+use crate::ui::ui_actions;
 use crossterm::event::{KeyCode, KeyEvent};
 
 pub(super) fn handle_sidebar_navigation(app: &mut App, key: KeyEvent, ctx: &InputCtx<'_>) {
@@ -32,7 +32,7 @@ pub(super) fn handle_sidebar_navigation(app: &mut App, key: KeyEvent, ctx: &Inpu
                         shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
                     }
                 },
-                ShellSidebarItem::Action(a) => actions::execute_action(
+                ShellSidebarItem::Action(a) => ui_actions::execute_action(
                     app,
                     a,
                     ctx.inspect_req_tx,

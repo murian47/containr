@@ -7,9 +7,9 @@ use crate::ui::core::runtime::{
 };
 use crate::ui::core::types::{DeployMarker, InspectTarget};
 use crate::ui::features::templates::template_id_from_labels;
-use crate::ui::helpers::{ensure_template_id, shell_single_quote};
 use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::render::utils::{is_container_stopped, shell_escape_sh_arg};
+use crate::ui::shell_utils::{ensure_template_id, shell_single_quote};
 use crate::ui::state::actions as state_actions;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{

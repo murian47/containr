@@ -10,7 +10,7 @@ use crate::ui::core::types::{
     DashboardAllState, DashboardHostState, DashboardState, IMAGE_UPDATE_TTL_SECS, InspectMode,
     LogsMode, RATE_LIMIT_WINDOW_SECS, StackDetailsFocus,
 };
-use crate::ui::helpers::build_server_shortcuts;
+use crate::ui::shell_utils::build_server_shortcuts;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{
     ActiveView, InspectState, ListMode, LogsState, ShellCmdlineState, ShellFocus, ShellHelpState,

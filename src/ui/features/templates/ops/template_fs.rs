@@ -1,6 +1,6 @@
 use super::common::{extract_template_description_from_file, validate_template_name};
-use crate::ui::helpers::extract_template_id;
 use crate::ui::render::highlight::split_yaml_comment;
+use crate::ui::shell_utils::extract_template_id;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::TemplatesKind;
 use serde_json::Value;

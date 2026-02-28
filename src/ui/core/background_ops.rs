@@ -15,7 +15,7 @@ use crate::docker::DockerCfg;
 use crate::runner::Runner;
 use crate::ui::core::types::{NetworkTemplateSpec, RegistryAuthResolved, StackUpdateService};
 use crate::ui::features::templates::render_compose_with_template_id;
-use crate::ui::helpers::{
+use crate::ui::shell_utils::{
     deploy_remote_dir_for, deploy_remote_net_dir_for, ensure_template_id, shell_quote_with_home,
     shell_single_quote, truncate_msg,
 };

@@ -1,14 +1,14 @@
 use super::CmdlineCtx;
 use crate::docker::DockerCfg;
-use crate::ui::actions::{
-    service_name_from_label_list, stack_compose_dirs, template_name_from_stack,
-};
 use crate::ui::core::requests::ActionRequest;
 use crate::ui::core::runtime::{current_docker_cmd_from_app, current_runner_from_app};
 use crate::ui::core::types::{DeployMarker, StackUpdateService};
 use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ActiveView, MsgLevel, ShellFocus, ShellView};
+use crate::ui::ui_actions::{
+    service_name_from_label_list, stack_compose_dirs, template_name_from_stack,
+};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -210,7 +210,7 @@ fn handle_stack_simple_action(
             {
                 images.insert(c.image.clone());
             }
-            crate::ui::actions::check_image_updates(
+            crate::ui::ui_actions::check_image_updates(
                 app,
                 images.into_iter().collect(),
                 ctx.action_req_tx,

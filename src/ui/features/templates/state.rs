@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use super::{extract_net_template_description, extract_template_description};
 use crate::ui::commands;
 use crate::ui::core::types::{NetTemplateEntry, TemplateEntry};
-use crate::ui::helpers::extract_template_id;
+use crate::ui::shell_utils::extract_template_id;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{
     GitRemoteStatus, MsgLevel, TemplateEditSnapshot, TemplatesKind,

@@ -10,7 +10,7 @@ use crate::docker::{self, ContainerRow, ImageRow, NetworkRow, VolumeRow};
 use crate::runner::Runner;
 use crate::services::image_update::ImageUpdateService;
 use crate::ssh::Ssh;
-use crate::ui::core::ops::{
+use crate::ui::core::background_ops::{
     perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy,
 };
 use crate::ui::core::requests::{ActionRequest, Connection};
@@ -19,7 +19,7 @@ use crate::ui::core::types::{DashboardSnapshot, InspectKind, InspectTarget, Usag
 use crate::ui::features::dashboard::{dashboard_command, parse_dashboard_output};
 use crate::ui::features::registry::registry_test;
 use crate::ui::features::templates::{export_net_template, export_stack_template};
-use crate::ui::helpers::{extract_container_ip, normalize_image_id};
+use crate::ui::shell_utils::{extract_container_ip, normalize_image_id};
 
 type OverviewResult = anyhow::Result<(
     Vec<ContainerRow>,

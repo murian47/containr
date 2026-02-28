@@ -48,7 +48,7 @@ pub(in crate::ui) fn handle_container(
             }
             let shell = shell.unwrap_or_else(|| "bash".to_string());
             let user = user.as_deref().or(Some("root"));
-            crate::ui::actions::open_console(app, user, &shell);
+            crate::ui::ui_actions::open_console(app, user, &shell);
         }
         "tree" => {
             app.active_view = ActiveView::Containers;
@@ -91,7 +91,7 @@ pub(in crate::ui) fn handle_container(
                     images.insert(c.image.clone());
                 }
             }
-            crate::ui::actions::check_image_updates(
+            crate::ui::ui_actions::check_image_updates(
                 app,
                 images.into_iter().collect(),
                 action_req_tx,

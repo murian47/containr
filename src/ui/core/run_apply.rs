@@ -4,7 +4,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 
 use crate::docker::{ContainerRow, ImageRow, NetworkRow, VolumeRow};
-use crate::ui::actions;
 use crate::ui::core::clock::{now_local, now_unix};
 use crate::ui::core::requests::ActionRequest;
 use crate::ui::core::types::{
@@ -12,11 +11,12 @@ use crate::ui::core::types::{
     TemplateDeployEntry, UsageSnapshot, classify_action_error,
 };
 use crate::ui::features::templates::images_from_compose;
-use crate::ui::helpers::{normalize_image_id, truncate_msg};
 use crate::ui::render::utils::is_container_stopped;
+use crate::ui::shell_utils::{normalize_image_id, truncate_msg};
 use crate::ui::state::app::App;
 use crate::ui::state::image_updates::{ImageUpdateResult, is_rate_limit_error};
 use crate::ui::state::shell_types::MsgLevel;
+use crate::ui::ui_actions;
 
 type OverviewResult = anyhow::Result<(
     Vec<ContainerRow>,
@@ -370,7 +370,7 @@ pub(in crate::ui) fn process_background_updates(
                         if app.image_update_autocheck && *pull {
                             let images = images_from_compose(local_compose);
                             if !images.is_empty() {
-                                actions::check_image_updates(app, images, action_req_tx);
+                                ui_actions::check_image_updates(app, images, action_req_tx);
                             }
                         }
                     }

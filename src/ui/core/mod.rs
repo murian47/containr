@@ -3,20 +3,20 @@
 //! The `core` layer provides the non-rendering plumbing for the UI: runtime, requests, state
 //! helpers, background task spawning, key handling primitives, and deploy/update operations.
 
+pub(in crate::ui) mod background_ops;
 pub(in crate::ui) mod clock;
 pub(in crate::ui) mod init;
 pub(in crate::ui) mod key_types;
 pub(in crate::ui) mod keymap;
 pub(in crate::ui) mod local_state;
 pub(in crate::ui) mod logging;
-pub(in crate::ui) mod ops;
 pub(in crate::ui) mod requests;
 pub(in crate::ui) mod run;
 pub(in crate::ui) mod run_apply;
 pub(in crate::ui) mod run_spawn;
 pub(in crate::ui) mod runtime;
 pub(in crate::ui) mod secrets;
-pub(in crate::ui) mod state;
+pub(in crate::ui) mod state_helpers;
 pub(in crate::ui) mod tasks;
 pub(in crate::ui) mod types;
 pub(in crate::ui) mod view;

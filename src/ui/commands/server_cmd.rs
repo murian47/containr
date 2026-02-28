@@ -2,8 +2,8 @@
 
 use crate::config::ServerEntry;
 use crate::ui::core::requests::Connection;
-use crate::ui::helpers::{build_server_shortcuts, parse_kv_args};
 use crate::ui::render::utils::shell_escape_sh_arg;
+use crate::ui::shell_utils::{build_server_shortcuts, parse_kv_args};
 use crate::ui::state::app::App;
 use crate::ui::state::persistence::{ensure_unique_server_name, find_server_by_name};
 use crate::ui::state::shell_types::{ShellFocus, ShellInteractive, ShellView, shell_begin_confirm};

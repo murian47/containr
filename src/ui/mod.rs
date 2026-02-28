@@ -10,16 +10,16 @@
 //! - IO/runner functions should not mutate UI widgets directly.
 //! - UI code should use semantic theme roles (`theme::ThemeSpec`) instead of hard-coded colors.
 
-mod actions;
 mod cmd_history;
 mod commands;
 mod core;
 mod features;
-mod helpers;
 mod input;
 mod render;
+mod shell_utils;
 mod state;
 mod text_edit;
+mod ui_actions;
 mod views;
 
 pub mod theme;
