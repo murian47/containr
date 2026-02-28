@@ -1,8 +1,14 @@
-use super::*;
 use crate::config::{DockerCmd, RegistriesConfig, ServerEntry};
+use crate::docker::NetworkRow;
 use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
-use crate::ui::core::key_types::build_default_keymap;
+use crate::ui::core::key_types::{
+    KeyCodeNorm, KeyScope, KeySpec, build_default_keymap, parse_key_spec,
+};
+use crate::ui::core::requests::ActionRequest;
 use crate::ui::core::types::LogsMode;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ActiveView, ShellFocus, ShellView};
+use crate::ui::theme;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use serde_json::json;
@@ -286,6 +292,6 @@ fn network_remove_uses_marked_ids() {
     }
     ids.sort();
     assert_eq!(ids.len(), 2);
-    assert!(ids.iter().any(|i| i.starts_with('a')));
-    assert!(ids.iter().any(|i| i.starts_with('b')));
+    assert!(ids.iter().any(|i: &String| i.starts_with('a')));
+    assert!(ids.iter().any(|i: &String| i.starts_with('b')));
 }

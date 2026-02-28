@@ -1,7 +1,7 @@
 use super::panel_bg;
-use crate::ui::App;
 use crate::ui::render::inspect::current_match_pos;
 use crate::ui::render::text::truncate_end;
+use crate::ui::state::app::App;
 use ratatui::layout::{Alignment, Margin};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};

@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::config;
 
-use crate::ui::RegistryAuthResolved;
+use crate::ui::core::types::RegistryAuthResolved;
 
 fn is_local_registry_host(host: &str) -> bool {
     let host = host.trim().to_ascii_lowercase();

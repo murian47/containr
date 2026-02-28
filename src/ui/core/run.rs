@@ -5,21 +5,27 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 
+use crate::config;
 use crate::config::{KeyBinding, ServerEntry};
-use crate::docker::DockerCfg;
+use crate::docker::{ContainerRow, DockerCfg, ImageRow, NetworkRow, VolumeRow};
 use crate::runner::Runner;
 use crate::ui::commands::theme_cmd;
+use crate::ui::core::requests::{ActionRequest, Connection};
 use crate::ui::core::run_apply::process_background_updates;
 use crate::ui::core::run_spawn::{SpawnInputs, spawn_background_tasks};
-use crate::ui::input;
-use crate::ui::theme;
-use crate::{config, ui};
-use ui::{
-    ActionRequest, App, Connection, ContainerRow, DashboardSnapshot, ImageRow, InspectTarget,
-    MsgLevel, NetworkRow, Picker, ShellInteractive, TemplatesKind, UsageSnapshot, VolumeRow,
-    current_runner_from_app, draw, expand_user_path, maybe_autocommit_templates, restore_terminal,
-    run_interactive_command, run_interactive_local_command, setup_terminal,
+use crate::ui::core::runtime::{
+    current_runner_from_app, restore_terminal, run_interactive_command,
+    run_interactive_local_command, setup_terminal,
 };
+use crate::ui::core::types::{DashboardSnapshot, InspectTarget, UsageSnapshot};
+use crate::ui::features::templates::maybe_autocommit_templates;
+use crate::ui::input;
+use crate::ui::render::root::draw;
+use crate::ui::render::utils::expand_user_path;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{MsgLevel, ShellInteractive, TemplatesKind};
+use crate::ui::theme;
+use ratatui_image::picker::Picker;
 
 #[allow(
     clippy::collapsible_if,

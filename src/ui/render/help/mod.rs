@@ -3,8 +3,6 @@ mod sections;
 use crate::ui::state::app::App;
 use ratatui::layout::{Margin, Rect};
 use ratatui::widgets::{Block, Paragraph, Wrap};
-pub use sections::shell_help_lines;
-
 pub(in crate::ui) fn draw_shell_help_view(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
@@ -13,7 +11,7 @@ pub(in crate::ui) fn draw_shell_help_view(f: &mut ratatui::Frame, app: &mut App,
         horizontal: 1,
     });
 
-    let lines = shell_help_lines(&app.theme);
+    let lines = sections::shell_help_lines(&app.theme);
     let total = lines.len().max(1);
     let view_h = inner.height.max(1) as usize;
     let max_scroll = total.saturating_sub(view_h);

@@ -2,8 +2,8 @@ use ratatui::layout::Alignment;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 
-use crate::ui::App;
 use crate::ui::render::utils::truncate_end;
+use crate::ui::state::app::App;
 
 pub(in crate::ui) fn draw_rate_limit_banner(
     f: &mut ratatui::Frame,

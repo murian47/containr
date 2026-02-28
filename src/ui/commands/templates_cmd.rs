@@ -1,15 +1,23 @@
 //! Template commands (`:templates ...`, `:template ...`, `:nettemplate ...`).
 
-use super::super::{
-    ActionRequest, App, ShellInteractive, ShellSidebarItem, ShellView, TemplatesKind,
-    shell_begin_confirm, shell_escape_sh_arg, shell_sidebar_select_item,
+use crate::ui::core::requests::ActionRequest;
+use crate::ui::features::templates::{
+    create_net_template, create_template, delete_net_template, delete_template,
+    maybe_autocommit_templates,
 };
+use crate::ui::render::sidebar::shell_sidebar_select_item;
+use crate::ui::render::utils::shell_escape_sh_arg;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{
+    ActiveView, ShellInteractive, ShellSidebarItem, ShellView, TemplatesKind, shell_begin_confirm,
+};
+use crate::ui::text_edit::set_text_and_cursor;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 fn begin_new_prompt(app: &mut App) {
     app.shell_cmdline.mode = true;
-    super::super::set_text_and_cursor(
+    set_text_and_cursor(
         &mut app.shell_cmdline.input,
         &mut app.shell_cmdline.cursor,
         match app.templates_state.kind {
@@ -22,7 +30,7 @@ fn begin_new_prompt(app: &mut App) {
 
 fn begin_export_prompt(app: &mut App, sub: &str) {
     app.shell_cmdline.mode = true;
-    super::super::set_text_and_cursor(
+    set_text_and_cursor(
         &mut app.shell_cmdline.input,
         &mut app.shell_cmdline.cursor,
         format!("template {sub} "),
@@ -111,7 +119,7 @@ pub(in crate::ui) fn handle_template(
                 return true;
             };
             match app.templates_state.kind {
-                TemplatesKind::Stacks => match super::super::create_template(app, name) {
+                TemplatesKind::Stacks => match create_template(app, name) {
                     Ok(()) => {
                         app.refresh_templates();
                         if let Some(idx) = app
@@ -131,7 +139,7 @@ pub(in crate::ui) fn handle_template(
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
                 },
-                TemplatesKind::Networks => match super::super::create_net_template(app, name) {
+                TemplatesKind::Networks => match create_net_template(app, name) {
                     Ok(()) => {
                         app.refresh_net_templates();
                         if let Some(idx) = app
@@ -159,13 +167,12 @@ pub(in crate::ui) fn handle_template(
                 begin_export_prompt(app, "from-stack");
                 return true;
             };
-            let stack_name = if app.shell_view == ShellView::Stacks
-                || app.active_view == super::super::ActiveView::Stacks
-            {
-                app.selected_stack_entry().map(|s| s.name.clone())
-            } else {
-                app.selected_stack().map(|(name, ..)| name.to_string())
-            };
+            let stack_name =
+                if app.shell_view == ShellView::Stacks || app.active_view == ActiveView::Stacks {
+                    app.selected_stack_entry().map(|s| s.name.clone())
+                } else {
+                    app.selected_stack().map(|(name, ..)| name.to_string())
+                };
             let Some(stack_name) = stack_name else {
                 app.set_warn("no stack selected");
                 return true;
@@ -364,7 +371,7 @@ pub(in crate::ui) fn handle_template(
                 return true;
             }
             match app.templates_state.kind {
-                TemplatesKind::Stacks => match super::super::delete_template(app, &name) {
+                TemplatesKind::Stacks => match delete_template(app, &name) {
                     Ok(()) => {
                         app.refresh_templates();
                         app.set_info(format!("deleted template {name}"));
@@ -373,16 +380,11 @@ pub(in crate::ui) fn handle_template(
                             app,
                             ShellSidebarItem::Module(ShellView::Templates),
                         );
-                        super::super::maybe_autocommit_templates(
-                            app,
-                            TemplatesKind::Stacks,
-                            "delete",
-                            &name,
-                        );
+                        maybe_autocommit_templates(app, TemplatesKind::Stacks, "delete", &name);
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
                 },
-                TemplatesKind::Networks => match super::super::delete_net_template(app, &name) {
+                TemplatesKind::Networks => match delete_net_template(app, &name) {
                     Ok(()) => {
                         app.refresh_net_templates();
                         app.set_info(format!("deleted network template {name}"));
@@ -391,12 +393,7 @@ pub(in crate::ui) fn handle_template(
                             app,
                             ShellSidebarItem::Module(ShellView::Templates),
                         );
-                        super::super::maybe_autocommit_templates(
-                            app,
-                            TemplatesKind::Networks,
-                            "delete",
-                            &name,
-                        );
+                        maybe_autocommit_templates(app, TemplatesKind::Networks, "delete", &name);
                     }
                     Err(e) => app.set_error(format!("{e:#}")),
                 },
@@ -428,7 +425,7 @@ pub(in crate::ui) fn handle_nettemplate(
         }
         "new" => {
             app.shell_cmdline.mode = true;
-            super::super::set_text_and_cursor(
+            set_text_and_cursor(
                 &mut app.shell_cmdline.input,
                 &mut app.shell_cmdline.cursor,
                 "nettemplate add ".to_string(),
@@ -439,7 +436,7 @@ pub(in crate::ui) fn handle_nettemplate(
         "add" => {
             let Some(name) = args.get(1).copied() else {
                 app.shell_cmdline.mode = true;
-                super::super::set_text_and_cursor(
+                set_text_and_cursor(
                     &mut app.shell_cmdline.input,
                     &mut app.shell_cmdline.cursor,
                     "nettemplate add ".to_string(),
@@ -447,7 +444,7 @@ pub(in crate::ui) fn handle_nettemplate(
                 app.shell_cmdline.confirm = None;
                 return true;
             };
-            match super::super::create_net_template(app, name) {
+            match create_net_template(app, name) {
                 Ok(()) => {
                     app.refresh_net_templates();
                     if let Some(idx) = app
@@ -492,19 +489,14 @@ pub(in crate::ui) fn handle_nettemplate(
                 shell_begin_confirm(app, format!("nettemplate rm {name}"), cmdline_full);
                 return true;
             }
-            match super::super::delete_net_template(app, &name) {
+            match delete_net_template(app, &name) {
                 Ok(()) => {
                     app.refresh_net_templates();
                     app.set_info(format!("deleted network template {name}"));
                     app.templates_state.kind = TemplatesKind::Networks;
                     app.set_main_view(ShellView::Templates);
                     shell_sidebar_select_item(app, ShellSidebarItem::Module(ShellView::Templates));
-                    super::super::maybe_autocommit_templates(
-                        app,
-                        TemplatesKind::Networks,
-                        "delete",
-                        &name,
-                    );
+                    maybe_autocommit_templates(app, TemplatesKind::Networks, "delete", &name);
                 }
                 Err(e) => app.set_error(format!("{e:#}")),
             }

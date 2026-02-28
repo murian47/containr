@@ -1,4 +1,4 @@
-use crate::ui::ContainerAction;
+use crate::docker::ContainerAction;
 use crate::ui::core::types::{ActionErrorKind, LastActionError};
 use crate::ui::render::format::format_action_ts;
 use crate::ui::state::app::App;

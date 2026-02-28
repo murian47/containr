@@ -1,5 +1,5 @@
 use crate::config;
-use crate::ui::App;
+use crate::ui::state::app::App;
 use ratatui::layout::Constraint;
 use ratatui::text::Span;
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};

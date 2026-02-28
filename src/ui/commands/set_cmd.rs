@@ -1,6 +1,7 @@
 //! Settings commands (`:set ...`).
 
-use super::super::{App, ShellView};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::ShellView;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 

@@ -1,6 +1,6 @@
-use crate::ui::NetTemplateEntry;
 use crate::ui::cmd_history::CmdHistory;
 use crate::ui::core::requests::ShellConfirm;
+use crate::ui::core::types::NetTemplateEntry;
 use crate::ui::core::types::{DeployMarker, InspectLine, InspectMode, LogsMode, TemplateEntry};
 use crate::ui::theme;
 use regex::Regex;
@@ -52,7 +52,7 @@ pub(in crate::ui) struct InspectState {
     pub(in crate::ui) loading: bool,
     pub(in crate::ui) error: Option<String>,
     pub(in crate::ui) value: Option<Value>,
-    pub(in crate::ui) target: Option<crate::ui::InspectTarget>,
+    pub(in crate::ui) target: Option<crate::ui::core::types::InspectTarget>,
     pub(in crate::ui) for_id: Option<String>,
     pub(in crate::ui) lines: Vec<InspectLine>,
     pub(in crate::ui) selected: usize,
@@ -132,7 +132,7 @@ pub(in crate::ui) struct TemplateEditSnapshot {
 
 #[allow(private_interfaces)]
 pub(in crate::ui) fn shell_begin_confirm(
-    app: &mut crate::ui::App,
+    app: &mut crate::ui::state::app::App,
     label: impl Into<String>,
     cmdline: impl Into<String>,
 ) {

@@ -6,6 +6,7 @@ use crate::ui::core::runtime::{
     current_docker_cmd_from_app, current_runner_from_app, current_server_label,
 };
 use crate::ui::core::types::{DeployMarker, InspectTarget};
+use crate::ui::features::templates::template_id_from_labels;
 use crate::ui::helpers::{ensure_template_id, shell_single_quote};
 use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::render::utils::{is_container_stopped, shell_escape_sh_arg};
@@ -258,7 +259,7 @@ pub(in crate::ui) fn execute_action(
                 TemplatesKind::Stacks => "template add ",
                 TemplatesKind::Networks => "nettemplate add ",
             };
-            crate::ui::set_text_and_cursor(
+            crate::ui::text_edit::set_text_and_cursor(
                 &mut app.shell_cmdline.input,
                 &mut app.shell_cmdline.cursor,
                 prompt.to_string(),
@@ -507,11 +508,11 @@ pub(in crate::ui) fn edit_selected_net_template(app: &mut App) {
 }
 
 pub(in crate::ui) fn template_name_from_stack(app: &App, stack_name: &str) -> Option<String> {
-    let id = app
+    let id: String = app
         .containers
         .iter()
         .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(stack_name))
-        .filter_map(|c| crate::ui::template_id_from_labels(&c.labels))
+        .filter_map(|c| template_id_from_labels(&c.labels))
         .next()?;
     app.templates_state
         .templates
@@ -541,11 +542,11 @@ pub(in crate::ui) fn stack_compose_dirs(
     let mut out: Vec<String> = Vec::new();
     for name in names {
         let path = match runner {
-            crate::ui::Runner::Local => {
+            crate::runner::Runner::Local => {
                 let home = std::env::var("HOME").unwrap_or_default();
                 format!("{home}/.config/containr/apps/{name}")
             }
-            crate::ui::Runner::Ssh(_) => format!("$HOME/.config/containr/apps/{name}"),
+            crate::runner::Runner::Ssh(_) => format!("$HOME/.config/containr/apps/{name}"),
         };
         out.push(path);
     }

@@ -1,7 +1,8 @@
 //! Log-related commands (`:logs ...`) available from the main command line.
 
-use super::super::{App, ShellView};
 use super::common::{subcommand, warn_usage};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::ShellView;
 use tokio::sync::mpsc;
 
 const USAGE: &str = ":logs reload|copy";

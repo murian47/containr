@@ -4,8 +4,8 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-use crate::ui::App;
 use crate::ui::render::inspect::draw_shell_inspect_view;
+use crate::ui::state::app::App;
 
 pub fn render_inspect(f: &mut Frame, app: &mut App, area: Rect) {
     draw_shell_inspect_view(f, app, area);

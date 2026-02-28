@@ -1,8 +1,11 @@
 //! Image commands (`:image ...` / `:img ...`).
 
-use super::super::shell_begin_confirm;
-use super::super::{ActionRequest, App};
 use crate::domain::image_refs::{image_registry_for_ref, image_repo_name};
+use crate::ui::core::requests::ActionRequest;
+use crate::ui::core::runtime::current_docker_cmd_from_app;
+use crate::ui::core::types::SimpleMarker;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::shell_begin_confirm;
 use tokio::sync::mpsc;
 
 fn tag_from_ref(image_ref: &str) -> Option<String> {
@@ -21,7 +24,7 @@ pub(in crate::ui) fn handle_image(
     force: bool,
     cmdline_full: String,
     args: &[&str],
-    action_req_tx: &mpsc::UnboundedSender<super::super::ActionRequest>,
+    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) -> bool {
     let sub = args.first().copied().unwrap_or("");
     match sub {
@@ -143,7 +146,7 @@ pub(in crate::ui) fn handle_image(
                 app.set_warn("image push already in progress");
                 return true;
             }
-            let docker_cmd = super::super::current_docker_cmd_from_app(app);
+            let docker_cmd = current_docker_cmd_from_app(app);
             if docker_cmd.is_empty() {
                 app.set_warn("no server configured");
                 return true;
@@ -151,7 +154,7 @@ pub(in crate::ui) fn handle_image(
             let now = std::time::Instant::now();
             app.image_action_inflight.insert(
                 marker_key.clone(),
-                super::super::SimpleMarker {
+                SimpleMarker {
                     until: now + std::time::Duration::from_secs(300),
                 },
             );

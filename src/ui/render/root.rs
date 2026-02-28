@@ -3,7 +3,7 @@ use std::time::Duration;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::Block;
 
-use crate::ui::App;
+use crate::ui::state::app::App;
 
 use super::footer::draw_shell_footer;
 use super::layout::draw_shell_body;

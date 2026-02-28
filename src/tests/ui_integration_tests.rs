@@ -1,11 +1,14 @@
-use super::*;
 use crate::config::{DockerCmd, RegistriesConfig, ServerEntry};
 use crate::docker::{self, ContainerAction, DockerCfg};
 use crate::runner::Runner;
 use crate::ssh::Ssh;
 use crate::ui::core::ops::{perform_net_template_deploy, perform_template_deploy};
 use crate::ui::features::templates::ops::common::write_stack_template_compose;
+use crate::ui::features::templates::{delete_net_template, delete_template};
 use crate::ui::helpers::{deploy_remote_dir_for, deploy_remote_net_dir_for, shell_single_quote};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::MsgLevel;
+use crate::ui::theme;
 use anyhow::Context as _;
 use std::collections::HashMap;
 use std::fs;

@@ -15,7 +15,7 @@ use super::common::{
 use crate::docker::{self, DockerCfg};
 use crate::domain::image_refs::normalize_image_ref;
 use crate::runner::Runner;
-use crate::ui::NetworkTemplateIpv4;
+use crate::ui::core::types::NetworkTemplateIpv4;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 

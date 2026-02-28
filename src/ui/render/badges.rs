@@ -1,7 +1,7 @@
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
 
-use crate::ui::App;
+use crate::ui::state::app::App;
 use crate::ui::theme;
 
 pub(in crate::ui) fn header_logo_spans(app: &App, base: Style, shown: &str) -> Vec<Span<'static>> {

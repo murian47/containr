@@ -1,7 +1,8 @@
 //! Network commands (`:network ...` / `:net ...`).
 
-use super::super::App;
 use super::common::{force_or_confirm, subcommand, warn_usage};
+use crate::ui::core::requests::ActionRequest;
+use crate::ui::state::app::App;
 use tokio::sync::mpsc;
 
 const USAGE: &str = ":network rm";
@@ -11,7 +12,7 @@ pub(in crate::ui) fn handle_network(
     force: bool,
     cmdline_full: String,
     args: &[&str],
-    action_req_tx: &mpsc::UnboundedSender<super::super::ActionRequest>,
+    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) -> bool {
     let sub = subcommand(args, "");
     match sub {

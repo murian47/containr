@@ -17,7 +17,6 @@ mod core;
 mod features;
 mod helpers;
 mod input;
-mod internal;
 mod render;
 mod state;
 mod text_edit;
@@ -25,8 +24,6 @@ mod views;
 
 pub mod theme;
 pub use core::run::run_tui;
-
-pub(in crate::ui) use internal::*;
 
 #[cfg(all(test, feature = "integration"))]
 #[path = "../tests/ui_integration_tests.rs"]

@@ -1,10 +1,12 @@
 //! Registry commands (`:registry ...`, `:registries ...`).
 
-use super::super::{
-    ActionRequest, App, ShellSidebarItem, ShellView, encrypt_age_secret, ensure_age_identity,
-    expand_user_path, shell_begin_confirm, shell_sidebar_select_item,
-};
 use crate::config::{RegistryAuth, RegistryEntry};
+use crate::ui::core::requests::ActionRequest;
+use crate::ui::core::secrets::{encrypt_age_secret, ensure_age_identity};
+use crate::ui::render::sidebar::shell_sidebar_select_item;
+use crate::ui::render::utils::expand_user_path;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellSidebarItem, ShellView, shell_begin_confirm};
 use std::fs;
 use tokio::sync::mpsc;
 

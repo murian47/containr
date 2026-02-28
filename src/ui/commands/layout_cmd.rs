@@ -1,7 +1,8 @@
 //! Layout command (`:layout ...`).
 
-use super::super::{App, ShellSplitMode, ShellView};
 use super::common::{subcommand, warn_usage};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellSplitMode, ShellView};
 
 const USAGE: &str = ":layout [horizontal|vertical|toggle]";
 

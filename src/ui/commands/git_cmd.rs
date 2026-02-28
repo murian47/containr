@@ -1,6 +1,8 @@
 //! Git commands for templates/themes (`:git ...`).
 
-use super::super::{App, ShellFocus, ShellView, set_text_and_cursor};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellFocus, ShellView};
+use crate::ui::text_edit::set_text_and_cursor;
 use crate::ui::theme;
 use std::path::{Path, PathBuf};
 use std::process::Command;

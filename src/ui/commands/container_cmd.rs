@@ -1,7 +1,10 @@
 //! Container commands (`:container ...` / `:ctr ...`).
 
-use super::super::{ActiveView, App, ListMode, ViewEntry, shell_begin_confirm};
 use crate::docker::ContainerAction;
+use crate::ui::core::requests::ActionRequest;
+use crate::ui::core::types::ViewEntry;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ActiveView, ListMode, shell_begin_confirm};
 use std::collections::HashSet;
 use tokio::sync::mpsc;
 
@@ -10,7 +13,7 @@ pub(in crate::ui) fn handle_container(
     force: bool,
     cmdline_full: String,
     args: &[&str],
-    action_req_tx: &mpsc::UnboundedSender<super::super::ActionRequest>,
+    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) -> bool {
     let sub = args.first().copied().unwrap_or("");
     let rest = &args.get(1..).unwrap_or(&[]);

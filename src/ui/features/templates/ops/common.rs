@@ -1,4 +1,4 @@
-use crate::ui::NetworkTemplateIpv4;
+use crate::ui::core::types::NetworkTemplateIpv4;
 use anyhow::Context;
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap, HashSet};

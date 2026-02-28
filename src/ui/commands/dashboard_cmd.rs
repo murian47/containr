@@ -1,7 +1,8 @@
 //! Dashboard command handler (`:dashboard ...`).
 
-use super::super::{App, Connection};
 use super::common::{subcommand, warn_usage};
+use crate::ui::core::requests::Connection;
+use crate::ui::state::app::App;
 use tokio::sync::{mpsc, watch};
 
 const USAGE: &str = ":dashboard (all|single|toggle|simulate-error [name])";

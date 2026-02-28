@@ -1,7 +1,8 @@
 //! Sidebar command (`:sidebar ...`).
 
-use super::super::{App, ShellFocus, ShellView};
 use super::common::{subcommand, warn_usage};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellFocus, ShellView};
 
 const USAGE: &str = ":sidebar toggle|compact";
 

@@ -1,10 +1,12 @@
 //! Key mapping commands (`:map ...`, `:unmap ...`).
 
-use super::super::{
-    App, KeyCodeNorm, KeyScope, KeySpec, ShellFocus, ShellView, cmdline_is_destructive,
-    is_single_letter_without_modifiers, parse_key_spec, parse_scope, scope_to_string,
-};
 use crate::config::KeyBinding;
+use crate::ui::core::key_types::{
+    KeyCodeNorm, KeyScope, KeySpec, parse_key_spec, parse_scope, scope_to_string,
+};
+use crate::ui::core::keymap::{cmdline_is_destructive, is_single_letter_without_modifiers};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{ShellFocus, ShellView};
 use std::collections::{HashMap, HashSet};
 
 fn format_key_spec(spec: KeySpec) -> String {

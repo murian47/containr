@@ -8,7 +8,9 @@
 //!
 //! The active theme name is persisted in the main config file.
 
-use super::super::{App, MsgLevel, ShellInteractive, shell_escape_sh_arg};
+use crate::ui::render::utils::shell_escape_sh_arg;
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{MsgLevel, ShellInteractive};
 use crate::ui::theme;
 use anyhow::Context as _;
 use std::fs;
