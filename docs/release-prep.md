@@ -7,6 +7,10 @@
 - Contributor code map: `docs/code-map-ui.md`.
 
 ## Stability Pass
+- Automated baseline complete:
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets --all-features -- -D warnings`
+  - `cargo test`
 - Manual smoke test of core flows:
   - Stacks: start/stop/restart/update, update-all.
   - Containers: logs/inspect/console, start/stop/restart/remove.
@@ -19,6 +23,9 @@
 - Changelog: short list of notable features/changes.
 - License + contribution guidelines.
 - Docs relevance matrix: `docs/docs-status.md`.
+
+Current gap before public release:
+- Manual smoke checklist in `docs/testing-checklist.md` still needs an explicit pass and sign-off.
 
 ## Polish / Edge Cases
 - Reduce log noise and confusing warnings.
