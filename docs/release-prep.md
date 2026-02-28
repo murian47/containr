@@ -34,3 +34,10 @@ Current gap before public release:
 
 ## Version & Tag
 - Bump version and create tag (e.g., `v0.5.0`).
+
+## 1.0 Gate
+- `v0.5.x` can be used for the first public release line while core workflows are hardened.
+- `v1.0.0` should be reserved for the point where:
+  - deploy/history/rollback UX is no longer a known gap
+  - registry auth setup and failure handling are clear in normal use
+  - smoke, packaging, docs, and install/runtime paths are explicitly signed off
