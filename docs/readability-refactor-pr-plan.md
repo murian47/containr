@@ -27,10 +27,19 @@ Open:
 - Follow-up cleanup only (no blocker for this readability plan):
   - continue reducing remaining broad `pub(in crate::ui)` where feasible
   - keep pruning broad re-export facades (`ui/internal/*`) as modules are touched
+  - split remaining mixed-purpose UI files before release:
+    - `src/ui/render/tables.rs` -> `render/tables/{containers,images,volumes,networks,common}.rs`
+    - `src/ui/input/views.rs` -> per-view handlers plus shared helpers
+    - `src/ui/render/help.rs` -> help sections by topic
+    - `src/ui/input/modes.rs` -> per-mode handlers
+    - `src/ui/render/theme_selector.rs` -> preview/sidebar/footer helpers
+    - `src/ui/commands/cmdline_cmd.rs` -> parser/dispatch/domain helpers
 
 Notes:
 - Refactor sequence so far stayed behavior-preserving and test-backed.
 - Remaining work is mostly API-surface cleanup.
+- For the release hardening phase, prefer extracting files that currently mix multiple views/modules
+  over purely cosmetic line-count reductions.
 
 ## PR 1: Thin `ui/mod.rs` Further
 
