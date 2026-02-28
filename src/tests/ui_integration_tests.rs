@@ -26,10 +26,7 @@ fn mk_temp_path(prefix: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_else(|_| Duration::from_secs(0))
         .as_nanos();
-    dir.push(format!(
-        "containr-it-{prefix}-{now}-{}",
-        std::process::id()
-    ));
+    dir.push(format!("containr-it-{prefix}-{now}-{}", std::process::id()));
     dir
 }
 
@@ -146,14 +143,9 @@ async fn integration_network_template_deploy_and_delete() -> anyhow::Result<()> 
 
     let mut cleanup_errors: Vec<String> = Vec::new();
     let result = async {
-        let deploy = perform_net_template_deploy(
-            &ctx.runner,
-            &ctx.docker,
-            &net_name,
-            &net_cfg,
-            false,
-        )
-        .await?;
+        let deploy =
+            perform_net_template_deploy(&ctx.runner, &ctx.docker, &net_name, &net_cfg, false)
+                .await?;
         if deploy.trim() == "exists" {
             anyhow::bail!("network already exists: {net_name}");
         }

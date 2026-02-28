@@ -7,6 +7,6 @@ pub(in crate::ui) use super::super::state::persistence::{
     ensure_unique_server_name, find_server_by_name,
 };
 pub(in crate::ui) use super::super::state::shell_types::{
-    ActiveView, ListMode, MsgLevel, ShellFocus, ShellInteractive, ShellSidebarItem,
-    ShellSplitMode, ShellView, TemplatesKind, shell_begin_confirm,
+    ActiveView, ListMode, MsgLevel, ShellFocus, ShellInteractive, ShellSidebarItem, ShellSplitMode,
+    ShellView, TemplatesKind, shell_begin_confirm,
 };

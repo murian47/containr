@@ -1,8 +1,8 @@
 //! Registry commands (`:registry ...`, `:registries ...`).
 
 use super::super::{
-    ActionRequest, App, ShellSidebarItem, ShellView, expand_user_path, ensure_age_identity,
-    encrypt_age_secret, shell_begin_confirm, shell_sidebar_select_item,
+    ActionRequest, App, ShellSidebarItem, ShellView, encrypt_age_secret, ensure_age_identity,
+    expand_user_path, shell_begin_confirm, shell_sidebar_select_item,
 };
 use crate::config::{RegistryAuth, RegistryEntry};
 use std::fs;
@@ -15,11 +15,7 @@ fn focus_registries(app: &mut App) {
 
 fn normalize_host(host: &str) -> Option<String> {
     let host = host.trim().to_ascii_lowercase();
-    if host.is_empty() {
-        None
-    } else {
-        Some(host)
-    }
+    if host.is_empty() { None } else { Some(host) }
 }
 
 fn registry_index(app: &App, host: &str) -> Option<usize> {
@@ -34,9 +30,11 @@ fn registry_index(app: &App, host: &str) -> Option<usize> {
 }
 
 fn sort_registries(app: &mut App) {
-    app.registries_cfg
-        .registries
-        .sort_by(|a, b| a.host.to_ascii_lowercase().cmp(&b.host.to_ascii_lowercase()));
+    app.registries_cfg.registries.sort_by(|a, b| {
+        a.host
+            .to_ascii_lowercase()
+            .cmp(&b.host.to_ascii_lowercase())
+    });
 }
 
 fn registry_auth_from_str(v: &str) -> Option<RegistryAuth> {

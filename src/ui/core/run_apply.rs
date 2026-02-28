@@ -18,7 +18,12 @@ use crate::ui::state::app::App;
 use crate::ui::state::image_updates::{ImageUpdateResult, is_rate_limit_error};
 use crate::ui::state::shell_types::MsgLevel;
 
-type OverviewResult = anyhow::Result<(Vec<ContainerRow>, Vec<ImageRow>, Vec<VolumeRow>, Vec<NetworkRow>)>;
+type OverviewResult = anyhow::Result<(
+    Vec<ContainerRow>,
+    Vec<ImageRow>,
+    Vec<VolumeRow>,
+    Vec<NetworkRow>,
+)>;
 
 #[allow(clippy::too_many_arguments)]
 pub(in crate::ui) fn process_background_updates(
@@ -26,7 +31,11 @@ pub(in crate::ui) fn process_background_updates(
     result_rx: &mut mpsc::UnboundedReceiver<(String, OverviewResult)>,
     ip_res_rx: &mut mpsc::UnboundedReceiver<(String, anyhow::Result<HashMap<String, String>>)>,
     dash_res_rx: &mut mpsc::UnboundedReceiver<(String, anyhow::Result<DashboardSnapshot>)>,
-    dash_all_res_rx: &mut mpsc::UnboundedReceiver<(String, anyhow::Result<DashboardSnapshot>, u128)>,
+    dash_all_res_rx: &mut mpsc::UnboundedReceiver<(
+        String,
+        anyhow::Result<DashboardSnapshot>,
+        u128,
+    )>,
     usage_res_rx: &mut mpsc::UnboundedReceiver<(String, anyhow::Result<UsageSnapshot>)>,
     inspect_res_rx: &mut mpsc::UnboundedReceiver<(String, anyhow::Result<Value>)>,
     action_res_rx: &mut mpsc::UnboundedReceiver<(ActionRequest, anyhow::Result<String>)>,
@@ -177,7 +186,8 @@ pub(in crate::ui) fn process_background_updates(
                         .cloned()
                         .unwrap_or_default();
                     app.image_referenced_by_id.insert(img.id.clone(), refs > 0);
-                    app.image_referenced_count_by_id.insert(img.id.clone(), refs);
+                    app.image_referenced_count_by_id
+                        .insert(img.id.clone(), refs);
                     app.image_running_count_by_id.insert(img.id.clone(), runs);
                     app.image_containers_by_id.insert(img.id.clone(), ctrs);
                 }
@@ -202,9 +212,12 @@ pub(in crate::ui) fn process_background_updates(
                         .get(&v.name)
                         .cloned()
                         .unwrap_or_default();
-                    app.volume_referenced_by_name.insert(v.name.clone(), refs > 0);
-                    app.volume_referenced_count_by_name.insert(v.name.clone(), refs);
-                    app.volume_running_count_by_name.insert(v.name.clone(), runs);
+                    app.volume_referenced_by_name
+                        .insert(v.name.clone(), refs > 0);
+                    app.volume_referenced_count_by_name
+                        .insert(v.name.clone(), refs);
+                    app.volume_running_count_by_name
+                        .insert(v.name.clone(), runs);
                     app.volume_containers_by_name.insert(v.name.clone(), ctrs);
                 }
 
@@ -221,7 +234,8 @@ pub(in crate::ui) fn process_background_updates(
                         .get(&n.id)
                         .cloned()
                         .unwrap_or_default();
-                    app.network_referenced_count_by_id.insert(n.id.clone(), refs);
+                    app.network_referenced_count_by_id
+                        .insert(n.id.clone(), refs);
                     app.network_containers_by_id.insert(n.id.clone(), ctrs);
                 }
 
@@ -231,7 +245,9 @@ pub(in crate::ui) fn process_background_updates(
                 app.volumes_selected = app
                     .volumes_selected
                     .min(app.volumes_visible_len().saturating_sub(1));
-                app.networks_selected = app.networks_selected.min(app.networks.len().saturating_sub(1));
+                app.networks_selected = app
+                    .networks_selected
+                    .min(app.networks.len().saturating_sub(1));
                 app.usage_refresh_needed = false;
             }
             Err(e) => {
@@ -322,7 +338,10 @@ pub(in crate::ui) fn process_background_updates(
                             },
                         );
                         app.save_local_state();
-                        app.log_msg(MsgLevel::Info, format!("registry test ok for {host}: {out}"));
+                        app.log_msg(
+                            MsgLevel::Info,
+                            format!("registry test ok for {host}: {out}"),
+                        );
                     }
                     ActionRequest::TemplateDeploy {
                         name,
@@ -355,7 +374,9 @@ pub(in crate::ui) fn process_background_updates(
                             }
                         }
                     }
-                    ActionRequest::StackUpdate { stack_name, dry, .. } => {
+                    ActionRequest::StackUpdate {
+                        stack_name, dry, ..
+                    } => {
                         app.stack_update_inflight.remove(stack_name);
                         app.stack_update_error.remove(stack_name);
                         app.stack_update_containers.remove(stack_name);
@@ -381,8 +402,12 @@ pub(in crate::ui) fn process_background_updates(
                             );
                         }
                     }
-                    ActionRequest::NetTemplateDeploy { name, server_name, .. } => {
-                        app.templates_state.net_template_deploy_inflight.remove(name);
+                    ActionRequest::NetTemplateDeploy {
+                        name, server_name, ..
+                    } => {
+                        app.templates_state
+                            .net_template_deploy_inflight
+                            .remove(name);
                         app.net_template_action_error.remove(name);
                         if out.trim() == "exists" {
                             app.set_warn(format!(
@@ -430,7 +455,9 @@ pub(in crate::ui) fn process_background_updates(
                             app.save_local_state();
                         }
                     }
-                    ActionRequest::TemplateFromStack { name, stack_name, .. } => {
+                    ActionRequest::TemplateFromStack {
+                        name, stack_name, ..
+                    } => {
                         app.refresh_templates();
                         if let Some(idx) = app
                             .templates_state
@@ -477,14 +504,20 @@ pub(in crate::ui) fn process_background_updates(
                                 }
                                 app.log_msg(MsgLevel::Info, msg);
                                 if let Some(debug) = result.debug.as_deref() {
-                                    app.log_msg(MsgLevel::Info, format!("image update debug: {debug}"));
+                                    app.log_msg(
+                                        MsgLevel::Info,
+                                        format!("image update debug: {debug}"),
+                                    );
                                 }
                                 app.image_updates.insert(result.image.clone(), result.entry);
                                 app.prune_image_updates();
                                 app.save_local_state();
                             }
                             Err(e) => {
-                                app.log_msg(MsgLevel::Warn, format!("image update parse failed: {:#}", e));
+                                app.log_msg(
+                                    MsgLevel::Warn,
+                                    format!("image update parse failed: {:#}", e),
+                                );
                             }
                         }
                     }
@@ -587,7 +620,9 @@ pub(in crate::ui) fn process_background_updates(
                         continue;
                     }
                     ActionRequest::NetTemplateDeploy { name, .. } => {
-                        app.templates_state.net_template_deploy_inflight.remove(name);
+                        app.templates_state
+                            .net_template_deploy_inflight
+                            .remove(name);
                         app.net_template_action_error.insert(
                             name.clone(),
                             LastActionError {
@@ -609,7 +644,10 @@ pub(in crate::ui) fn process_background_updates(
                         continue;
                     }
                     ActionRequest::TemplateFromNetwork { name, .. } => {
-                        app.set_error(format!("network template export failed for {name}: {:#}", e));
+                        app.set_error(format!(
+                            "network template export failed for {name}: {:#}",
+                            e
+                        ));
                         continue;
                     }
                     ActionRequest::ImageUpdateCheck { image, .. } => {
@@ -628,7 +666,10 @@ pub(in crate::ui) fn process_background_updates(
                         app.prune_image_updates();
                         app.prune_rate_limits();
                         app.save_local_state();
-                        app.log_msg(MsgLevel::Warn, format!("image update failed for {image}: {:#}", e));
+                        app.log_msg(
+                            MsgLevel::Warn,
+                            format!("image update failed for {image}: {:#}", e),
+                        );
                         continue;
                     }
                     ActionRequest::ImageUntag { marker_key, .. } => {

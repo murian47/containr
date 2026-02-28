@@ -1,19 +1,17 @@
 use super::context::InputCtx;
 use crate::ui::actions;
-use crate::ui::core::view::shell_module_shortcut;
-use crate::ui::render::sidebar::{shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item};
 use crate::ui::core::types::{LogsMode, StackDetailsFocus};
+use crate::ui::core::view::shell_module_shortcut;
+use crate::ui::render::sidebar::{
+    shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
+};
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{
     ActiveView, ListMode, ShellFocus, ShellSidebarItem, ShellView, TemplatesKind,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-pub(super) fn handle_view_navigation(
-    app: &mut App,
-    key: KeyEvent,
-    ctx: &InputCtx<'_>,
-) {
+pub(super) fn handle_view_navigation(app: &mut App, key: KeyEvent, ctx: &InputCtx<'_>) {
     if key.modifiers.is_empty() {
         if let KeyCode::Char(mut ch) = key.code {
             for (i, hint) in app.shell_server_shortcuts.iter().copied().enumerate() {
@@ -66,15 +64,13 @@ pub(super) fn handle_view_navigation(
                     return;
                 };
                 match it {
-                    ShellSidebarItem::Server(i) => {
-                        app.switch_server(
-                            i,
-                            ctx.conn_tx,
-                            ctx.refresh_tx,
-                            ctx.dash_refresh_tx,
-                            ctx.dash_all_enabled_tx,
-                        )
-                    }
+                    ShellSidebarItem::Server(i) => app.switch_server(
+                        i,
+                        ctx.conn_tx,
+                        ctx.refresh_tx,
+                        ctx.dash_refresh_tx,
+                        ctx.dash_all_enabled_tx,
+                    ),
                     ShellSidebarItem::Module(v) => match v {
                         ShellView::Inspect => app.enter_inspect(ctx.inspect_req_tx),
                         ShellView::Logs => app.enter_logs(ctx.logs_req_tx),
@@ -83,15 +79,13 @@ pub(super) fn handle_view_navigation(
                             shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
                         }
                     },
-                    ShellSidebarItem::Action(a) => {
-                        actions::execute_action(
-                            app,
-                            a,
-                            ctx.inspect_req_tx,
-                            ctx.logs_req_tx,
-                            ctx.action_req_tx,
-                        )
-                    }
+                    ShellSidebarItem::Action(a) => actions::execute_action(
+                        app,
+                        a,
+                        ctx.inspect_req_tx,
+                        ctx.logs_req_tx,
+                        ctx.action_req_tx,
+                    ),
                     ShellSidebarItem::Separator => {}
                     ShellSidebarItem::Gap => {}
                 }
@@ -111,7 +105,9 @@ pub(super) fn handle_view_navigation(
             if app.shell_focus == ShellFocus::Details {
                 let stack_name = if app.shell_view == ShellView::Stacks {
                     let name = app.selected_stack_entry().map(|s| s.name.clone());
-                    if let Some(ref n) = name && app.stack_network_count(n) == 0 {
+                    if let Some(ref n) = name
+                        && app.stack_network_count(n) == 0
+                    {
                         app.stack_details_focus = StackDetailsFocus::Containers;
                     }
                     name
@@ -208,9 +204,15 @@ pub(super) fn handle_view_navigation(
                 KeyCode::End => match app.active_view {
                     ActiveView::Stacks => app.stacks_selected = app.stacks.len().saturating_sub(1),
                     ActiveView::Containers => app.selected = app.view_len().saturating_sub(1),
-                    ActiveView::Images => app.images_selected = app.images_visible_len().saturating_sub(1),
-                    ActiveView::Volumes => app.volumes_selected = app.volumes_visible_len().saturating_sub(1),
-                    ActiveView::Networks => app.networks_selected = app.networks.len().saturating_sub(1),
+                    ActiveView::Images => {
+                        app.images_selected = app.images_visible_len().saturating_sub(1)
+                    }
+                    ActiveView::Volumes => {
+                        app.volumes_selected = app.volumes_visible_len().saturating_sub(1)
+                    }
+                    ActiveView::Networks => {
+                        app.networks_selected = app.networks.len().saturating_sub(1)
+                    }
                 },
                 KeyCode::Char(' ') => {
                     if app.active_view == ActiveView::Containers
@@ -221,8 +223,12 @@ pub(super) fn handle_view_navigation(
                         app.toggle_mark_selected();
                     }
                 }
-                KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => app.mark_all(),
-                KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => app.clear_marks(),
+                KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.mark_all()
+                }
+                KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.clear_marks()
+                }
                 KeyCode::Enter => {
                     if app.active_view == ActiveView::Containers
                         && app.list_mode == ListMode::Tree
@@ -236,21 +242,47 @@ pub(super) fn handle_view_navigation(
             if app.shell_focus == ShellFocus::Details {
                 match app.templates_state.kind {
                     TemplatesKind::Stacks => match key.code {
-                        KeyCode::Up | KeyCode::Char('k') => app.templates_state.templates_details_scroll = app.templates_state.templates_details_scroll.saturating_sub(1),
-                        KeyCode::Down | KeyCode::Char('j') => app.templates_state.templates_details_scroll += 1,
-                        KeyCode::PageUp => app.templates_state.templates_details_scroll = app.templates_state.templates_details_scroll.saturating_sub(10),
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            app.templates_state.templates_details_scroll = app
+                                .templates_state
+                                .templates_details_scroll
+                                .saturating_sub(1)
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            app.templates_state.templates_details_scroll += 1
+                        }
+                        KeyCode::PageUp => {
+                            app.templates_state.templates_details_scroll = app
+                                .templates_state
+                                .templates_details_scroll
+                                .saturating_sub(10)
+                        }
                         KeyCode::PageDown => app.templates_state.templates_details_scroll += 10,
                         KeyCode::Home => app.templates_state.templates_details_scroll = 0,
                         KeyCode::End => app.templates_state.templates_details_scroll = usize::MAX,
                         _ => {}
                     },
                     TemplatesKind::Networks => match key.code {
-                        KeyCode::Up | KeyCode::Char('k') => app.templates_state.net_templates_details_scroll = app.templates_state.net_templates_details_scroll.saturating_sub(1),
-                        KeyCode::Down | KeyCode::Char('j') => app.templates_state.net_templates_details_scroll += 1,
-                        KeyCode::PageUp => app.templates_state.net_templates_details_scroll = app.templates_state.net_templates_details_scroll.saturating_sub(10),
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            app.templates_state.net_templates_details_scroll = app
+                                .templates_state
+                                .net_templates_details_scroll
+                                .saturating_sub(1)
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            app.templates_state.net_templates_details_scroll += 1
+                        }
+                        KeyCode::PageUp => {
+                            app.templates_state.net_templates_details_scroll = app
+                                .templates_state
+                                .net_templates_details_scroll
+                                .saturating_sub(10)
+                        }
                         KeyCode::PageDown => app.templates_state.net_templates_details_scroll += 10,
                         KeyCode::Home => app.templates_state.net_templates_details_scroll = 0,
-                        KeyCode::End => app.templates_state.net_templates_details_scroll = usize::MAX,
+                        KeyCode::End => {
+                            app.templates_state.net_templates_details_scroll = usize::MAX
+                        }
                         _ => {}
                     },
                 }
@@ -259,24 +291,37 @@ pub(super) fn handle_view_navigation(
                     TemplatesKind::Stacks => {
                         let before = app.templates_state.templates_selected;
                         match key.code {
-                            KeyCode::Up | KeyCode::Char('k') => app.templates_state.templates_selected = app.templates_state.templates_selected.saturating_sub(1),
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                app.templates_state.templates_selected =
+                                    app.templates_state.templates_selected.saturating_sub(1)
+                            }
                             KeyCode::Down | KeyCode::Char('j') => {
                                 if !app.templates_state.templates.is_empty() {
-                                    app.templates_state.templates_selected = (app.templates_state.templates_selected + 1).min(app.templates_state.templates.len() - 1);
+                                    app.templates_state.templates_selected =
+                                        (app.templates_state.templates_selected + 1)
+                                            .min(app.templates_state.templates.len() - 1);
                                 } else {
                                     app.templates_state.templates_selected = 0;
                                 }
                             }
-                            KeyCode::PageUp => app.templates_state.templates_selected = app.templates_state.templates_selected.saturating_sub(10),
+                            KeyCode::PageUp => {
+                                app.templates_state.templates_selected =
+                                    app.templates_state.templates_selected.saturating_sub(10)
+                            }
                             KeyCode::PageDown => {
                                 if !app.templates_state.templates.is_empty() {
-                                    app.templates_state.templates_selected = (app.templates_state.templates_selected + 10).min(app.templates_state.templates.len() - 1);
+                                    app.templates_state.templates_selected =
+                                        (app.templates_state.templates_selected + 10)
+                                            .min(app.templates_state.templates.len() - 1);
                                 } else {
                                     app.templates_state.templates_selected = 0;
                                 }
                             }
                             KeyCode::Home => app.templates_state.templates_selected = 0,
-                            KeyCode::End => app.templates_state.templates_selected = app.templates_state.templates.len().saturating_sub(1),
+                            KeyCode::End => {
+                                app.templates_state.templates_selected =
+                                    app.templates_state.templates.len().saturating_sub(1)
+                            }
                             _ => {}
                         }
                         if app.templates_state.templates_selected != before {
@@ -286,24 +331,39 @@ pub(super) fn handle_view_navigation(
                     TemplatesKind::Networks => {
                         let before = app.templates_state.net_templates_selected;
                         match key.code {
-                            KeyCode::Up | KeyCode::Char('k') => app.templates_state.net_templates_selected = app.templates_state.net_templates_selected.saturating_sub(1),
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                app.templates_state.net_templates_selected =
+                                    app.templates_state.net_templates_selected.saturating_sub(1)
+                            }
                             KeyCode::Down | KeyCode::Char('j') => {
                                 if !app.templates_state.net_templates.is_empty() {
-                                    app.templates_state.net_templates_selected = (app.templates_state.net_templates_selected + 1).min(app.templates_state.net_templates.len() - 1);
+                                    app.templates_state.net_templates_selected =
+                                        (app.templates_state.net_templates_selected + 1)
+                                            .min(app.templates_state.net_templates.len() - 1);
                                 } else {
                                     app.templates_state.net_templates_selected = 0;
                                 }
                             }
-                            KeyCode::PageUp => app.templates_state.net_templates_selected = app.templates_state.net_templates_selected.saturating_sub(10),
+                            KeyCode::PageUp => {
+                                app.templates_state.net_templates_selected = app
+                                    .templates_state
+                                    .net_templates_selected
+                                    .saturating_sub(10)
+                            }
                             KeyCode::PageDown => {
                                 if !app.templates_state.net_templates.is_empty() {
-                                    app.templates_state.net_templates_selected = (app.templates_state.net_templates_selected + 10).min(app.templates_state.net_templates.len() - 1);
+                                    app.templates_state.net_templates_selected =
+                                        (app.templates_state.net_templates_selected + 10)
+                                            .min(app.templates_state.net_templates.len() - 1);
                                 } else {
                                     app.templates_state.net_templates_selected = 0;
                                 }
                             }
                             KeyCode::Home => app.templates_state.net_templates_selected = 0,
-                            KeyCode::End => app.templates_state.net_templates_selected = app.templates_state.net_templates.len().saturating_sub(1),
+                            KeyCode::End => {
+                                app.templates_state.net_templates_selected =
+                                    app.templates_state.net_templates.len().saturating_sub(1)
+                            }
                             _ => {}
                         }
                         if app.templates_state.net_templates_selected != before {
@@ -316,9 +376,15 @@ pub(super) fn handle_view_navigation(
         ShellView::Registries => {
             if app.shell_focus == ShellFocus::Details {
                 match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => app.registries_details_scroll = app.registries_details_scroll.saturating_sub(1),
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.registries_details_scroll =
+                            app.registries_details_scroll.saturating_sub(1)
+                    }
                     KeyCode::Down | KeyCode::Char('j') => app.registries_details_scroll += 1,
-                    KeyCode::PageUp => app.registries_details_scroll = app.registries_details_scroll.saturating_sub(10),
+                    KeyCode::PageUp => {
+                        app.registries_details_scroll =
+                            app.registries_details_scroll.saturating_sub(10)
+                    }
                     KeyCode::PageDown => app.registries_details_scroll += 10,
                     KeyCode::Home => app.registries_details_scroll = 0,
                     KeyCode::End => app.registries_details_scroll = usize::MAX,
@@ -328,7 +394,9 @@ pub(super) fn handle_view_navigation(
                 let before = app.registries_selected;
                 let total = app.registries_cfg.registries.len();
                 match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => app.registries_selected = app.registries_selected.saturating_sub(1),
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.registries_selected = app.registries_selected.saturating_sub(1)
+                    }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if total > 0 {
                             app.registries_selected = (app.registries_selected + 1).min(total - 1);
@@ -336,7 +404,9 @@ pub(super) fn handle_view_navigation(
                             app.registries_selected = 0;
                         }
                     }
-                    KeyCode::PageUp => app.registries_selected = app.registries_selected.saturating_sub(10),
+                    KeyCode::PageUp => {
+                        app.registries_selected = app.registries_selected.saturating_sub(10)
+                    }
                     KeyCode::PageDown => {
                         if total > 0 {
                             app.registries_selected = (app.registries_selected + 10).min(total - 1);
@@ -415,8 +485,12 @@ pub(super) fn handle_view_navigation(
             _ => {}
         },
         ShellView::Help => match key.code {
-            KeyCode::Up | KeyCode::Char('k') => app.shell_help.scroll = app.shell_help.scroll.saturating_sub(1),
-            KeyCode::Down | KeyCode::Char('j') => app.shell_help.scroll = app.shell_help.scroll.saturating_add(1),
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.shell_help.scroll = app.shell_help.scroll.saturating_sub(1)
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.shell_help.scroll = app.shell_help.scroll.saturating_add(1)
+            }
             KeyCode::PageUp => app.shell_help.scroll = app.shell_help.scroll.saturating_sub(10),
             KeyCode::PageDown => app.shell_help.scroll = app.shell_help.scroll.saturating_add(10),
             KeyCode::Home => app.shell_help.scroll = 0,
@@ -424,8 +498,12 @@ pub(super) fn handle_view_navigation(
             _ => {}
         },
         ShellView::Messages => match key.code {
-            KeyCode::Up | KeyCode::Char('k') => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(1),
-            KeyCode::Down | KeyCode::Char('j') => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(1),
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(1)
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(1)
+            }
             KeyCode::PageUp => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(10),
             KeyCode::PageDown => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(10),
             KeyCode::Left => app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_sub(4),

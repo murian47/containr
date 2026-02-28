@@ -1,5 +1,5 @@
-use crate::ui::render::sidebar::shell_sidebar_select_item;
 use crate::ui::commands;
+use crate::ui::render::sidebar::shell_sidebar_select_item;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ShellFocus, ShellSidebarItem, ShellView};
 use crate::ui::theme;
@@ -86,7 +86,11 @@ impl App {
         }
         let len = self.theme_selector.names.len();
         let cur = self.theme_selector.selected;
-        let step = if delta < 0 { (-delta) as usize } else { delta as usize };
+        let step = if delta < 0 {
+            (-delta) as usize
+        } else {
+            delta as usize
+        };
         let next = if delta < 0 {
             cur.saturating_sub(step)
         } else {

@@ -1,19 +1,19 @@
 //! Imperative UI actions invoked by shortcuts and menus.
 
-use crate::ui::render::stacks::stack_name_from_labels;
-use crate::ui::render::utils::{is_container_stopped, shell_escape_sh_arg};
-use crate::ui::state::actions as state_actions;
+use crate::docker::{ContainerAction, DockerCfg};
 use crate::ui::core::requests::ActionRequest;
 use crate::ui::core::runtime::{
     current_docker_cmd_from_app, current_runner_from_app, current_server_label,
 };
 use crate::ui::core::types::{DeployMarker, InspectTarget};
 use crate::ui::helpers::{ensure_template_id, shell_single_quote};
+use crate::ui::render::stacks::stack_name_from_labels;
+use crate::ui::render::utils::{is_container_stopped, shell_escape_sh_arg};
+use crate::ui::state::actions as state_actions;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{
     MsgLevel, ShellAction, ShellInteractive, ShellView, TemplatesKind, shell_begin_confirm,
 };
-use crate::docker::{ContainerAction, DockerCfg};
 use std::time::Instant;
 use tokio::sync::mpsc;
 
@@ -110,7 +110,9 @@ pub(in crate::ui) fn check_image_updates(
 ) {
     let mut queued = 0usize;
     for image in images {
-        let Some(normalized) = crate::ui::state::image_updates::resolve_image_ref_for_updates(app, &image) else {
+        let Some(normalized) =
+            crate::ui::state::image_updates::resolve_image_ref_for_updates(app, &image)
+        else {
             app.log_msg(
                 MsgLevel::Warn,
                 format!("image update skipped (unresolved ref): {image}"),
@@ -193,7 +195,12 @@ pub(in crate::ui) fn execute_action(
         }
         ShellAction::Restart => {
             if app.shell_view == ShellView::Stacks {
-                state_actions::exec_stack_action(app, ContainerAction::Restart, None, action_req_tx);
+                state_actions::exec_stack_action(
+                    app,
+                    ContainerAction::Restart,
+                    None,
+                    action_req_tx,
+                );
             } else {
                 exec_container_action(app, ContainerAction::Restart, action_req_tx);
             }
@@ -202,7 +209,11 @@ pub(in crate::ui) fn execute_action(
             if app.shell_view == ShellView::Stacks {
                 let name = app.selected_stack_entry().map(|s| s.name.clone());
                 if let Some(name) = name {
-                    shell_begin_confirm(app, format!("stack rm {name}"), format!("stack rm {name}"));
+                    shell_begin_confirm(
+                        app,
+                        format!("stack rm {name}"),
+                        format!("stack rm {name}"),
+                    );
                 } else {
                     app.set_warn("no stack selected");
                 }
@@ -325,11 +336,21 @@ pub(in crate::ui) fn deploy_template(
     force_recreate: bool,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
-    if app.templates_state.template_deploy_inflight.contains_key(name) {
+    if app
+        .templates_state
+        .template_deploy_inflight
+        .contains_key(name)
+    {
         app.set_warn(format!("template '{name}' is already deploying"));
         return;
     }
-    let Some(tpl) = app.templates_state.templates.iter().find(|t| t.name == name).cloned() else {
+    let Some(tpl) = app
+        .templates_state
+        .templates
+        .iter()
+        .find(|t| t.name == name)
+        .cloned()
+    else {
         app.set_warn(format!("unknown template: {name}"));
         return;
     };
@@ -390,11 +411,21 @@ pub(in crate::ui) fn deploy_net_template(
     force: bool,
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
-    if app.templates_state.net_template_deploy_inflight.contains_key(name) {
+    if app
+        .templates_state
+        .net_template_deploy_inflight
+        .contains_key(name)
+    {
         app.set_warn(format!("network template '{name}' is already deploying"));
         return;
     }
-    let Some(tpl) = app.templates_state.net_templates.iter().find(|t| t.name == name).cloned() else {
+    let Some(tpl) = app
+        .templates_state
+        .net_templates
+        .iter()
+        .find(|t| t.name == name)
+        .cloned()
+    else {
         app.set_warn(format!("unknown network template: {name}"));
         return;
     };
@@ -457,14 +488,10 @@ pub(in crate::ui) fn edit_selected_template(app: &mut App) {
 }
 
 pub(in crate::ui) fn edit_selected_net_template(app: &mut App) {
-    let Some((name, has_cfg, cfg_path, dir)) = app.selected_net_template().map(|t| {
-        (
-            t.name.clone(),
-            t.has_cfg,
-            t.cfg_path.clone(),
-            t.dir.clone(),
-        )
-    }) else {
+    let Some((name, has_cfg, cfg_path, dir)) = app
+        .selected_net_template()
+        .map(|t| (t.name.clone(), t.has_cfg, t.cfg_path.clone(), t.dir.clone()))
+    else {
         app.set_warn("no network template selected");
         return;
     };

@@ -1,7 +1,7 @@
 //! View navigation and view-scoped helpers for App.
 
-use crate::ui::render::sidebar::shell_sidebar_select_item;
 use crate::ui::core::types::{InspectTarget, ViewEntry};
+use crate::ui::render::sidebar::shell_sidebar_select_item;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{
     ActiveView, ListMode, ShellFocus, ShellSidebarItem, ShellView,

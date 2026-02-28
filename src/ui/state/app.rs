@@ -43,9 +43,9 @@ pub(in crate::ui) struct App {
     pub(in crate::ui) view_dirty: bool,
     pub(in crate::ui) stack_collapsed: HashSet<String>,
     pub(in crate::ui) container_idx_by_id: HashMap<String, usize>,
-    pub(in crate::ui) marked: HashSet<String>,          // container ids
-    pub(in crate::ui) marked_images: HashSet<String>,   // image row keys (ref:repo:tag or id:<sha256..>)
-    pub(in crate::ui) marked_volumes: HashSet<String>,  // volume names
+    pub(in crate::ui) marked: HashSet<String>, // container ids
+    pub(in crate::ui) marked_images: HashSet<String>, // image row keys (ref:repo:tag or id:<sha256..>)
+    pub(in crate::ui) marked_volumes: HashSet<String>, // volume names
     pub(in crate::ui) marked_networks: HashSet<String>, // network ids
     pub(in crate::ui) images_selected: usize,
     pub(in crate::ui) volumes_selected: usize,

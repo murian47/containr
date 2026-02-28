@@ -1,15 +1,19 @@
 use image::{Rgba, RgbaImage};
 use ratatui_image::picker::{Picker, ProtocolType};
 
-use crate::ui::render::utils::theme_color_rgba;
 use crate::ui::core::types::DashboardImageState;
+use crate::ui::render::utils::theme_color_rgba;
 use crate::ui::theme;
 
-pub(in crate::ui) fn init_dashboard_image(mut picker: Picker, theme: &theme::ThemeSpec) -> DashboardImageState {
+pub(in crate::ui) fn init_dashboard_image(
+    mut picker: Picker,
+    theme: &theme::ThemeSpec,
+) -> DashboardImageState {
     let fallback = Rgba([16, 16, 16, 255]);
     let panel_raw = theme.panel.bg.trim();
     let panel_bg = theme_color_rgba(&theme.panel.bg, fallback);
-    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset") {
+    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset")
+    {
         theme_color_rgba(&theme.background.bg, fallback)
     } else {
         panel_bg
@@ -24,11 +28,15 @@ pub(in crate::ui) fn init_dashboard_image(mut picker: Picker, theme: &theme::The
     }
 }
 
-pub(in crate::ui) fn apply_dashboard_theme(state: &mut DashboardImageState, theme: &theme::ThemeSpec) {
+pub(in crate::ui) fn apply_dashboard_theme(
+    state: &mut DashboardImageState,
+    theme: &theme::ThemeSpec,
+) {
     let fallback = Rgba([16, 16, 16, 255]);
     let panel_raw = theme.panel.bg.trim();
     let panel_bg = theme_color_rgba(&theme.panel.bg, fallback);
-    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset") {
+    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset")
+    {
         theme_color_rgba(&theme.background.bg, fallback)
     } else {
         panel_bg
@@ -48,7 +56,8 @@ pub(in crate::ui) fn build_dashboard_image(
     let mut img = RgbaImage::new(width, height);
     let fallback_bg = Rgba([16, 16, 16, 255]);
     let panel_raw = theme.panel.bg.trim();
-    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset") {
+    let bg = if panel_raw.eq_ignore_ascii_case("default") || panel_raw.eq_ignore_ascii_case("reset")
+    {
         theme_color_rgba(&theme.background.bg, fallback_bg)
     } else {
         theme_color_rgba(&theme.panel.bg, fallback_bg)
@@ -109,7 +118,11 @@ pub(in crate::ui) fn build_dashboard_image(
         fill_rect(margin_x, y, bar_w, bar_h, faint);
         let fill_w = ((bar_w as f32) * ratio).round() as u32;
         for xx in 0..fill_w {
-            let t = if bar_w <= 1 { 1.0 } else { (xx as f32) / (bar_w as f32 - 1.0) };
+            let t = if bar_w <= 1 {
+                1.0
+            } else {
+                (xx as f32) / (bar_w as f32 - 1.0)
+            };
             let color = if t <= 0.7 {
                 lerp_rgba(ok, warn, t / 0.7)
             } else {

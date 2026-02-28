@@ -78,11 +78,7 @@ fn draw_theme_selector_sidebar(f: &mut ratatui::Frame, app: &mut App, area: Rect
     let mut state = ListState::default();
     if !app.theme_selector.names.is_empty() {
         let selected = app.theme_selector.selected;
-        let max_scroll = app
-            .theme_selector
-            .names
-            .len()
-            .saturating_sub(visible);
+        let max_scroll = app.theme_selector.names.len().saturating_sub(visible);
         let scroll = app.theme_selector.scroll.min(max_scroll);
         *state.offset_mut() = scroll;
         state.select(Some(selected));
@@ -139,12 +135,7 @@ fn draw_theme_selector_preview(f: &mut ratatui::Frame, app: &mut App, area: Rect
     draw_preview_cmdline(f, app, preview, rows[3]);
 }
 
-fn draw_preview_header(
-    f: &mut ratatui::Frame,
-    app: &App,
-    theme: &theme::ThemeSpec,
-    area: Rect,
-) {
+fn draw_preview_header(f: &mut ratatui::Frame, app: &App, theme: &theme::ThemeSpec, area: Rect) {
     let st = theme.header.to_style();
     let mut spans = preview_logo_spans(app, theme, "CONTAINR");
     let server_name = "demo2";
@@ -176,8 +167,14 @@ fn draw_preview_cmdline(f: &mut ratatui::Frame, app: &App, theme: &theme::ThemeS
     } else {
         theme_name.to_string()
     };
-    let prompt = Span::styled(format!(" :theme use {shown}"), theme.cmdline_inactive.to_style());
-    f.render_widget(Paragraph::new(Line::from(vec![label, prompt])).style(st), area);
+    let prompt = Span::styled(
+        format!(" :theme use {shown}"),
+        theme.cmdline_inactive.to_style(),
+    );
+    f.render_widget(
+        Paragraph::new(Line::from(vec![label, prompt])).style(st),
+        area,
+    );
 }
 
 fn draw_preview_body(
@@ -201,7 +198,11 @@ fn draw_preview_body(
     }
     let cols = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(20), Constraint::Length(2), Constraint::Min(1)])
+        .constraints([
+            Constraint::Length(20),
+            Constraint::Length(2),
+            Constraint::Min(1),
+        ])
         .split(body);
 
     draw_preview_sidebar(f, theme, cols[0]);
@@ -219,16 +220,59 @@ fn draw_preview_sidebar(f: &mut ratatui::Frame, theme: &theme::ThemeSpec, area: 
     lines.push(Line::from(Span::styled(" ".repeat(w), st)));
     lines.push(preview_sidebar_hint_line("demo1", '1', st, w));
     lines.push(preview_sidebar_hint_line("demo2", '2', active, w));
-    lines.push(Line::from(Span::styled("─".repeat(w), theme.divider.to_style())));
-    lines.push(preview_sidebar_module_line("Dashboard", shell_module_shortcut(ShellView::Dashboard), st, w));
-    lines.push(preview_sidebar_module_line("Stacks", shell_module_shortcut(ShellView::Stacks), st, w));
-    lines.push(preview_sidebar_module_line("Containers", shell_module_shortcut(ShellView::Containers), active, w));
-    lines.push(preview_sidebar_module_line("Images", shell_module_shortcut(ShellView::Images), st, w));
-    lines.push(preview_sidebar_module_line("Volumes", shell_module_shortcut(ShellView::Volumes), st, w));
-    lines.push(preview_sidebar_module_line("Networks", shell_module_shortcut(ShellView::Networks), st, w));
+    lines.push(Line::from(Span::styled(
+        "─".repeat(w),
+        theme.divider.to_style(),
+    )));
+    lines.push(preview_sidebar_module_line(
+        "Dashboard",
+        shell_module_shortcut(ShellView::Dashboard),
+        st,
+        w,
+    ));
+    lines.push(preview_sidebar_module_line(
+        "Stacks",
+        shell_module_shortcut(ShellView::Stacks),
+        st,
+        w,
+    ));
+    lines.push(preview_sidebar_module_line(
+        "Containers",
+        shell_module_shortcut(ShellView::Containers),
+        active,
+        w,
+    ));
+    lines.push(preview_sidebar_module_line(
+        "Images",
+        shell_module_shortcut(ShellView::Images),
+        st,
+        w,
+    ));
+    lines.push(preview_sidebar_module_line(
+        "Volumes",
+        shell_module_shortcut(ShellView::Volumes),
+        st,
+        w,
+    ));
+    lines.push(preview_sidebar_module_line(
+        "Networks",
+        shell_module_shortcut(ShellView::Networks),
+        st,
+        w,
+    ));
     lines.push(Line::from(Span::styled(" ".repeat(w), st)));
-    lines.push(preview_sidebar_module_line("Templates", shell_module_shortcut(ShellView::Templates), dim, w));
-    lines.push(preview_sidebar_module_line("Registries", shell_module_shortcut(ShellView::Registries), dim, w));
+    lines.push(preview_sidebar_module_line(
+        "Templates",
+        shell_module_shortcut(ShellView::Templates),
+        dim,
+        w,
+    ));
+    lines.push(preview_sidebar_module_line(
+        "Registries",
+        shell_module_shortcut(ShellView::Registries),
+        dim,
+        w,
+    ));
     f.render_widget(Paragraph::new(lines).style(st), area);
 }
 
@@ -283,9 +327,16 @@ fn draw_preview_table(f: &mut ratatui::Frame, theme: &theme::ThemeSpec, area: Re
         Row::new(vec!["db", "running", "postgres:16"]).style(row_style),
     ];
 
-    let table = Table::new(rows, [Constraint::Percentage(34), Constraint::Percentage(18), Constraint::Percentage(48)])
-        .header(header)
-        .style(row_style);
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Percentage(34),
+            Constraint::Percentage(18),
+            Constraint::Percentage(48),
+        ],
+    )
+    .header(header)
+    .style(row_style);
     f.render_widget(table, area);
 }
 
@@ -294,9 +345,18 @@ fn draw_preview_details(f: &mut ratatui::Frame, theme: &theme::ThemeSpec, area: 
     let dim = theme.text_dim.to_style();
     let lines = vec![
         Line::from(vec![Span::styled("Name:", dim), Span::styled(" api", st)]),
-        Line::from(vec![Span::styled("Image:", dim), Span::styled(" ghcr.io/demo/api:latest", st)]),
-        Line::from(vec![Span::styled("Ports:", dim), Span::styled(" 8080->80/tcp", st)]),
-        Line::from(vec![Span::styled("Updated:", dim), Span::styled(" 12s ago", st)]),
+        Line::from(vec![
+            Span::styled("Image:", dim),
+            Span::styled(" ghcr.io/demo/api:latest", st),
+        ]),
+        Line::from(vec![
+            Span::styled("Ports:", dim),
+            Span::styled(" 8080->80/tcp", st),
+        ]),
+        Line::from(vec![
+            Span::styled("Updated:", dim),
+            Span::styled(" 12s ago", st),
+        ]),
     ];
     f.render_widget(Paragraph::new(lines).style(st), area);
 }
@@ -304,13 +364,19 @@ fn draw_preview_details(f: &mut ratatui::Frame, theme: &theme::ThemeSpec, area: 
 fn draw_preview_divider(f: &mut ratatui::Frame, theme: &theme::ThemeSpec, area: Rect) {
     let st = theme.divider.to_style();
     let line = "─".repeat(area.width.max(1) as usize);
-    f.render_widget(Paragraph::new(line).style(st).wrap(Wrap { trim: false }), area);
+    f.render_widget(
+        Paragraph::new(line).style(st).wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
 fn draw_preview_title(f: &mut ratatui::Frame, theme: &theme::ThemeSpec, area: Rect) {
     let st = theme.panel_focused.to_style();
     let text = " Containers (3)";
-    f.render_widget(Paragraph::new(text).style(st).wrap(Wrap { trim: false }), area);
+    f.render_widget(
+        Paragraph::new(text).style(st).wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
 fn preview_logo_spans(app: &App, theme: &theme::ThemeSpec, shown: &str) -> Vec<Span<'static>> {
@@ -320,7 +386,9 @@ fn preview_logo_spans(app: &App, theme: &theme::ThemeSpec, shown: &str) -> Vec<S
         Color::Rgb(r, g, b) => Some((r, g, b)),
         _ => None,
     };
-    let is_dark = bg_rgb.map(|(r, g, b)| rel_luma(r, g, b) < 0.55).unwrap_or(true);
+    let is_dark = bg_rgb
+        .map(|(r, g, b)| rel_luma(r, g, b) < 0.55)
+        .unwrap_or(true);
 
     let bright_palette: [Color; 8] = [
         Color::Rgb(255, 95, 86),
@@ -342,7 +410,11 @@ fn preview_logo_spans(app: &App, theme: &theme::ThemeSpec, shown: &str) -> Vec<S
         Color::Rgb(0, 90, 90),
         Color::Rgb(0, 0, 0),
     ];
-    let palette: &[Color] = if is_dark { &bright_palette } else { &dark_palette };
+    let palette: &[Color] = if is_dark {
+        &bright_palette
+    } else {
+        &dark_palette
+    };
 
     let seed = app.header_logo_seed as usize;
     let offset = seed % palette.len();
@@ -362,7 +434,10 @@ fn preview_logo_spans(app: &App, theme: &theme::ThemeSpec, shown: &str) -> Vec<S
                     c = if is_dark { Color::White } else { Color::Black };
                 }
             }
-            out.push(Span::styled(ch.to_string(), base.fg(c).add_modifier(Modifier::BOLD)));
+            out.push(Span::styled(
+                ch.to_string(),
+                base.fg(c).add_modifier(Modifier::BOLD),
+            ));
             letter_i = letter_i.saturating_add(1);
         } else {
             out.push(Span::styled(ch.to_string(), base));

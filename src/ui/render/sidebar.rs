@@ -1,6 +1,6 @@
 use crate::ui::core::view::shell_module_shortcut;
-use crate::ui::render::utils::shell_row_highlight;
 use crate::ui::render::text::truncate_end;
+use crate::ui::render::utils::shell_row_highlight;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ShellAction, ShellFocus, ShellSidebarItem, ShellView};
 use crate::ui::theme;
@@ -141,7 +141,11 @@ pub(in crate::ui) fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, a
     let mut rendered: Vec<ListItem> = Vec::new();
     for (idx, it) in items.iter().enumerate() {
         let selected = app.shell_focus == ShellFocus::Sidebar && idx == app.shell_sidebar_selected;
-        let st = if selected { shell_row_highlight(app) } else { bg };
+        let st = if selected {
+            shell_row_highlight(app)
+        } else {
+            bg
+        };
 
         match *it {
             ShellSidebarItem::Separator => {

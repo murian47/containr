@@ -13,28 +13,19 @@ pub(in crate::ui) fn format_session_ts(at: OffsetDateTime) -> String {
     use std::sync::OnceLock;
     static FMT: OnceLock<Vec<time::format_description::FormatItem<'static>>> = OnceLock::new();
     let fmt = FMT.get_or_init(|| {
-        time::format_description::parse("[hour]:[minute]:[second]")
-            .unwrap_or_else(|_| Vec::new())
+        time::format_description::parse("[hour]:[minute]:[second]").unwrap_or_else(|_| Vec::new())
     });
     at.format(fmt)
         .unwrap_or_else(|_| at.unix_timestamp().to_string())
 }
 
-pub(in crate::ui) fn draw_shell_messages_view(
-    f: &mut ratatui::Frame,
-    app: &mut App,
-    area: Rect,
-) {
+pub(in crate::ui) fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let bg = app.theme.overlay.to_style();
     f.render_widget(Block::default().style(bg), area);
     draw_shell_messages_list(f, app, area, bg);
 }
 
-pub(in crate::ui) fn draw_shell_messages_dock(
-    f: &mut ratatui::Frame,
-    app: &mut App,
-    area: Rect,
-) {
+pub(in crate::ui) fn draw_shell_messages_dock(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let bg = if app.shell_focus == ShellFocus::Dock {
         app.theme.panel_focused.to_style()
     } else {
@@ -44,12 +35,7 @@ pub(in crate::ui) fn draw_shell_messages_dock(
     draw_shell_messages_list(f, app, area, bg);
 }
 
-fn draw_shell_messages_list(
-    f: &mut ratatui::Frame,
-    app: &mut App,
-    area: Rect,
-    bg: Style,
-) {
+fn draw_shell_messages_list(f: &mut ratatui::Frame, app: &mut App, area: Rect, bg: Style) {
     let inner = area.inner(Margin {
         vertical: 0,
         horizontal: 1,
@@ -106,13 +92,7 @@ fn draw_shell_messages_list(
     }
 
     let mut items: Vec<ListItem> = Vec::new();
-    for (idx, m) in app
-        .session_msgs
-        .iter()
-        .enumerate()
-        .skip(top)
-        .take(view_h)
-    {
+    for (idx, m) in app.session_msgs.iter().enumerate().skip(top).take(view_h) {
         let lvl = match m.level {
             MsgLevel::Info => "INFO ",
             MsgLevel::Warn => "WARN ",
@@ -134,7 +114,10 @@ fn draw_shell_messages_list(
         spans.push(Span::raw(" "));
         spans.push(Span::styled(lvl.to_string(), lvl_style));
         spans.push(Span::raw(" "));
-        let fixed_len = spans.iter().map(|s| s.content.chars().count()).sum::<usize>();
+        let fixed_len = spans
+            .iter()
+            .map(|s| s.content.chars().count())
+            .sum::<usize>();
         let msg_w = w.saturating_sub(fixed_len).max(1);
         let msg = window_hscroll(&m.text, app.shell_msgs.hscroll, msg_w);
         spans.push(Span::styled(msg, bg));

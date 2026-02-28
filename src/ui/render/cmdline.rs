@@ -66,7 +66,8 @@ pub(in crate::ui) fn cmdline_completion_context(
     } else {
         (String::new(), cursor_byte)
     };
-    let quote_prefix = token_start < cursor_byte && input[token_start..cursor_byte].starts_with('"');
+    let quote_prefix =
+        token_start < cursor_byte && input[token_start..cursor_byte].starts_with('"');
 
     CmdlineCompletionContext {
         tokens_before,
@@ -206,7 +207,9 @@ fn cmdline_key_candidates() -> Vec<String> {
         out.push(format!("F{n}"));
         out.push(format!("C-F{n}"));
     }
-    for ch in ['a', 'b', 'c', 'd', 'e', 'g', 'k', 'n', 'o', 'p', 'r', 's', 't', 'u', 'y'] {
+    for ch in [
+        'a', 'b', 'c', 'd', 'e', 'g', 'k', 'n', 'o', 'p', 'r', 's', 't', 'u', 'y',
+    ] {
         out.push(format!("C-{ch}"));
     }
     out
@@ -331,7 +334,10 @@ pub(in crate::ui) fn cmdline_completion_candidates(
             .into_iter()
             .map(|s| s.to_string())
             .collect();
-        return (leading, cmdline_filter_candidates(&token_prefix, candidates));
+        return (
+            leading,
+            cmdline_filter_candidates(&token_prefix, candidates),
+        );
     }
 
     let (cmd_opt, cmd_idx) = cmdline_normalize_cmd(&ctx.tokens_before);
@@ -416,20 +422,36 @@ pub(in crate::ui) fn cmdline_completion_candidates(
         }
         "git" => {
             if arg_index == 0 {
-                vec!["status", "commit", "push", "pull", "init", "clone", "autocommit"]
-                    .into_iter()
-                    .map(|s| s.to_string())
-                    .collect()
+                vec![
+                    "status",
+                    "commit",
+                    "push",
+                    "pull",
+                    "init",
+                    "clone",
+                    "autocommit",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect()
             } else if arg_index == 1 {
                 vec!["templates", "config", "messages"]
                     .into_iter()
                     .map(|s| s.to_string())
                     .collect()
             } else if sub == "templates" && arg_index == 2 {
-                vec!["status", "commit", "push", "pull", "init", "clone", "autocommit"]
-                    .into_iter()
-                    .map(|s| s.to_string())
-                    .collect()
+                vec![
+                    "status",
+                    "commit",
+                    "push",
+                    "pull",
+                    "init",
+                    "clone",
+                    "autocommit",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect()
             } else if sub == "config" && arg_index == 2 {
                 vec!["user.name", "user.email"]
                     .into_iter()
@@ -501,8 +523,10 @@ pub(in crate::ui) fn cmdline_completion_candidates(
                 .into_iter()
                 .map(|s| s.to_string())
                 .collect()
-            } else if matches!(sub, "start" | "stop" | "restart" | "rm" | "check" | "update")
-                && arg_index == 1
+            } else if matches!(
+                sub,
+                "start" | "stop" | "restart" | "rm" | "check" | "update"
+            ) && arg_index == 1
             {
                 cmdline_stack_names(app)
             } else {
@@ -574,7 +598,10 @@ pub(in crate::ui) fn cmdline_completion_candidates(
         _ => Vec::new(),
     };
 
-    (String::new(), cmdline_filter_candidates(&ctx.token_prefix, candidates))
+    (
+        String::new(),
+        cmdline_filter_candidates(&ctx.token_prefix, candidates),
+    )
 }
 
 pub(in crate::ui) fn cmdline_apply_completion(app: &mut App) {
@@ -611,10 +638,7 @@ pub(in crate::ui) fn cmdline_apply_completion(app: &mut App) {
         if matches.len() > max {
             let rest = matches.len() - max;
             matches.truncate(max);
-            app.set_info(format!(
-                "matches: {} ... +{rest} more",
-                matches.join(" ")
-            ));
+            app.set_info(format!("matches: {} ... +{rest} more", matches.join(" ")));
         } else {
             app.set_info(format!("matches: {}", matches.join(" ")));
         }
@@ -631,8 +655,9 @@ pub(in crate::ui) fn cmdline_apply_completion(app: &mut App) {
     new_input.push_str(&replace_text);
     new_input.push_str(&input[ctx.cursor_byte..]);
     app.shell_cmdline.input = new_input;
-    app.shell_cmdline.cursor =
-        app.shell_cmdline.input[..ctx.token_start + replace_text.len()].chars().count();
+    app.shell_cmdline.cursor = app.shell_cmdline.input[..ctx.token_start + replace_text.len()]
+        .chars()
+        .count();
 
     if single_match {
         let after = &app.shell_cmdline.input[ctx.token_start + replace_text.len()..];
@@ -645,10 +670,7 @@ pub(in crate::ui) fn cmdline_apply_completion(app: &mut App) {
         if matches.len() > max {
             let rest = matches.len() - max;
             matches.truncate(max);
-            app.set_info(format!(
-                "matches: {} ... +{rest} more",
-                matches.join(" ")
-            ));
+            app.set_info(format!("matches: {} ... +{rest} more", matches.join(" ")));
         } else {
             app.set_info(format!("matches: {}", matches.join(" ")));
         }

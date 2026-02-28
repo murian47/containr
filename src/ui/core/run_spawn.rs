@@ -3,26 +3,30 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, watch, Semaphore};
+use tokio::sync::{Semaphore, mpsc, watch};
 use tokio::task::JoinSet;
 
 use crate::docker::{self, ContainerRow, ImageRow, NetworkRow, VolumeRow};
 use crate::runner::Runner;
 use crate::services::image_update::ImageUpdateService;
 use crate::ssh::Ssh;
-use crate::ui::core::tasks::BackgroundTasks;
 use crate::ui::core::ops::{
-    perform_image_push, perform_net_template_deploy, perform_stack_update,
-    perform_template_deploy,
+    perform_image_push, perform_net_template_deploy, perform_stack_update, perform_template_deploy,
 };
 use crate::ui::core::requests::{ActionRequest, Connection};
+use crate::ui::core::tasks::BackgroundTasks;
 use crate::ui::core::types::{DashboardSnapshot, InspectKind, InspectTarget, UsageSnapshot};
 use crate::ui::features::dashboard::{dashboard_command, parse_dashboard_output};
 use crate::ui::features::registry::registry_test;
 use crate::ui::features::templates::{export_net_template, export_stack_template};
 use crate::ui::helpers::{extract_container_ip, normalize_image_id};
 
-type OverviewResult = anyhow::Result<(Vec<ContainerRow>, Vec<ImageRow>, Vec<VolumeRow>, Vec<NetworkRow>)>;
+type OverviewResult = anyhow::Result<(
+    Vec<ContainerRow>,
+    Vec<ImageRow>,
+    Vec<VolumeRow>,
+    Vec<NetworkRow>,
+)>;
 
 pub(in crate::ui) struct SpawnInputs {
     pub(in crate::ui) result_tx: mpsc::UnboundedSender<(String, OverviewResult)>,
@@ -36,7 +40,8 @@ pub(in crate::ui) struct SpawnInputs {
     pub(in crate::ui) logs_req_rx: mpsc::UnboundedReceiver<(String, usize)>,
     pub(in crate::ui) logs_res_tx: mpsc::UnboundedSender<(String, anyhow::Result<String>)>,
     pub(in crate::ui) dash_refresh_rx: mpsc::UnboundedReceiver<()>,
-    pub(in crate::ui) dash_res_tx: mpsc::UnboundedSender<(String, anyhow::Result<DashboardSnapshot>)>,
+    pub(in crate::ui) dash_res_tx:
+        mpsc::UnboundedSender<(String, anyhow::Result<DashboardSnapshot>)>,
     pub(in crate::ui) dash_all_refresh_rx: mpsc::UnboundedReceiver<()>,
     pub(in crate::ui) dash_all_res_tx:
         mpsc::UnboundedSender<(String, anyhow::Result<DashboardSnapshot>, u128)>,
@@ -370,10 +375,15 @@ pub(in crate::ui) fn spawn_background_tasks(inputs: SpawnInputs) -> BackgroundTa
                                 let s = String::from_utf8_lossy(&out.stdout).to_string();
                                 parse_dashboard_output(&s)
                             } else {
-                                let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                                let stderr =
+                                    String::from_utf8_lossy(&out.stderr).trim().to_string();
                                 Err(anyhow::anyhow!(
                                     "ssh failed: {}",
-                                    if stderr.is_empty() { "<no stderr>" } else { &stderr }
+                                    if stderr.is_empty() {
+                                        "<no stderr>"
+                                    } else {
+                                        &stderr
+                                    }
                                 ))
                             }
                         }
@@ -391,12 +401,22 @@ pub(in crate::ui) fn spawn_background_tasks(inputs: SpawnInputs) -> BackgroundTa
         while let Some(req) = inspect_req_rx.recv().await {
             let conn = inspect_conn_rx.borrow().clone();
             let res = match req.kind {
-                InspectKind::Container => docker::fetch_inspect(&conn.runner, &conn.docker, &req.arg).await,
-                InspectKind::Image => docker::fetch_image_inspect(&conn.runner, &conn.docker, &req.arg).await,
-                InspectKind::Volume => docker::fetch_volume_inspect(&conn.runner, &conn.docker, &req.arg).await,
-                InspectKind::Network => docker::fetch_network_inspect(&conn.runner, &conn.docker, &req.arg).await,
+                InspectKind::Container => {
+                    docker::fetch_inspect(&conn.runner, &conn.docker, &req.arg).await
+                }
+                InspectKind::Image => {
+                    docker::fetch_image_inspect(&conn.runner, &conn.docker, &req.arg).await
+                }
+                InspectKind::Volume => {
+                    docker::fetch_volume_inspect(&conn.runner, &conn.docker, &req.arg).await
+                }
+                InspectKind::Network => {
+                    docker::fetch_network_inspect(&conn.runner, &conn.docker, &req.arg).await
+                }
             };
-            let res = res.and_then(|raw| serde_json::from_str::<Value>(&raw).context("inspect output was not JSON"));
+            let res = res.and_then(|raw| {
+                serde_json::from_str::<Value>(&raw).context("inspect output was not JSON")
+            });
             let _ = inspect_res_tx.send((req.key, res));
         }
     });
@@ -411,34 +431,148 @@ pub(in crate::ui) fn spawn_background_tasks(inputs: SpawnInputs) -> BackgroundTa
             }
             let conn = action_conn_rx.borrow().clone();
             let res = match &req {
-                ActionRequest::Container { action, id } => docker::container_action(&conn.runner, &conn.docker, *action, id).await,
-                ActionRequest::RegistryTest { host, auth, test_repo } => registry_test(host, auth, test_repo.as_deref()).await,
-                ActionRequest::TemplateDeploy { name, runner, docker, local_compose, pull, force_recreate, template_commit, .. } => {
-                    perform_template_deploy(runner, docker, name, local_compose, *pull, *force_recreate, template_commit.as_deref()).await
+                ActionRequest::Container { action, id } => {
+                    docker::container_action(&conn.runner, &conn.docker, *action, id).await
                 }
-                ActionRequest::StackUpdate { stack_name, runner, docker, compose_dirs, pull, dry, force, services } => {
-                    perform_stack_update(runner, docker, stack_name, compose_dirs, *pull, *dry, *force, services).await
+                ActionRequest::RegistryTest {
+                    host,
+                    auth,
+                    test_repo,
+                } => registry_test(host, auth, test_repo.as_deref()).await,
+                ActionRequest::TemplateDeploy {
+                    name,
+                    runner,
+                    docker,
+                    local_compose,
+                    pull,
+                    force_recreate,
+                    template_commit,
+                    ..
+                } => {
+                    perform_template_deploy(
+                        runner,
+                        docker,
+                        name,
+                        local_compose,
+                        *pull,
+                        *force_recreate,
+                        template_commit.as_deref(),
+                    )
+                    .await
                 }
-                ActionRequest::NetTemplateDeploy { name, runner, docker, local_cfg, force, .. } => {
-                    perform_net_template_deploy(runner, docker, name, local_cfg, *force).await
+                ActionRequest::StackUpdate {
+                    stack_name,
+                    runner,
+                    docker,
+                    compose_dirs,
+                    pull,
+                    dry,
+                    force,
+                    services,
+                } => {
+                    perform_stack_update(
+                        runner,
+                        docker,
+                        stack_name,
+                        compose_dirs,
+                        *pull,
+                        *dry,
+                        *force,
+                        services,
+                    )
+                    .await
                 }
-                ActionRequest::TemplateFromStack { name, stack_name, source, container_ids, templates_dir } => {
-                    export_stack_template(&conn.runner, &conn.docker, name, source, Some(stack_name), container_ids, templates_dir).await
+                ActionRequest::NetTemplateDeploy {
+                    name,
+                    runner,
+                    docker,
+                    local_cfg,
+                    force,
+                    ..
+                } => perform_net_template_deploy(runner, docker, name, local_cfg, *force).await,
+                ActionRequest::TemplateFromStack {
+                    name,
+                    stack_name,
+                    source,
+                    container_ids,
+                    templates_dir,
+                } => {
+                    export_stack_template(
+                        &conn.runner,
+                        &conn.docker,
+                        name,
+                        source,
+                        Some(stack_name),
+                        container_ids,
+                        templates_dir,
+                    )
+                    .await
                 }
-                ActionRequest::TemplateFromContainer { name, source, container_id, templates_dir } => {
-                    export_stack_template(&conn.runner, &conn.docker, name, source, None, std::slice::from_ref(container_id), templates_dir).await
+                ActionRequest::TemplateFromContainer {
+                    name,
+                    source,
+                    container_id,
+                    templates_dir,
+                } => {
+                    export_stack_template(
+                        &conn.runner,
+                        &conn.docker,
+                        name,
+                        source,
+                        None,
+                        std::slice::from_ref(container_id),
+                        templates_dir,
+                    )
+                    .await
                 }
-                ActionRequest::TemplateFromNetwork { name, source, network_id, templates_dir } => {
-                    export_net_template(&conn.runner, &conn.docker, name, source, network_id, templates_dir).await
+                ActionRequest::TemplateFromNetwork {
+                    name,
+                    source,
+                    network_id,
+                    templates_dir,
+                } => {
+                    export_net_template(
+                        &conn.runner,
+                        &conn.docker,
+                        name,
+                        source,
+                        network_id,
+                        templates_dir,
+                    )
+                    .await
                 }
-                ActionRequest::ImageUpdateCheck { .. } => unreachable!("image update checks are handled in the dispatcher"),
-                ActionRequest::ImageUntag { reference, .. } => docker::image_remove(&conn.runner, &conn.docker, reference).await,
-                ActionRequest::ImageForceRemove { id, .. } => docker::image_remove_force(&conn.runner, &conn.docker, id).await,
-                ActionRequest::ImagePush { source_ref, target_ref, registry_host, auth, .. } => {
-                    perform_image_push(&conn.runner, &conn.docker, source_ref, target_ref, registry_host, auth.as_ref()).await
+                ActionRequest::ImageUpdateCheck { .. } => {
+                    unreachable!("image update checks are handled in the dispatcher")
                 }
-                ActionRequest::VolumeRemove { name } => docker::volume_remove(&conn.runner, &conn.docker, name).await,
-                ActionRequest::NetworkRemove { id } => docker::network_remove(&conn.runner, &conn.docker, id).await,
+                ActionRequest::ImageUntag { reference, .. } => {
+                    docker::image_remove(&conn.runner, &conn.docker, reference).await
+                }
+                ActionRequest::ImageForceRemove { id, .. } => {
+                    docker::image_remove_force(&conn.runner, &conn.docker, id).await
+                }
+                ActionRequest::ImagePush {
+                    source_ref,
+                    target_ref,
+                    registry_host,
+                    auth,
+                    ..
+                } => {
+                    perform_image_push(
+                        &conn.runner,
+                        &conn.docker,
+                        source_ref,
+                        target_ref,
+                        registry_host,
+                        auth.as_ref(),
+                    )
+                    .await
+                }
+                ActionRequest::VolumeRemove { name } => {
+                    docker::volume_remove(&conn.runner, &conn.docker, name).await
+                }
+                ActionRequest::NetworkRemove { id } => {
+                    docker::network_remove(&conn.runner, &conn.docker, id).await
+                }
             };
             let _ = action_res_tx_action.send((req, res));
         }
@@ -492,8 +626,11 @@ pub(in crate::ui) fn spawn_background_tasks(inputs: SpawnInputs) -> BackgroundTa
             let key = conn.runner.key();
             let res = async {
                 let raw = docker::fetch_inspects(&conn.runner, &conn.docker, &ids).await?;
-                let v = serde_json::from_str::<Value>(&raw).context("inspect output was not JSON")?;
-                let arr = v.as_array().context("inspect output was not a JSON array")?;
+                let v =
+                    serde_json::from_str::<Value>(&raw).context("inspect output was not JSON")?;
+                let arr = v
+                    .as_array()
+                    .context("inspect output was not a JSON array")?;
                 let mut map: HashMap<String, String> = HashMap::new();
                 for item in arr {
                     let id = item
@@ -527,8 +664,8 @@ pub(in crate::ui) fn spawn_background_tasks(inputs: SpawnInputs) -> BackgroundTa
 
                 for chunk in ids.chunks(CHUNK) {
                     let raw = docker::fetch_inspects(&conn.runner, &conn.docker, chunk).await?;
-                    let v =
-                        serde_json::from_str::<Value>(&raw).context("inspect output was not JSON")?;
+                    let v = serde_json::from_str::<Value>(&raw)
+                        .context("inspect output was not JSON")?;
                     let arr = v
                         .as_array()
                         .context("inspect output was not a JSON array")?;

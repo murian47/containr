@@ -370,7 +370,10 @@ pub(super) fn write_stack_template_compose(
     fs::create_dir_all(templates_dir)?;
     let dir = templates_dir.join(name.trim());
     if dir.exists() && !dir.is_dir() {
-        anyhow::bail!("template path exists but is not a directory: {}", dir.display());
+        anyhow::bail!(
+            "template path exists but is not a directory: {}",
+            dir.display()
+        );
     }
     fs::create_dir_all(&dir)?;
     let compose_path = dir.join("compose.yaml");
@@ -387,11 +390,7 @@ pub(super) fn write_net_template_cfg(
 
     fs::create_dir_all(templates_dir)?;
     let dir = templates_dir.join(name.trim());
-    anyhow::ensure!(
-        !dir.exists(),
-        "template already exists: {}",
-        dir.display()
-    );
+    anyhow::ensure!(!dir.exists(), "template already exists: {}", dir.display());
     fs::create_dir_all(&dir)?;
     let cfg_path = dir.join("network.json");
     fs::write(&cfg_path, cfg)?;

@@ -89,12 +89,14 @@ pub(in crate::ui) fn current_match_pos(app: &App) -> (usize, usize) {
         return (0, 0);
     }
     let path = app
-        .inspect.lines
+        .inspect
+        .lines
         .get(app.inspect.selected)
         .map(|l| l.path.as_str())
         .unwrap_or("");
     let idx = app
-        .inspect.match_paths
+        .inspect
+        .match_paths
         .iter()
         .position(|p| p == path)
         .map(|i| i + 1)

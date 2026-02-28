@@ -1,3 +1,4 @@
+use crate::docker::ContainerRow;
 use crate::ui::core::types::{ActionErrorKind, ViewEntry};
 use crate::ui::render::format::loading_spinner;
 use crate::ui::render::status::image_update_indicator;
@@ -6,7 +7,6 @@ use crate::ui::render::utils::{is_container_stopped, shell_row_highlight, trunca
 use crate::ui::state::app::App;
 use crate::ui::state::image_updates::{resolve_image_update_state, resolve_stack_update_state};
 use crate::ui::state::shell_types::ListMode;
-use crate::docker::ContainerRow;
 use ratatui::layout::{Constraint, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};
@@ -36,9 +36,7 @@ pub(in crate::ui) fn draw_shell_containers_table(
         };
         f.render_widget(
             Paragraph::new(msg)
-                .style(
-                    bg.patch(app.theme.text_dim.to_style()),
-                )
+                .style(bg.patch(app.theme.text_dim.to_style()))
                 .wrap(Wrap { trim: true }),
             area.inner(Margin {
                 vertical: 0,
@@ -62,7 +60,7 @@ pub(in crate::ui) fn draw_shell_containers_table(
         Cell::from("STATUS"),
         Cell::from("IP"),
     ])
-        .style(shell_header_style(app));
+    .style(shell_header_style(app));
 
     let mut rows: Vec<Row> = Vec::new();
 
@@ -72,10 +70,7 @@ pub(in crate::ui) fn draw_shell_containers_table(
         let row_style = if marked {
             app.theme.marked.to_style()
         } else if stopped {
-            app.theme
-                .text_faint
-                .to_style()
-                .add_modifier(Modifier::DIM)
+            app.theme.text_faint.to_style().add_modifier(Modifier::DIM)
         } else {
             Style::default()
         };
@@ -110,11 +105,8 @@ pub(in crate::ui) fn draw_shell_containers_table(
         };
 
         let name = format!("{name_prefix}{}", c.name);
-        let (upd_text, upd_style) = image_update_indicator(
-            app,
-            resolve_image_update_state(app, &c.image).1,
-            bg,
-        );
+        let (upd_text, upd_style) =
+            image_update_indicator(app, resolve_image_update_state(app, &c.image).1, bg);
         Row::new(vec![
             Cell::from(truncate_end(&name, 22)).style(row_style),
             Cell::from(truncate_end(&c.image, 40)).style(row_style),
@@ -137,10 +129,7 @@ pub(in crate::ui) fn draw_shell_containers_table(
                     expanded,
                 } => {
                     let st = if *running == 0 {
-                        app.theme
-                            .text_faint
-                            .to_style()
-                            .add_modifier(Modifier::BOLD)
+                        app.theme.text_faint.to_style().add_modifier(Modifier::BOLD)
                     } else if *running == *total {
                         Style::default()
                             .fg(Color::Green)
@@ -157,10 +146,7 @@ pub(in crate::ui) fn draw_shell_containers_table(
                         name_text.push_str(&format!(" (Updating {secs}s)"));
                     }
                     let (upd_text, upd_style) = if app.stack_update_error.contains_key(name) {
-                        (
-                            "!".to_string(),
-                            bg.patch(app.theme.text_error.to_style()),
-                        )
+                        ("!".to_string(), bg.patch(app.theme.text_error.to_style()))
                     } else {
                         image_update_indicator(app, resolve_stack_update_state(app, name), bg)
                     };
@@ -230,11 +216,7 @@ pub(in crate::ui) fn draw_shell_containers_table(
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-pub(in crate::ui) fn draw_shell_images_table(
-    f: &mut ratatui::Frame,
-    app: &mut App,
-    area: Rect,
-) {
+pub(in crate::ui) fn draw_shell_images_table(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(Margin {
@@ -287,11 +269,7 @@ pub(in crate::ui) fn draw_shell_images_table(
             .unwrap_or(0)
             > 0;
         let used_cell = if used {
-            if app.ascii_only {
-                "Y"
-            } else {
-                "✓"
-            }
+            if app.ascii_only { "Y" } else { "✓" }
         } else {
             ""
         };
@@ -324,7 +302,9 @@ pub(in crate::ui) fn draw_shell_images_table(
     let avail = inner_w.saturating_sub(fixed);
 
     let mut ref_w = max_ref.clamp(REF_MIN_W, REF_TEXT_MAX).min(avail);
-    let mut id_w = max_id.clamp(ID_MIN_W, ID_TEXT_MAX).min(avail.saturating_sub(ref_w));
+    let mut id_w = max_id
+        .clamp(ID_MIN_W, ID_TEXT_MAX)
+        .min(avail.saturating_sub(ref_w));
     if ref_w + id_w < avail {
         let extra = avail - (ref_w + id_w);
         let add_ref = extra.min(REF_TEXT_MAX.saturating_sub(ref_w));
@@ -368,11 +348,7 @@ pub(in crate::ui) fn draw_shell_images_table(
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-pub(in crate::ui) fn draw_shell_volumes_table(
-    f: &mut ratatui::Frame,
-    app: &mut App,
-    area: Rect,
-) {
+pub(in crate::ui) fn draw_shell_volumes_table(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(Margin {
@@ -453,11 +429,7 @@ pub(in crate::ui) fn draw_shell_volumes_table(
     f.render_stateful_widget(table, inner, &mut state);
 }
 
-pub(in crate::ui) fn draw_shell_networks_table(
-    f: &mut ratatui::Frame,
-    app: &mut App,
-    area: Rect,
-) {
+pub(in crate::ui) fn draw_shell_networks_table(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(Margin {

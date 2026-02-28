@@ -4,8 +4,8 @@
 //! (fallback: `$HOME/.config/containr/config.json`).
 //! No secrets are stored; only non-sensitive connection metadata and UI preferences.
 
-use anyhow::Context as _;
 use crate::shell_parse::parse_shell_tokens;
+use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -265,7 +265,10 @@ impl std::fmt::Debug for RegistryEntry {
             .field("secret", &self.secret.as_ref().map(|_| "****"))
             .field(
                 "secret_keyring",
-                &self.secret_keyring.as_ref().map(|name| format!("key:{name}")),
+                &self
+                    .secret_keyring
+                    .as_ref()
+                    .map(|name| format!("key:{name}")),
             )
             .field("test_repo", &self.test_repo)
             .finish()
@@ -412,8 +415,8 @@ pub fn load_registries(config_path: &Path) -> anyhow::Result<RegistriesConfig> {
         let _ = save_registries(&path, &cfg);
         return Ok(cfg);
     }
-    let bytes =
-        fs::read(&path).with_context(|| format!("failed to read registries: {}", path.display()))?;
+    let bytes = fs::read(&path)
+        .with_context(|| format!("failed to read registries: {}", path.display()))?;
     let cfg: RegistriesConfig = serde_json::from_slice(&bytes)
         .with_context(|| format!("failed to parse registries: {}", path.display()))?;
     Ok(cfg)
@@ -424,8 +427,7 @@ pub fn save_registries(path: &Path, cfg: &RegistriesConfig) -> anyhow::Result<()
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create registries dir: {}", parent.display()))?;
     }
-    let bytes =
-        serde_json::to_vec_pretty(cfg).context("failed to serialize registries config")?;
+    let bytes = serde_json::to_vec_pretty(cfg).context("failed to serialize registries config")?;
     fs::write(path, bytes)
         .with_context(|| format!("failed to write registries: {}", path.display()))?;
     Ok(())

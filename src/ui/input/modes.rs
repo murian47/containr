@@ -1,6 +1,6 @@
 use super::context::InputCtx;
-use crate::ui::render::utils::write_text_file;
 use crate::ui::core::types::{InspectMode, LogsMode};
+use crate::ui::render::utils::write_text_file;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::ShellView;
 use crate::ui::text_edit::{
@@ -42,7 +42,9 @@ fn handle_logs_mode(app: &mut App, key: KeyEvent, ctx: &InputCtx<'_>) -> bool {
             KeyCode::Right => {
                 let len = app.logs.input.chars().count();
                 app.logs.input_cursor =
-                    clamp_cursor_to_text(&app.logs.input, app.logs.input_cursor).saturating_add(1).min(len);
+                    clamp_cursor_to_text(&app.logs.input, app.logs.input_cursor)
+                        .saturating_add(1)
+                        .min(len);
             }
             KeyCode::Home => app.logs.input_cursor = 0,
             KeyCode::End => app.logs.input_cursor = app.logs.input.chars().count(),
@@ -173,13 +175,15 @@ fn handle_logs_mode(app: &mut App, key: KeyEvent, ctx: &InputCtx<'_>) -> bool {
             }
             KeyCode::Left => {
                 app.logs.command_cursor =
-                    clamp_cursor_to_text(&app.logs.command, app.logs.command_cursor).saturating_sub(1);
+                    clamp_cursor_to_text(&app.logs.command, app.logs.command_cursor)
+                        .saturating_sub(1);
             }
             KeyCode::Right => {
                 let len = app.logs.command.chars().count();
-                app.logs.command_cursor = clamp_cursor_to_text(&app.logs.command, app.logs.command_cursor)
-                    .saturating_add(1)
-                    .min(len);
+                app.logs.command_cursor =
+                    clamp_cursor_to_text(&app.logs.command, app.logs.command_cursor)
+                        .saturating_add(1)
+                        .min(len);
             }
             KeyCode::Home => app.logs.command_cursor = 0,
             KeyCode::End => app.logs.command_cursor = app.logs.command.chars().count(),
@@ -214,19 +218,25 @@ fn handle_inspect_mode(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Left => {
                 app.inspect.input_cursor =
-                    clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor).saturating_sub(1);
+                    clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor)
+                        .saturating_sub(1);
             }
             KeyCode::Right => {
                 let len = app.inspect.input.chars().count();
-                app.inspect.input_cursor = clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor)
-                    .saturating_add(1)
-                    .min(len);
+                app.inspect.input_cursor =
+                    clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor)
+                        .saturating_add(1)
+                        .min(len);
             }
             KeyCode::Home => app.inspect.input_cursor = 0,
             KeyCode::End => app.inspect.input_cursor = app.inspect.input.chars().count(),
             KeyCode::Char(ch) => {
                 if !ch.is_control() && !key.modifiers.contains(KeyModifiers::CONTROL) {
-                    insert_char_at_cursor(&mut app.inspect.input, &mut app.inspect.input_cursor, ch);
+                    insert_char_at_cursor(
+                        &mut app.inspect.input,
+                        &mut app.inspect.input_cursor,
+                        ch,
+                    );
                     app.rebuild_inspect_lines();
                 }
             }
@@ -251,11 +261,16 @@ fn handle_inspect_mode(app: &mut App, key: KeyEvent) -> bool {
                             None => app.inspect.error = Some("no inspect data loaded".to_string()),
                             Some(v) => match serde_json::to_string_pretty(v) {
                                 Ok(s) => match write_text_file(path, &s, force) {
-                                    Ok(p) => app.set_info(format!("saved inspect to {}", p.display())),
-                                    Err(e) => app.inspect.error = Some(format!("save failed: {e:#}")),
+                                    Ok(p) => {
+                                        app.set_info(format!("saved inspect to {}", p.display()))
+                                    }
+                                    Err(e) => {
+                                        app.inspect.error = Some(format!("save failed: {e:#}"))
+                                    }
                                 },
                                 Err(e) => {
-                                    app.inspect.error = Some(format!("failed to serialize inspect: {e:#}"))
+                                    app.inspect.error =
+                                        Some(format!("failed to serialize inspect: {e:#}"))
                                 }
                             },
                         }
@@ -307,19 +322,25 @@ fn handle_inspect_mode(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Left => {
                 app.inspect.input_cursor =
-                    clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor).saturating_sub(1);
+                    clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor)
+                        .saturating_sub(1);
             }
             KeyCode::Right => {
                 let len = app.inspect.input.chars().count();
-                app.inspect.input_cursor = clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor)
-                    .saturating_add(1)
-                    .min(len);
+                app.inspect.input_cursor =
+                    clamp_cursor_to_text(&app.inspect.input, app.inspect.input_cursor)
+                        .saturating_add(1)
+                        .min(len);
             }
             KeyCode::Home => app.inspect.input_cursor = 0,
             KeyCode::End => app.inspect.input_cursor = app.inspect.input.chars().count(),
             KeyCode::Char(ch) => {
                 if !ch.is_control() {
-                    insert_char_at_cursor(&mut app.inspect.input, &mut app.inspect.input_cursor, ch);
+                    insert_char_at_cursor(
+                        &mut app.inspect.input,
+                        &mut app.inspect.input_cursor,
+                        ch,
+                    );
                     app.inspect.cmd_history.on_edit();
                 }
             }
@@ -388,17 +409,21 @@ fn handle_theme_selector_mode(app: &mut App, key: KeyEvent) -> bool {
                 return true;
             }
             KeyCode::Left => {
-                app.theme_selector.search_cursor =
-                    clamp_cursor_to_text(&app.theme_selector.search_input, app.theme_selector.search_cursor)
-                        .saturating_sub(1);
+                app.theme_selector.search_cursor = clamp_cursor_to_text(
+                    &app.theme_selector.search_input,
+                    app.theme_selector.search_cursor,
+                )
+                .saturating_sub(1);
                 return true;
             }
             KeyCode::Right => {
                 let len = app.theme_selector.search_input.chars().count();
-                app.theme_selector.search_cursor =
-                    clamp_cursor_to_text(&app.theme_selector.search_input, app.theme_selector.search_cursor)
-                        .saturating_add(1)
-                        .min(len);
+                app.theme_selector.search_cursor = clamp_cursor_to_text(
+                    &app.theme_selector.search_input,
+                    app.theme_selector.search_cursor,
+                )
+                .saturating_add(1)
+                .min(len);
                 return true;
             }
             KeyCode::Home => {

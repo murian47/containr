@@ -1,17 +1,17 @@
-use crate::ui::render::badges::header_logo_spans;
-use crate::ui::render::breadcrumbs::shell_breadcrumbs;
-use crate::ui::render::format::{dot_spinner, split_at_chars, spinner_char, truncate_start};
-use crate::ui::render::header::draw_rate_limit_banner;
-use crate::ui::render::utils::truncate_end;
-use crate::ui::views;
 use crate::ui::commands;
 use crate::ui::core::runtime::current_server_label;
 use crate::ui::core::types::{InspectMode, LogsMode};
+use crate::ui::render::badges::header_logo_spans;
+use crate::ui::render::breadcrumbs::shell_breadcrumbs;
+use crate::ui::render::format::{dot_spinner, spinner_char, split_at_chars, truncate_start};
+use crate::ui::render::header::draw_rate_limit_banner;
+use crate::ui::render::utils::truncate_end;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{
     ShellFocus, ShellView, TemplatesKind, input_window_with_cursor,
 };
 use crate::ui::theme;
+use crate::ui::views;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -29,7 +29,11 @@ pub(in crate::ui) fn draw_shell_header(
 
     let server = current_server_label(app);
     let crumb = shell_breadcrumbs(app);
-    let conn = if app.conn_error.is_some() { "○" } else { "●" };
+    let conn = if app.conn_error.is_some() {
+        "○"
+    } else {
+        "●"
+    };
     let conn_style = if app.conn_error.is_some() {
         app.theme
             .text_error
@@ -49,13 +53,14 @@ pub(in crate::ui) fn draw_shell_header(
     } else {
         String::new()
     };
-    let deploy = if let Some((name, marker)) = app.templates_state.template_deploy_inflight.iter().next() {
-        let secs = marker.started.elapsed().as_secs();
-        let spin = spinner_char(marker.started, app.ascii_only);
-        format!("  Deploy: {name} {spin} {secs}s")
-    } else {
-        String::new()
-    };
+    let deploy =
+        if let Some((name, marker)) = app.templates_state.template_deploy_inflight.iter().next() {
+            let secs = marker.started.elapsed().as_secs();
+            let spin = spinner_char(marker.started, app.ascii_only);
+            format!("  Deploy: {name} {spin} {secs}s")
+        } else {
+            String::new()
+        };
     let mut global_loading = app.logs.loading
         || app.inspect.loading
         || !app.action_inflight.is_empty()
@@ -216,11 +221,7 @@ pub(in crate::ui) fn draw_shell_title(
     );
 }
 
-pub(in crate::ui) fn draw_shell_main_list(
-    f: &mut ratatui::Frame,
-    app: &mut App,
-    area: Rect,
-) {
+pub(in crate::ui) fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let banner = if matches!(
         app.shell_view,
         ShellView::Logs | ShellView::Inspect | ShellView::Messages | ShellView::Help
@@ -232,7 +233,11 @@ pub(in crate::ui) fn draw_shell_main_list(
     let (title_area, banner_area, content_area) = if banner.is_some() {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Min(1)])
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Min(1),
+            ])
             .split(area);
         (chunks[0], Some(chunks[1]), chunks[2])
     } else {
@@ -349,11 +354,7 @@ pub(in crate::ui) fn draw_shell_main_list(
     }
 }
 
-pub(in crate::ui) fn draw_shell_cmdline(
-    f: &mut ratatui::Frame,
-    app: &App,
-    area: Rect,
-) {
+pub(in crate::ui) fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let bg = app.theme.cmdline.to_style();
     f.render_widget(Block::default().style(bg), area);
 
@@ -446,10 +447,7 @@ pub(in crate::ui) fn draw_shell_cmdline(
             let input_w = avail.saturating_sub(1).max(1);
             let (before, at, after) = input_window_with_cursor(&input, cursor, input_w);
             spans.push(Span::styled(before, bg));
-            spans.push(Span::styled(
-                at,
-                app.theme.cmdline_cursor.to_style(),
-            ));
+            spans.push(Span::styled(at, app.theme.cmdline_cursor.to_style()));
             spans.push(Span::styled(after, bg));
         } else {
             spans.push(Span::styled(

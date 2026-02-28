@@ -1,10 +1,10 @@
 use super::common::{
+    ComposeHealthcheck, ComposeNetwork, ComposeNetworkIpam, ComposeNetworkIpamConfig,
+    ComposeService, ComposeVolume, ContainerInspect, NetworkInspect, NetworkTemplateSpecWrite,
     filter_labels, hc_duration, hc_interval, hc_retries, hc_start_period, hc_timeout,
     is_system_network_name, parse_container_inspects, parse_network_inspect,
     service_name_from_labels, stack_name_from_label_map, unique_compose_key,
-    write_net_template_cfg, write_stack_template_compose, yaml_quote, ComposeHealthcheck,
-    ComposeNetwork, ComposeNetworkIpam, ComposeNetworkIpamConfig, ComposeService,
-    ComposeVolume, ContainerInspect, NetworkInspect, NetworkTemplateSpecWrite,
+    write_net_template_cfg, write_stack_template_compose, yaml_quote,
 };
 use crate::docker::{self, DockerCfg};
 use crate::domain::image_refs::normalize_image_ref;
@@ -81,10 +81,7 @@ pub(in crate::ui) async fn export_net_template(
     let raw = docker::fetch_network_inspect(runner, docker, network_id).await?;
     let net: NetworkInspect = parse_network_inspect(&raw)?;
 
-    let driver = net
-        .driver
-        .clone()
-        .unwrap_or_else(|| "bridge".to_string());
+    let driver = net.driver.clone().unwrap_or_else(|| "bridge".to_string());
     let mut options_map: HashMap<String, String> = net.options.clone().unwrap_or_default();
     let mut parent = None;
     let mut ipvlan_mode = None;
@@ -110,7 +107,11 @@ pub(in crate::ui) async fn export_net_template(
         Some(out)
     };
 
-    let labels = net.labels.as_ref().map(filter_labels).filter(|m| !m.is_empty());
+    let labels = net
+        .labels
+        .as_ref()
+        .map(filter_labels)
+        .filter(|m| !m.is_empty());
     let mut ipv4 = None;
     if let Some(ipam) = net.ipam.as_ref() {
         if let Some(cfgs) = ipam.config.as_ref() {
@@ -186,7 +187,8 @@ fn build_compose_yaml(
         let stack_hint = stack_name
             .map(|v| v.to_string())
             .or_else(|| stack_name_from_label_map(&labels));
-        let service_name = service_name_from_labels(&labels, stack_hint.as_deref(), &container_name);
+        let service_name =
+            service_name_from_labels(&labels, stack_hint.as_deref(), &container_name);
         let entry = services.entry(service_name.clone()).or_default();
 
         if entry.image.is_empty() {
@@ -257,10 +259,7 @@ fn build_compose_yaml(
                 .host_config
                 .as_ref()
                 .and_then(|cfg| cfg.readonly_rootfs);
-            entry.privileged = inspect
-                .host_config
-                .as_ref()
-                .and_then(|cfg| cfg.privileged);
+            entry.privileged = inspect.host_config.as_ref().and_then(|cfg| cfg.privileged);
             let mut extra_hosts = inspect
                 .host_config
                 .as_ref()
@@ -301,12 +300,8 @@ fn build_compose_yaml(
                                 expose.push(container_port.to_string());
                                 continue;
                             }
-                            let host_ip = binding
-                                .host_ip
-                                .as_deref()
-                                .unwrap_or("")
-                                .trim()
-                                .to_string();
+                            let host_ip =
+                                binding.host_ip.as_deref().unwrap_or("").trim().to_string();
                             let spec = if host_ip.is_empty() || host_ip == "0.0.0.0" {
                                 format!("{host_port}:{container_port}")
                             } else {
@@ -345,7 +340,12 @@ fn build_compose_yaml(
                 let mut tmpfs = Vec::new();
                 for mount in mounts {
                     let kind = mount.kind.as_deref().unwrap_or("").to_ascii_lowercase();
-                    let dest = mount.destination.as_deref().unwrap_or("").trim().to_string();
+                    let dest = mount
+                        .destination
+                        .as_deref()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
                     if dest.is_empty() {
                         continue;
                     }
@@ -438,13 +438,19 @@ fn build_compose_yaml(
     let mut service_keys: HashMap<String, String> = HashMap::new();
     let mut used_service_keys: HashSet<String> = HashSet::new();
     for name in services.keys() {
-        service_keys.insert(name.clone(), unique_compose_key(name, &mut used_service_keys));
+        service_keys.insert(
+            name.clone(),
+            unique_compose_key(name, &mut used_service_keys),
+        );
     }
 
     let mut network_keys: HashMap<String, String> = HashMap::new();
     let mut used_network_keys: HashSet<String> = HashSet::new();
     for name in &network_refs {
-        network_keys.insert(name.clone(), unique_compose_key(name, &mut used_network_keys));
+        network_keys.insert(
+            name.clone(),
+            unique_compose_key(name, &mut used_network_keys),
+        );
     }
 
     let mut network_defs: BTreeMap<String, ComposeNetwork> = BTreeMap::new();

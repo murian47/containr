@@ -4,8 +4,8 @@ use crate::ui::core::types::{ActionMarker, SimpleMarker};
 use crate::ui::features::templates::template_id_from_labels;
 use crate::ui::state::app::App;
 use std::collections::HashSet;
-use tokio::sync::mpsc;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 
 pub(in crate::ui) fn exec_stack_action(
     app: &mut App,
@@ -36,12 +36,15 @@ pub(in crate::ui) fn exec_stack_action(
     let remove_networks = matches!(action, ContainerAction::Remove);
     if remove_networks {
         let server = app.active_server.clone().unwrap_or_default();
-    let ids: HashSet<String> = app
-        .containers
-        .iter()
-        .filter(|c| crate::ui::render::stacks::stack_name_from_labels(&c.labels).as_deref() == Some(stack_name.as_str()))
-        .filter_map(|c| template_id_from_labels(&c.labels))
-        .collect();
+        let ids: HashSet<String> = app
+            .containers
+            .iter()
+            .filter(|c| {
+                crate::ui::render::stacks::stack_name_from_labels(&c.labels).as_deref()
+                    == Some(stack_name.as_str())
+            })
+            .filter_map(|c| template_id_from_labels(&c.labels))
+            .collect();
         let mut changed = false;
         for id in ids {
             if app.remove_template_deploys_for_server(&id, &server) {

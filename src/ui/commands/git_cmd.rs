@@ -81,11 +81,7 @@ fn git_config_value(dir: &Path, key: &str) -> Option<String> {
         return None;
     }
     let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if text.is_empty() {
-        None
-    } else {
-        Some(text)
-    }
+    if text.is_empty() { None } else { Some(text) }
 }
 
 fn prompt_git_identity(app: &mut App, ctx_raw: &str, dir: &Path) -> bool {
@@ -254,7 +250,11 @@ pub(in crate::ui) fn handle_git(app: &mut App, args: &[&str]) -> bool {
                 // Prompt for a commit message.
                 app.shell_cmdline.mode = true;
                 let prompt = format!("git commit {ctx_raw} -m ");
-                set_text_and_cursor(&mut app.shell_cmdline.input, &mut app.shell_cmdline.cursor, prompt);
+                set_text_and_cursor(
+                    &mut app.shell_cmdline.input,
+                    &mut app.shell_cmdline.cursor,
+                    prompt,
+                );
                 app.shell_cmdline.confirm = None;
                 return true;
             }

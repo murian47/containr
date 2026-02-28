@@ -1,10 +1,10 @@
 use super::context::InputCtx;
-use crate::ui::core::view::shell_cycle_focus;
 use crate::ui::core::key_types::{
     BindingHit, KeyScope, key_spec_from_event, lookup_binding, lookup_scoped_binding,
 };
 use crate::ui::core::keymap::is_single_letter_without_modifiers;
 use crate::ui::core::types::LogsMode;
+use crate::ui::core::view::shell_cycle_focus;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ShellFocus, ShellView};
 use crossterm::event::{KeyCode, KeyEvent};
@@ -43,8 +43,12 @@ pub(super) fn handle_dock_navigation(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
     match key.code {
-        KeyCode::Up | KeyCode::Char('k') => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(1),
-        KeyCode::Down | KeyCode::Char('j') => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(1),
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(1)
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(1)
+        }
         KeyCode::PageUp => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(10),
         KeyCode::PageDown => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(10),
         KeyCode::Left => app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_sub(4),

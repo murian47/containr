@@ -1,5 +1,5 @@
-use std::time::Instant;
 use std::sync::OnceLock;
+use std::time::Instant;
 
 use ratatui::style::Style;
 use ratatui::text::Span;
@@ -113,11 +113,7 @@ pub(in crate::ui) fn split_at_chars(s: &str, n: usize) -> (&str, &str) {
         chars += 1;
         idx = s.len();
     }
-    if chars < n {
-        (s, "")
-    } else {
-        s.split_at(idx)
-    }
+    if chars < n { (s, "") } else { s.split_at(idx) }
 }
 
 pub(in crate::ui) fn bar_spans_threshold(
@@ -131,7 +127,11 @@ pub(in crate::ui) fn bar_spans_threshold(
     let ratio = ratio.clamp(0.0, 1.0);
     let filled = ((width as f32) * ratio).round() as usize;
     let filled = filled.min(width);
-    let (on, off) = if ascii_only { ('#', '.') } else { ('▇', '▇') };
+    let (on, off) = if ascii_only {
+        ('#', '.')
+    } else {
+        ('▇', '▇')
+    };
     let mut out: Vec<Span<'static>> = Vec::new();
     if filled > 0 {
         let mut s = String::with_capacity(filled);
@@ -159,7 +159,11 @@ pub(in crate::ui) fn bar_spans_gradient(
     let ratio = ratio.clamp(0.0, 1.0);
     let filled = ((width as f32) * ratio).round() as usize;
     let filled = filled.min(width);
-    let (on, off) = if ascii_only { ('#', '.') } else { ('▇', '▇') };
+    let (on, off) = if ascii_only {
+        ('#', '.')
+    } else {
+        ('▇', '▇')
+    };
     let mut out: Vec<Span<'static>> = Vec::new();
 
     let mut cur_style: Option<Style> = None;

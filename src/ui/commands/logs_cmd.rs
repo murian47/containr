@@ -1,7 +1,7 @@
 //! Log-related commands (`:logs ...`) available from the main command line.
 
-use super::common::{subcommand, warn_usage};
 use super::super::{App, ShellView};
+use super::common::{subcommand, warn_usage};
 use tokio::sync::mpsc;
 
 const USAGE: &str = ":logs reload|copy";

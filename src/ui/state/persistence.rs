@@ -4,10 +4,10 @@ use std::path::PathBuf;
 
 use crate::config::{self, ContainrConfig, ServerEntry};
 use crate::domain::image_refs::image_registry_for_ref;
-use crate::ui::core::clock::{now_unix};
+use crate::ui::core::clock::now_unix;
 use crate::ui::core::types::{
-    IMAGE_UPDATE_TTL_SECS, RATE_LIMIT_MAX, RATE_LIMIT_WARN, RATE_LIMIT_WINDOW_SECS,
-    ImageUpdateEntry, LocalState, TemplateDeployEntry,
+    IMAGE_UPDATE_TTL_SECS, ImageUpdateEntry, LocalState, RATE_LIMIT_MAX, RATE_LIMIT_WARN,
+    RATE_LIMIT_WINDOW_SECS, TemplateDeployEntry,
 };
 use crate::ui::features::templates::{template_commit_from_labels, template_id_from_labels};
 use crate::ui::render::messages::format_session_ts;

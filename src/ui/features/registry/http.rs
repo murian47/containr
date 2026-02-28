@@ -42,13 +42,12 @@ fn registry_api_base_url(host: &str) -> anyhow::Result<String> {
         }
         return Ok(base);
     }
-    let host_norm = if host.eq_ignore_ascii_case("docker.io")
-        || host.eq_ignore_ascii_case("index.docker.io")
-    {
-        "registry-1.docker.io".to_string()
-    } else {
-        host.to_string()
-    };
+    let host_norm =
+        if host.eq_ignore_ascii_case("docker.io") || host.eq_ignore_ascii_case("index.docker.io") {
+            "registry-1.docker.io".to_string()
+        } else {
+            host.to_string()
+        };
     let scheme = if is_local_registry_host(host) {
         "http"
     } else {
@@ -144,16 +143,16 @@ pub(in crate::ui) async fn registry_test(
     test_repo: Option<&str>,
 ) -> anyhow::Result<String> {
     let base = registry_api_base_url(host)?;
-    let repo = test_repo
-        .map(normalize_test_repo)
-        .filter(|v| !v.is_empty());
+    let repo = test_repo.map(normalize_test_repo).filter(|v| !v.is_empty());
     let url = format!("{base}/v2/");
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
         .context("failed to build http client")?;
     let host_lc = host.trim().to_ascii_lowercase();
-    if host_lc == "ghcr.io" && matches!(auth.auth, config::RegistryAuth::Anonymous) && repo.is_none()
+    if host_lc == "ghcr.io"
+        && matches!(auth.auth, config::RegistryAuth::Anonymous)
+        && repo.is_none()
     {
         anyhow::bail!("ghcr.io anonymous test requires test-repo");
     }

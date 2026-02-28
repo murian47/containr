@@ -49,7 +49,11 @@ pub struct ImageUpdateService<'a> {
 
 impl<'a> ImageUpdateService<'a> {
     pub fn new(runner: &'a Runner, docker: &'a DockerCfg, debug: bool) -> Self {
-        Self { runner, docker, debug }
+        Self {
+            runner,
+            docker,
+            debug,
+        }
     }
 
     pub async fn check_image_update(&self, image: &str) -> anyhow::Result<String> {
@@ -84,33 +88,27 @@ impl<'a> ImageUpdateService<'a> {
             .as_deref()
             .and_then(|list| local_repo_digest(list, &repo));
 
-        let (
-            status,
-            remote_digest,
-            error,
-            debug_remote,
-            debug_remote_digests,
-            debug_local_index,
-        ) = if let Some(digest) = normalized.digest.clone() {
-            (
-                ImageUpdateKindPayload::UpToDate,
-                Some(digest),
-                None::<String>,
-                None::<String>,
-                None::<String>,
-                None::<String>,
-            )
-        } else {
-            self.compare_remote(
-                &normalized,
-                &repo,
-                &inspect,
-                local_digest.clone(),
-                repo_digests_len,
-                &repo_digests_preview,
-            )
-            .await?
-        };
+        let (status, remote_digest, error, debug_remote, debug_remote_digests, debug_local_index) =
+            if let Some(digest) = normalized.digest.clone() {
+                (
+                    ImageUpdateKindPayload::UpToDate,
+                    Some(digest),
+                    None::<String>,
+                    None::<String>,
+                    None::<String>,
+                    None::<String>,
+                )
+            } else {
+                self.compare_remote(
+                    &normalized,
+                    &repo,
+                    &inspect,
+                    local_digest.clone(),
+                    repo_digests_len,
+                    &repo_digests_preview,
+                )
+                .await?
+            };
 
         let debug_info = if self.debug {
             let arch = inspect.architecture.as_deref().unwrap_or("-");
@@ -189,7 +187,14 @@ impl<'a> ImageUpdateService<'a> {
             }
             Err(e) => {
                 let err = truncate_msg(&format!("{:#}", e), 200);
-                return Ok((ImageUpdateKindPayload::Error, None, Some(err), None, None, None));
+                return Ok((
+                    ImageUpdateKindPayload::Error,
+                    None,
+                    Some(err),
+                    None,
+                    None,
+                    None,
+                ));
             }
         };
 
@@ -227,13 +232,12 @@ impl<'a> ImageUpdateService<'a> {
                     let idx_ref = format!("{}@{}", normalized.reference, local);
                     match docker::fetch_manifest_inspect(self.runner, self.docker, &idx_ref).await {
                         Ok(idx_raw) => {
-                            let idx_digest =
-                                if !inspect_arch.is_empty() && !inspect_os.is_empty() {
-                                    manifest_digest_for_platform(&idx_raw, &inspect_arch, &inspect_os)
-                                        .or_else(|| manifest_descriptor_digest(&idx_raw))
-                                } else {
-                                    manifest_descriptor_digest(&idx_raw)
-                                };
+                            let idx_digest = if !inspect_arch.is_empty() && !inspect_os.is_empty() {
+                                manifest_digest_for_platform(&idx_raw, &inspect_arch, &inspect_os)
+                                    .or_else(|| manifest_descriptor_digest(&idx_raw))
+                            } else {
+                                manifest_descriptor_digest(&idx_raw)
+                            };
                             let idx_summary = manifest_platform_summary(&idx_raw);
                             let idx_debug = Some(format!(
                                 "local_index_ref={idx_ref} local_index_platforms={idx_summary} local_index_digest={}",
@@ -354,7 +358,9 @@ fn entry_platform(obj: &Value) -> (Option<String>, Option<String>) {
 
 fn manifest_descriptor_digest(raw: &str) -> Option<String> {
     let entries = manifest_entries(raw);
-    entries.iter().find_map(|entry| entry_descriptor_digest(entry))
+    entries
+        .iter()
+        .find_map(|entry| entry_descriptor_digest(entry))
 }
 
 fn manifest_digest_for_platform(raw: &str, arch: &str, os: &str) -> Option<String> {

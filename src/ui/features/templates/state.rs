@@ -3,26 +3,30 @@ use std::fs;
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
 
+use super::{extract_net_template_description, extract_template_description};
 use crate::ui::commands;
-use crate::ui::state::app::App;
-use crate::ui::state::shell_types::{GitRemoteStatus, MsgLevel, TemplateEditSnapshot, TemplatesKind};
 use crate::ui::core::types::{NetTemplateEntry, TemplateEntry};
 use crate::ui::helpers::extract_template_id;
-use super::{extract_net_template_description, extract_template_description};
+use crate::ui::state::app::App;
+use crate::ui::state::shell_types::{
+    GitRemoteStatus, MsgLevel, TemplateEditSnapshot, TemplatesKind,
+};
 
 impl App {
     pub(in crate::ui) fn refresh_templates(&mut self) {
         self.templates_state.templates_error = None;
         self.templates_state.templates.clear();
         self.templates_state.templates_details_scroll = 0;
-        self.templates_state.git_head = commands::git_cmd::git_head_short(&self.templates_state.dir);
+        self.templates_state.git_head =
+            commands::git_cmd::git_head_short(&self.templates_state.dir);
         self.refresh_template_git_status();
 
         self.migrate_templates_layout_if_needed();
 
         let dir = self.stack_templates_dir();
         if let Err(e) = fs::create_dir_all(&dir) {
-            self.templates_state.templates_error = Some(format!("failed to create templates dir: {e}"));
+            self.templates_state.templates_error =
+                Some(format!("failed to create templates dir: {e}"));
             return;
         }
         let entries = match fs::read_dir(&dir) {
@@ -250,10 +254,16 @@ impl App {
             let path = parse_git_status_path(line);
             let Some(path) = path else { continue };
             if let Some(rest) = path.strip_prefix("stacks/") {
-                if let Some(name) = rest.split('/').next() && !name.trim().is_empty() {
-                    self.templates_state.dirty_templates.insert(name.to_string());
+                if let Some(name) = rest.split('/').next()
+                    && !name.trim().is_empty()
+                {
+                    self.templates_state
+                        .dirty_templates
+                        .insert(name.to_string());
                     if untracked {
-                        self.templates_state.untracked_templates.insert(name.to_string());
+                        self.templates_state
+                            .untracked_templates
+                            .insert(name.to_string());
                     }
                 }
             } else if let Some(rest) = path.strip_prefix("networks/")
@@ -295,7 +305,9 @@ impl App {
                 }
                 let rel = format!("stacks/{name}");
                 let status = git_remote_status_for_path(&dir, &rel);
-                self.templates_state.git_remote_templates.insert(name, status);
+                self.templates_state
+                    .git_remote_templates
+                    .insert(name, status);
             }
         }
 
@@ -387,20 +399,14 @@ fn parse_git_status_path(line: &str) -> Option<String> {
 }
 
 fn git_remote_status_for_path(repo: &Path, rel_path: &str) -> GitRemoteStatus {
-    let ahead = commands::git_cmd::run_git(
-        repo,
-        &["log", "--oneline", "@{u}..", "--", rel_path],
-    )
-    .ok()
-    .map(|out| !out.trim().is_empty())
-    .unwrap_or(false);
-    let behind = commands::git_cmd::run_git(
-        repo,
-        &["log", "--oneline", "..@{u}", "--", rel_path],
-    )
-    .ok()
-    .map(|out| !out.trim().is_empty())
-    .unwrap_or(false);
+    let ahead = commands::git_cmd::run_git(repo, &["log", "--oneline", "@{u}..", "--", rel_path])
+        .ok()
+        .map(|out| !out.trim().is_empty())
+        .unwrap_or(false);
+    let behind = commands::git_cmd::run_git(repo, &["log", "--oneline", "..@{u}", "--", rel_path])
+        .ok()
+        .map(|out| !out.trim().is_empty())
+        .unwrap_or(false);
     match (ahead, behind) {
         (false, false) => GitRemoteStatus::UpToDate,
         (true, false) => GitRemoteStatus::Ahead,

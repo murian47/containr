@@ -34,7 +34,10 @@ fn normalize_image_id(id: &str) -> String {
     format!("sha256:{}", s)
 }
 
-pub(in crate::ui) fn resolve_image_ref_for_updates(app: &App, image: &str) -> Option<NormalizedImageRef> {
+pub(in crate::ui) fn resolve_image_ref_for_updates(
+    app: &App,
+    image: &str,
+) -> Option<NormalizedImageRef> {
     if image.trim().is_empty() {
         return None;
     }
@@ -43,7 +46,10 @@ pub(in crate::ui) fn resolve_image_ref_for_updates(app: &App, image: &str) -> Op
         for img in &app.images {
             if normalize_image_id(&img.id) == needle {
                 if let Some(reference) = App::image_row_ref(img) {
-                    return Some(NormalizedImageRef { reference, digest: None });
+                    return Some(NormalizedImageRef {
+                        reference,
+                        digest: None,
+                    });
                 }
             }
         }
@@ -127,7 +133,5 @@ pub(in crate::ui) fn is_rate_limit_error(err: Option<&str>) -> bool {
         return false;
     };
     let err = err.to_ascii_lowercase();
-    err.contains("toomanyrequests")
-        || err.contains("rate limit")
-        || err.contains("429")
+    err.contains("toomanyrequests") || err.contains("rate limit") || err.contains("429")
 }

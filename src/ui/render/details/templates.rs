@@ -1,9 +1,9 @@
 use super::panel_bg;
 use crate::ui::commands::git_cmd;
-use crate::ui::render::status::action_error_label;
-use crate::ui::render::text::short_commit;
 use crate::ui::core::types::ActionErrorKind;
 use crate::ui::render::highlight::{json_highlight_line, yaml_highlight_line};
+use crate::ui::render::status::action_error_label;
+use crate::ui::render::text::short_commit;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::TemplatesKind;
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
@@ -71,12 +71,14 @@ fn draw_shell_stack_template_details(
         return;
     }
 
-    let content = fs::read_to_string(&t.compose_path).unwrap_or_else(|e| format!("read failed: {e}"));
+    let content =
+        fs::read_to_string(&t.compose_path).unwrap_or_else(|e| format!("read failed: {e}"));
     let lines: Vec<&str> = content.lines().collect();
     let lnw = lines.len().max(1).to_string().len();
     let view_h = content_area.height.max(1) as usize;
     let max_scroll = lines.len().saturating_sub(view_h);
-    app.templates_state.templates_details_scroll = app.templates_state.templates_details_scroll.min(max_scroll);
+    app.templates_state.templates_details_scroll =
+        app.templates_state.templates_details_scroll.min(max_scroll);
 
     let mut out: Vec<Line<'static>> = Vec::with_capacity(lines.len().max(1));
     let ln_style = bg.patch(app.theme.text_faint.to_style());
@@ -93,27 +95,30 @@ fn draw_shell_stack_template_details(
     }
 
     let dirty = app.templates_state.dirty_templates.contains(&t.name);
-    let (mut status_text, status_style) = if let Some(m) = app.templates_state.template_deploy_inflight.get(&t.name)
-    {
-        let secs = m.started.elapsed().as_secs();
-        (
-            format!("Status: deploying ({secs}s)"),
-            bg.patch(app.theme.text_warn.to_style()),
-        )
-    } else if let Some(err) = app.template_action_error.get(&t.name) {
-        let st = match err.kind {
-            ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
-            ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+    let (mut status_text, status_style) =
+        if let Some(m) = app.templates_state.template_deploy_inflight.get(&t.name) {
+            let secs = m.started.elapsed().as_secs();
+            (
+                format!("Status: deploying ({secs}s)"),
+                bg.patch(app.theme.text_warn.to_style()),
+            )
+        } else if let Some(err) = app.template_action_error.get(&t.name) {
+            let st = match err.kind {
+                ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+            };
+            (format!("Status: {}", action_error_label(err)), st)
+        } else if dirty {
+            (
+                "Status: modified".to_string(),
+                bg.patch(app.theme.text_warn.to_style()),
+            )
+        } else {
+            (
+                "Status: -".to_string(),
+                bg.patch(app.theme.text_dim.to_style()),
+            )
         };
-        (format!("Status: {}", action_error_label(err)), st)
-    } else if dirty {
-        (
-            "Status: modified".to_string(),
-            bg.patch(app.theme.text_warn.to_style()),
-        )
-    } else {
-        ("Status: -".to_string(), bg.patch(app.theme.text_dim.to_style()))
-    };
     let deploy_list = t
         .template_id
         .as_ref()
@@ -149,18 +154,21 @@ fn draw_shell_stack_template_details(
     }
 
     let commit_line = match (local_commit, deployed_commit) {
-        (Some(local), Some(deployed)) if local != deployed => {
-            Line::from(Span::styled(
-                format!("Commit: local {local} | deployed {deployed}"),
-                info_style,
-            ))
+        (Some(local), Some(deployed)) if local != deployed => Line::from(Span::styled(
+            format!("Commit: local {local} | deployed {deployed}"),
+            info_style,
+        )),
+        (Some(_local), Some(deployed)) => Line::from(Span::styled(
+            format!("Commit: {deployed} (local)"),
+            info_style,
+        )),
+        (None, Some(deployed)) => {
+            Line::from(Span::styled(format!("Commit: {deployed}"), info_style))
         }
-        (Some(_local), Some(deployed)) => {
-            Line::from(Span::styled(format!("Commit: {deployed} (local)"), info_style))
-        }
-        (None, Some(deployed)) => Line::from(Span::styled(format!("Commit: {deployed}"), info_style)),
         (Some(local), None) => {
-            if let (Some(repo), Some(template)) = (repo_commit.as_deref(), template_commit.as_deref()) {
+            if let (Some(repo), Some(template)) =
+                (repo_commit.as_deref(), template_commit.as_deref())
+            {
                 if repo != template {
                     return_line_with_git_mismatch(local, repo, info_style, warn_style)
                 } else {
@@ -183,7 +191,10 @@ fn draw_shell_stack_template_details(
         Line::from(Span::styled(format!("Servers: {servers_text}"), info_style)),
         commit_line,
     ]);
-    f.render_widget(Paragraph::new(status_lines).wrap(Wrap { trim: true }), status_area);
+    f.render_widget(
+        Paragraph::new(status_lines).wrap(Wrap { trim: true }),
+        status_area,
+    );
     f.render_widget(
         Paragraph::new(Text::from(out)).style(bg).scroll((
             app.templates_state
@@ -195,7 +206,12 @@ fn draw_shell_stack_template_details(
     );
 }
 
-fn return_line_with_git_mismatch(local: String, repo: &str, info: Style, warn: Style) -> Line<'static> {
+fn return_line_with_git_mismatch(
+    local: String,
+    repo: &str,
+    info: Style,
+    warn: Style,
+) -> Line<'static> {
     Line::from(vec![
         Span::styled("Commit: local ", info),
         Span::styled(local, info),
@@ -277,7 +293,10 @@ fn draw_shell_net_template_details(
     }
 
     let dirty = app.templates_state.dirty_net_templates.contains(&t.name);
-    let (status_text, status_style) = if let Some(m) = app.templates_state.net_template_deploy_inflight.get(&t.name)
+    let (status_text, status_style) = if let Some(m) = app
+        .templates_state
+        .net_template_deploy_inflight
+        .get(&t.name)
     {
         let secs = m.started.elapsed().as_secs();
         (
@@ -296,7 +315,10 @@ fn draw_shell_net_template_details(
             bg.patch(app.theme.text_warn.to_style()),
         )
     } else {
-        ("Status: -".to_string(), bg.patch(app.theme.text_dim.to_style()))
+        (
+            "Status: -".to_string(),
+            bg.patch(app.theme.text_dim.to_style()),
+        )
     };
     f.render_widget(
         Paragraph::new(status_text)

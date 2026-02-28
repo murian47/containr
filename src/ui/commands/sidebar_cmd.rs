@@ -1,7 +1,7 @@
 //! Sidebar command (`:sidebar ...`).
 
-use super::common::{subcommand, warn_usage};
 use super::super::{App, ShellFocus, ShellView};
+use super::common::{subcommand, warn_usage};
 
 const USAGE: &str = ":sidebar toggle|compact";
 

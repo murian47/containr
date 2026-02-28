@@ -288,15 +288,19 @@ pub(in crate::ui) fn parse_dashboard_output(out: &str) -> anyhow::Result<Dashboa
                 mem_avail_kb = rest.split_whitespace().next().and_then(|x| x.parse().ok());
             }
             if (mem_total_kb.is_some() && mem_avail_kb.is_some())
-                || (mem_total_bytes.is_some() && (mem_avail_bytes.is_some() || mem_used_bytes.is_some()))
+                || (mem_total_bytes.is_some()
+                    && (mem_avail_bytes.is_some() || mem_used_bytes.is_some()))
             {
                 break;
             }
         }
     }
-    let mem_total_bytes = mem_total_bytes.unwrap_or_else(|| mem_total_kb.unwrap_or(0).saturating_mul(1024));
-    let mem_avail_bytes = mem_avail_bytes.unwrap_or_else(|| mem_avail_kb.unwrap_or(0).saturating_mul(1024));
-    let mem_used_bytes = mem_used_bytes.unwrap_or_else(|| mem_total_bytes.saturating_sub(mem_avail_bytes));
+    let mem_total_bytes =
+        mem_total_bytes.unwrap_or_else(|| mem_total_kb.unwrap_or(0).saturating_mul(1024));
+    let mem_avail_bytes =
+        mem_avail_bytes.unwrap_or_else(|| mem_avail_kb.unwrap_or(0).saturating_mul(1024));
+    let mem_used_bytes =
+        mem_used_bytes.unwrap_or_else(|| mem_total_bytes.saturating_sub(mem_avail_bytes));
 
     let mut disk_entries: Vec<DiskEntry> = Vec::new();
     if let Some(lines) = sec.get(DISK) {

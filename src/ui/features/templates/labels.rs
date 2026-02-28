@@ -116,8 +116,8 @@ pub(in crate::ui) fn render_compose_with_template_id(
     let mut yaml: YamlValue =
         serde_yaml::from_str(&data).map_err(|e| anyhow::anyhow!("compose parse failed: {}", e))?;
     inject_template_labels(&mut yaml, template_id, template_commit)?;
-    let rendered =
-        serde_yaml::to_string(&yaml).map_err(|e| anyhow::anyhow!("compose render failed: {}", e))?;
+    let rendered = serde_yaml::to_string(&yaml)
+        .map_err(|e| anyhow::anyhow!("compose render failed: {}", e))?;
     let mut tmp = tempfile::Builder::new()
         .prefix("containr-compose-")
         .suffix(".yaml")

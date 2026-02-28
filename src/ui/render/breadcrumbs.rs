@@ -52,12 +52,14 @@ pub(in crate::ui) fn shell_breadcrumbs(app: &App) -> String {
             .map(|r| format!("/{}", r.host))
             .unwrap_or_default(),
         ShellView::Inspect => app
-            .inspect.target
+            .inspect
+            .target
             .as_ref()
             .map(|t| format!("/{}", t.label))
             .unwrap_or_default(),
         ShellView::Logs => app
-            .logs.for_id
+            .logs
+            .for_id
             .as_ref()
             .and_then(|_| app.selected_container().map(|c| c.name.clone()))
             .map(|n| format!("/{n}"))

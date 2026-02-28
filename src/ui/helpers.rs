@@ -1,9 +1,9 @@
 //! Small UI helpers shared across commands/actions.
 
+use crate::config::ServerEntry;
+use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
-use serde_json::Value;
-use crate::config::ServerEntry;
 
 pub(in crate::ui) fn shell_single_quote(s: &str) -> String {
     // Produce a POSIX-shell-safe single-quoted string literal.

@@ -134,13 +134,7 @@ pub(in crate::ui) fn handle_server(
                 app.active_server = None;
                 app.server_selected = 0;
                 if !app.servers.is_empty() {
-                    app.switch_server(
-                        0,
-                        conn_tx,
-                        refresh_tx,
-                        dash_refresh_tx,
-                        dash_all_enabled_tx,
-                    );
+                    app.switch_server(0, conn_tx, refresh_tx, dash_refresh_tx, dash_all_enabled_tx);
                 } else {
                     app.persist_config();
                 }

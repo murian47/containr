@@ -3,7 +3,10 @@ use ratatui::text::{Line, Span};
 
 use crate::ui::theme::ThemeSpec;
 
-pub(in crate::ui) fn highlight_log_line_regex(line: &str, matcher: Option<&regex::Regex>) -> Line<'static> {
+pub(in crate::ui) fn highlight_log_line_regex(
+    line: &str,
+    matcher: Option<&regex::Regex>,
+) -> Line<'static> {
     let Some(re) = matcher else {
         return Line::from(line.to_string());
     };
@@ -75,7 +78,11 @@ pub(in crate::ui) fn highlight_log_line_literal(line: &str, query: &str) -> Line
     Line::from(spans)
 }
 
-pub(in crate::ui) fn yaml_highlight_line(line: &str, base: Style, theme: &ThemeSpec) -> Vec<Span<'static>> {
+pub(in crate::ui) fn yaml_highlight_line(
+    line: &str,
+    base: Style,
+    theme: &ThemeSpec,
+) -> Vec<Span<'static>> {
     // Very small YAML-ish highlighter:
     // - comments: dim
     // - mapping keys: light blue
@@ -108,7 +115,11 @@ pub(in crate::ui) fn yaml_highlight_line(line: &str, base: Style, theme: &ThemeS
     spans
 }
 
-pub(in crate::ui) fn json_highlight_line(line: &str, base: Style, theme: &ThemeSpec) -> Vec<Span<'static>> {
+pub(in crate::ui) fn json_highlight_line(
+    line: &str,
+    base: Style,
+    theme: &ThemeSpec,
+) -> Vec<Span<'static>> {
     // Minimal JSON-ish highlighter:
     // - keys ("...":) in light blue
     let normal = base.patch(theme.syntax_text.to_style());

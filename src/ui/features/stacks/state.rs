@@ -20,7 +20,10 @@ impl App {
         let mut out: Vec<StackEntry> = Vec::new();
         for (name, cs) in stacks {
             let total = cs.len();
-            let running = cs.iter().filter(|c| !is_container_stopped(&c.status)).count();
+            let running = cs
+                .iter()
+                .filter(|c| !is_container_stopped(&c.status))
+                .count();
             if self.stacks_only_running && running == 0 {
                 continue;
             }

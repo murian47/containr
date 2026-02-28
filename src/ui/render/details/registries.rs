@@ -1,9 +1,9 @@
 use super::panel_bg;
+use crate::ui::App;
 use crate::ui::render::format::format_action_ts;
 use crate::ui::render::registries::registry_auth_label;
-use crate::ui::render::table::{render_detail_table, DetailRow};
+use crate::ui::render::table::{DetailRow, render_detail_table};
 use crate::ui::render::text::truncate_end;
-use crate::ui::App;
 use ratatui::widgets::Block;
 use time::OffsetDateTime;
 

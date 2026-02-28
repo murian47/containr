@@ -5,19 +5,15 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 use ratatui_image::{Resize, StatefulImage};
 
-use crate::ui::render::messages::format_session_ts;
-use crate::ui::render::format::{bar_spans_gradient, bar_spans_threshold, format_bytes_short};
-use crate::ui::render::utils::{theme_color, truncate_end};
-use crate::ui::theme;
 use crate::ui::core::runtime::current_server_label;
+use crate::ui::render::format::{bar_spans_gradient, bar_spans_threshold, format_bytes_short};
+use crate::ui::render::messages::format_session_ts;
+use crate::ui::render::utils::{theme_color, truncate_end};
 use crate::ui::state::app::App;
+use crate::ui::theme;
 
 /// Dashboard render implementation (moved from render.inc.rs).
-pub(in crate::ui) fn render_dashboard_impl(
-    f: &mut ratatui::Frame,
-    app: &mut App,
-    area: Rect,
-) {
+pub(in crate::ui) fn render_dashboard_impl(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     if app.server_all_selected && app.servers.len() > 1 {
         render_dashboard_all(f, app, area);
         return;
@@ -30,8 +26,7 @@ pub(in crate::ui) fn render_dashboard_impl(
     });
     let mut show_image = app.dashboard_image_enabled() && inner.width >= 60 && inner.height >= 12;
     if app.dashboard.suppress_image_frames > 0 {
-        app.dashboard.suppress_image_frames =
-            app.dashboard.suppress_image_frames.saturating_sub(1);
+        app.dashboard.suppress_image_frames = app.dashboard.suppress_image_frames.saturating_sub(1);
         show_image = false;
     }
     let content_area = inner;
@@ -110,9 +105,8 @@ pub(in crate::ui) fn render_dashboard_impl(
         ok
     };
 
-    let badge = |label: &str, st: Style| -> Span<'static> {
-        Span::styled(format!("[ {label} ]"), st)
-    };
+    let badge =
+        |label: &str, st: Style| -> Span<'static> { Span::styled(format!("[ {label} ]"), st) };
 
     let mut strip: Vec<Span<'static>> = Vec::new();
     strip.push(badge(
@@ -152,7 +146,9 @@ pub(in crate::ui) fn render_dashboard_impl(
         strip.push(badge(&format!("ERR {unseen_err}"), err));
     }
     f.render_widget(
-        Paragraph::new(Line::from(strip)).style(bg).wrap(Wrap { trim: false }),
+        Paragraph::new(Line::from(strip))
+            .style(bg)
+            .wrap(Wrap { trim: false }),
         chunks[0],
     );
 
@@ -175,7 +171,18 @@ pub(in crate::ui) fn render_dashboard_impl(
             s.cpu_cores,
         )
     } else if app.dashboard.loading {
-        ("Loading...", "-", "-", "-", "-", "-".to_string(), 0.0, 0.0, 0.0, 1)
+        (
+            "Loading...",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-".to_string(),
+            0.0,
+            0.0,
+            0.0,
+            1,
+        )
     } else {
         ("-", "-", "-", "-", "-", "-".to_string(), 0.0, 0.0, 0.0, 1)
     };
@@ -261,7 +268,14 @@ pub(in crate::ui) fn render_dashboard_impl(
         (load1 / (cores as f32)).clamp(0.0, 1.0)
     };
     let (mem_used, mem_total2, disk_used, disk_total2) = snap
-        .map(|s| (s.mem_used_bytes, s.mem_total_bytes, s.disk_used_bytes, s.disk_total_bytes))
+        .map(|s| {
+            (
+                s.mem_used_bytes,
+                s.mem_total_bytes,
+                s.disk_used_bytes,
+                s.disk_total_bytes,
+            )
+        })
         .unwrap_or((0, 0, 0, 0));
     let mem_ratio2 = if mem_total2 == 0 {
         0.0
@@ -300,20 +314,20 @@ pub(in crate::ui) fn render_dashboard_impl(
 
     let metric_row =
         |name: &str, val: String, bar: Vec<Span<'static>>, extra: Option<String>| -> Row<'static> {
-        let mut val = truncate_end(&val, m_val_w);
-        if let Some(extra) = extra {
-            if !extra.trim().is_empty() {
-                let extra = format!(" {extra}");
-                val = truncate_end(&(val + &extra), m_val_w);
+            let mut val = truncate_end(&val, m_val_w);
+            if let Some(extra) = extra {
+                if !extra.trim().is_empty() {
+                    let extra = format!(" {extra}");
+                    val = truncate_end(&(val + &extra), m_val_w);
+                }
             }
-        }
-        let name = truncate_end(name, m_key_w);
-        Row::new(vec![
-            Cell::from(Span::styled(name, mk)),
-            Cell::from(Span::styled(val, mv)),
-            Cell::from(Line::from(bar)),
-        ])
-    };
+            let name = truncate_end(name, m_key_w);
+            Row::new(vec![
+                Cell::from(Span::styled(name, mk)),
+                Cell::from(Span::styled(val, mv)),
+                Cell::from(Line::from(bar)),
+            ])
+        };
     let metric_row_text = |name: &str, val: String, extra: Option<String>| -> Row<'static> {
         let mut val = truncate_end(&val, m_val_w);
         if let Some(extra) = extra {
@@ -576,50 +590,49 @@ fn render_dashboard_all(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
         };
         lines.push(title);
 
-    let bar_w = rect.width.saturating_sub(12) as usize;
+        let bar_w = rect.width.saturating_sub(12) as usize;
         let (cpu_ratio, mem_ratio, disk_ratio, load_text, up_text, run_text) =
             if let Some(snap) = &host.snap {
-            let cpu_ratio = if snap.cpu_cores == 0 {
-                0.0
+                let cpu_ratio = if snap.cpu_cores == 0 {
+                    0.0
+                } else {
+                    (snap.load1 / (snap.cpu_cores as f32)).clamp(0.0, 1.0)
+                };
+                let mem_ratio = if snap.mem_total_bytes == 0 {
+                    0.0
+                } else {
+                    (snap.mem_used_bytes as f32) / (snap.mem_total_bytes as f32)
+                };
+                let disk_ratio = if snap.disk_total_bytes == 0 {
+                    0.0
+                } else {
+                    (snap.disk_used_bytes as f32) / (snap.disk_total_bytes as f32)
+                };
+                let load_text = format!("{:.2} {:.2} {:.2}", snap.load1, snap.load5, snap.load15);
+                let up_text = compact_uptime(&snap.uptime);
+                let run_text = format!(
+                    "running {}/{}",
+                    snap.containers_running, snap.containers_total
+                );
+                (
+                    cpu_ratio, mem_ratio, disk_ratio, load_text, up_text, run_text,
+                )
             } else {
-                (snap.load1 / (snap.cpu_cores as f32)).clamp(0.0, 1.0)
+                (
+                    0.0,
+                    0.0,
+                    0.0,
+                    "--".to_string(),
+                    "--".to_string(),
+                    "--".to_string(),
+                )
             };
-            let mem_ratio = if snap.mem_total_bytes == 0 {
-                0.0
-            } else {
-                (snap.mem_used_bytes as f32) / (snap.mem_total_bytes as f32)
-            };
-            let disk_ratio = if snap.disk_total_bytes == 0 {
-                0.0
-            } else {
-                (snap.disk_used_bytes as f32) / (snap.disk_total_bytes as f32)
-            };
-            let load_text = format!("{:.2} {:.2} {:.2}", snap.load1, snap.load5, snap.load15);
-            let up_text = compact_uptime(&snap.uptime);
-            let run_text = format!("running {}/{}", snap.containers_running, snap.containers_total);
-            (cpu_ratio, mem_ratio, disk_ratio, load_text, up_text, run_text)
-        } else {
-            (
-                0.0,
-                0.0,
-                0.0,
-                "--".to_string(),
-                "--".to_string(),
-                "--".to_string(),
-            )
-        };
 
         lines.push(Line::from(Span::styled(format!("CTR {run_text}"), dim)));
 
         let make_bar_line = |label: &str, ratio: f32| -> Line {
             let pct = (ratio.clamp(0.0, 1.0) * 100.0).round() as u32;
-            let bar = bar_spans_threshold(
-                bar_w.max(6),
-                ratio,
-                app.ascii_only,
-                ok,
-                faint,
-            );
+            let bar = bar_spans_threshold(bar_w.max(6), ratio, app.ascii_only, ok, faint);
             let mut spans = Vec::new();
             spans.push(Span::styled(format!("{label} "), dim));
             spans.extend(bar);
@@ -633,21 +646,19 @@ fn render_dashboard_all(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
         lines.push(Line::from(Span::styled(format!("Load {load_text}"), dim)));
         lines.push(Line::from(Span::styled(format!("Up   {up_text}"), dim)));
 
-        let err_text = host
-            .error
-            .as_deref()
-            .unwrap_or("-");
+        let err_text = host.error.as_deref().unwrap_or("-");
         let err_text = truncate_end(err_text, rect.width.saturating_sub(6) as usize);
         let err_style = if host.error.is_some() { err } else { dim };
-        lines.push(Line::from(Span::styled(format!("ERR  {err_text}"), err_style)));
+        lines.push(Line::from(Span::styled(
+            format!("ERR  {err_text}"),
+            err_style,
+        )));
 
         while lines.len() < rect.height as usize {
             lines.push(Line::from(Span::styled("".to_string(), card)));
         }
 
-        let para = Paragraph::new(lines)
-            .style(card)
-            .wrap(Wrap { trim: false });
+        let para = Paragraph::new(lines).style(card).wrap(Wrap { trim: false });
         let text_rect = Rect {
             x: rect.x.saturating_add(1),
             y: rect.y,
@@ -690,11 +701,7 @@ fn compact_uptime(raw: &str) -> String {
             break;
         }
     }
-    if out.is_empty() {
-        s
-    } else {
-        out.join(" ")
-    }
+    if out.is_empty() { s } else { out.join(" ") }
 }
 
 /// Public wrapper for callers (keeps existing call sites stable).

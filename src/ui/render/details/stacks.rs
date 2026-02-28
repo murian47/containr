@@ -1,11 +1,11 @@
 use super::panel_bg;
 use crate::docker::{ContainerRow, NetworkRow};
-use crate::ui::render::status::{action_error_label, action_status_prefix};
-use crate::ui::render::tables::shell_header_style;
-use crate::ui::render::utils::shell_row_highlight;
 use crate::ui::core::types::{ActionErrorKind, StackDetailsFocus};
 use crate::ui::render::layout::draw_shell_hr;
 use crate::ui::render::stacks::stack_name_from_labels;
+use crate::ui::render::status::{action_error_label, action_status_prefix};
+use crate::ui::render::tables::shell_header_style;
+use crate::ui::render::utils::shell_row_highlight;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::ShellFocus;
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
@@ -116,7 +116,9 @@ fn draw_stack_containers_table(
     let inner_height = inner.height.max(1) as usize;
     let header_rows = 1usize;
     let view_height = inner_height.saturating_sub(header_rows).max(1);
-    let scroll = app.stacks_details_scroll.min(containers.len().saturating_sub(1));
+    let scroll = app
+        .stacks_details_scroll
+        .min(containers.len().saturating_sub(1));
     let rows: Vec<Row> = containers
         .iter()
         .skip(scroll)
@@ -208,12 +210,20 @@ fn draw_stack_networks_table(
     let inner_height = inner.height.max(1) as usize;
     let header_rows = 1usize;
     let view_height = inner_height.saturating_sub(header_rows).max(1);
-    let scroll = app.stacks_networks_scroll.min(networks.len().saturating_sub(1));
+    let scroll = app
+        .stacks_networks_scroll
+        .min(networks.len().saturating_sub(1));
     let rows: Vec<Row> = networks
         .iter()
         .skip(scroll)
         .take(view_height)
-        .map(|n| Row::new(vec![Cell::from(n.name.clone()), Cell::from(n.driver.clone()), Cell::from(n.scope.clone())]))
+        .map(|n| {
+            Row::new(vec![
+                Cell::from(n.name.clone()),
+                Cell::from(n.driver.clone()),
+                Cell::from(n.scope.clone()),
+            ])
+        })
         .collect();
     let header_style = if focused {
         shell_header_style(app)
@@ -229,8 +239,12 @@ fn draw_stack_networks_table(
         ],
     )
     .header(
-        Row::new(vec![Cell::from("NETWORK"), Cell::from("DRIVER"), Cell::from("SCOPE")])
-            .style(header_style),
+        Row::new(vec![
+            Cell::from("NETWORK"),
+            Cell::from("DRIVER"),
+            Cell::from("SCOPE"),
+        ])
+        .style(header_style),
     )
     .style(bg)
     .column_spacing(1)

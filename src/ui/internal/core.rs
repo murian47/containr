@@ -15,6 +15,4 @@ pub(in crate::ui) use super::super::core::runtime::{
     current_docker_cmd_from_app, current_runner_from_app, restore_terminal,
     run_interactive_command, run_interactive_local_command, setup_terminal,
 };
-pub(in crate::ui) use super::super::core::secrets::{
-    encrypt_age_secret, ensure_age_identity,
-};
+pub(in crate::ui) use super::super::core::secrets::{encrypt_age_secret, ensure_age_identity};

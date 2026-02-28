@@ -1,7 +1,7 @@
 //! Layout command (`:layout ...`).
 
-use super::common::{subcommand, warn_usage};
 use super::super::{App, ShellSplitMode, ShellView};
+use super::common::{subcommand, warn_usage};
 
 const USAGE: &str = ":layout [horizontal|vertical|toggle]";
 
@@ -9,10 +9,7 @@ pub(in crate::ui) fn handle_layout(app: &mut App, args: &[&str]) -> bool {
     let sub = subcommand(args, "toggle");
     let target_view = if matches!(
         app.shell_view,
-        ShellView::Inspect
-            | ShellView::Logs
-            | ShellView::Help
-            | ShellView::Messages
+        ShellView::Inspect | ShellView::Logs | ShellView::Help | ShellView::Messages
     ) {
         app.shell_last_main_view
     } else {

@@ -1,10 +1,8 @@
+use crate::ui::NetTemplateEntry;
 use crate::ui::cmd_history::CmdHistory;
 use crate::ui::core::requests::ShellConfirm;
-use crate::ui::core::types::{
-    DeployMarker, InspectLine, InspectMode, LogsMode, TemplateEntry,
-};
+use crate::ui::core::types::{DeployMarker, InspectLine, InspectMode, LogsMode, TemplateEntry};
 use crate::ui::theme;
-use crate::ui::NetTemplateEntry;
 use regex::Regex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -22,7 +20,7 @@ pub(in crate::ui) struct ShellCmdlineState {
 
 #[derive(Debug, Clone)]
 pub(in crate::ui) struct ShellMessagesState {
-    pub(in crate::ui) scroll: usize,  // cursor (absolute); usize::MAX = last
+    pub(in crate::ui) scroll: usize, // cursor (absolute); usize::MAX = last
     pub(in crate::ui) hscroll: usize, // horizontal scroll
     pub(in crate::ui) return_view: ShellView,
 }

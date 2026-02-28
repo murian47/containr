@@ -1,7 +1,7 @@
 //! Dashboard command handler (`:dashboard ...`).
 
-use super::common::{subcommand, warn_usage};
 use super::super::{App, Connection};
+use super::common::{subcommand, warn_usage};
 use tokio::sync::{mpsc, watch};
 
 const USAGE: &str = ":dashboard (all|single|toggle|simulate-error [name])";

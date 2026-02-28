@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
+use crate::ui::core::types::{InspectMode, InspectTarget};
 use crate::ui::render::clipboard::copy_to_clipboard;
 use crate::ui::render::inspect::{
     ancestors_of_pointer, build_inspect_lines, collect_expandable_paths, collect_match_paths,
     collect_path_rank,
 };
-use crate::ui::core::types::{InspectMode, InspectTarget};
 use crate::ui::state::app::App;
 
 impl App {
@@ -31,7 +31,8 @@ impl App {
     pub(in crate::ui) fn rebuild_inspect_lines(&mut self) {
         self.inspect.path_rank = collect_path_rank(self.inspect.value.as_ref());
         let effective_query = self.inspect_effective_query().to_string();
-        self.inspect.match_paths = collect_match_paths(self.inspect.value.as_ref(), &effective_query);
+        self.inspect.match_paths =
+            collect_match_paths(self.inspect.value.as_ref(), &effective_query);
         let match_set: HashSet<String> = self.inspect.match_paths.iter().cloned().collect();
         self.inspect.lines = build_inspect_lines(
             self.inspect.value.as_ref(),
@@ -116,7 +117,12 @@ impl App {
             .map(|l| l.path.as_str())
             .unwrap_or("");
 
-        let current_rank = self.inspect.path_rank.get(current_path).copied().unwrap_or(0);
+        let current_rank = self
+            .inspect
+            .path_rank
+            .get(current_path)
+            .copied()
+            .unwrap_or(0);
 
         let mut best: Option<(usize, String)> = None;
         for p in &self.inspect.match_paths {
@@ -147,7 +153,12 @@ impl App {
             .map(|l| l.path.as_str())
             .unwrap_or("");
 
-        let current_rank = self.inspect.path_rank.get(current_path).copied().unwrap_or(0);
+        let current_rank = self
+            .inspect
+            .path_rank
+            .get(current_path)
+            .copied()
+            .unwrap_or(0);
 
         let mut best: Option<(usize, String)> = None;
         for p in &self.inspect.match_paths {

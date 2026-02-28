@@ -19,8 +19,7 @@ pub(in crate::ui) fn image_updates_path() -> PathBuf {
     PathBuf::from("state.json")
 }
 
-pub(in crate::ui) fn load_local_state(
-) -> (
+pub(in crate::ui) fn load_local_state() -> (
     PathBuf,
     HashMap<String, ImageUpdateEntry>,
     HashMap<String, RateLimitEntry>,
@@ -48,7 +47,8 @@ pub(in crate::ui) fn load_local_state(
         if let Some(obj) = v.as_object() {
             for (key, entry) in obj {
                 if entry.is_array() {
-                    if let Ok(list) = serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
+                    if let Ok(list) =
+                        serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
                     {
                         if !list.is_empty() {
                             template_deploys.insert(key.clone(), list);
@@ -65,10 +65,7 @@ pub(in crate::ui) fn load_local_state(
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let timestamp = entry
-                    .get("timestamp")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                let timestamp = entry.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
                 if !server_name.trim().is_empty() && timestamp > 0 {
                     template_deploys.insert(
                         key.clone(),
@@ -87,7 +84,8 @@ pub(in crate::ui) fn load_local_state(
         if let Some(obj) = v.as_object() {
             for (key, entry) in obj {
                 if entry.is_array() {
-                    if let Ok(list) = serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
+                    if let Ok(list) =
+                        serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
                     {
                         if !list.is_empty() {
                             net_template_deploys.insert(key.clone(), list);
@@ -104,10 +102,7 @@ pub(in crate::ui) fn load_local_state(
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let timestamp = entry
-                    .get("timestamp")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                let timestamp = entry.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
                 if !server_name.trim().is_empty() && timestamp > 0 {
                     net_template_deploys.insert(
                         key.clone(),

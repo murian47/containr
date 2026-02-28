@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::docker::{ContainerAction, ContainerRow, ImageRow, NetworkRow, VolumeRow};
+use crate::ui::core::types::{InspectKind, InspectTarget, ViewEntry};
 use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::render::utils::is_container_stopped;
-use crate::ui::core::types::{InspectKind, InspectTarget, ViewEntry};
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ActiveView, ListMode};
 
@@ -154,7 +154,10 @@ impl App {
         for (name, mut cs) in stacks {
             cs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
             let total = cs.len();
-            let running = cs.iter().filter(|c| !is_container_stopped(&c.status)).count();
+            let running = cs
+                .iter()
+                .filter(|c| !is_container_stopped(&c.status))
+                .count();
             let expanded = !self.stack_collapsed.contains(&name);
             out.push(ViewEntry::StackHeader {
                 name: name.clone(),
@@ -442,7 +445,8 @@ impl App {
                 if self.images_visible_len() == 0 {
                     self.images_selected = 0;
                 } else {
-                    self.images_selected = (self.images_selected + 1).min(self.images_visible_len() - 1);
+                    self.images_selected =
+                        (self.images_selected + 1).min(self.images_visible_len() - 1);
                 }
             }
             ActiveView::Volumes => {
@@ -457,7 +461,8 @@ impl App {
                 if self.networks.is_empty() {
                     self.networks_selected = 0;
                 } else {
-                    self.networks_selected = (self.networks_selected + 1).min(self.networks.len() - 1);
+                    self.networks_selected =
+                        (self.networks_selected + 1).min(self.networks.len() - 1);
                 }
             }
         }
@@ -490,7 +495,8 @@ impl App {
     pub(in crate::ui) fn reconcile_noncontainer_action_markers(&mut self) {
         let now = Instant::now();
         let present_image_ids: HashSet<&str> = self.images.iter().map(|i| i.id.as_str()).collect();
-        let present_image_refs: HashSet<String> = self.images.iter().map(App::image_row_key).collect();
+        let present_image_refs: HashSet<String> =
+            self.images.iter().map(App::image_row_key).collect();
         self.image_action_inflight.retain(|k, m| {
             if now >= m.until {
                 return false;
@@ -549,7 +555,8 @@ impl App {
                 // If it's gone, we consider the action done (or the container removed).
                 return false;
             };
-            let running = c.status.trim().starts_with("Up") || c.status.trim().starts_with("Restarting");
+            let running =
+                c.status.trim().starts_with("Up") || c.status.trim().starts_with("Restarting");
             let stopped = is_container_stopped(&c.status);
             match marker.action {
                 ContainerAction::Start => !running,
@@ -634,7 +641,10 @@ impl App {
         if !self.images_unused_only {
             self.images.len()
         } else {
-            self.images.iter().filter(|img| !self.image_referenced(img)).count()
+            self.images
+                .iter()
+                .filter(|img| !self.image_referenced(img))
+                .count()
         }
     }
 
@@ -657,7 +667,10 @@ impl App {
         if !self.volumes_unused_only {
             self.volumes.len()
         } else {
-            self.volumes.iter().filter(|v| !self.volume_referenced(v)).count()
+            self.volumes
+                .iter()
+                .filter(|v| !self.volume_referenced(v))
+                .count()
         }
     }
 

@@ -1,15 +1,18 @@
 //! Command-line dispatcher (":" commands).
 
 use super::{
-    container_cmd, dashboard_cmd, git_cmd, image_cmd, keymap_cmd, layout_cmd, logs_cmd, network_cmd,
-    registry_cmd, server_cmd, set_cmd, sidebar_cmd, templates_cmd, theme_cmd, volume_cmd,
+    container_cmd, dashboard_cmd, git_cmd, image_cmd, keymap_cmd, layout_cmd, logs_cmd,
+    network_cmd, registry_cmd, server_cmd, set_cmd, sidebar_cmd, templates_cmd, theme_cmd,
+    volume_cmd,
 };
 use crate::docker::DockerCfg;
-use crate::ui::render::stacks::stack_name_from_labels;
-use crate::ui::actions::{service_name_from_label_list, stack_compose_dirs, template_name_from_stack};
+use crate::ui::actions::{
+    service_name_from_label_list, stack_compose_dirs, template_name_from_stack,
+};
 use crate::ui::core::requests::{ActionRequest, Connection, ShellConfirm};
 use crate::ui::core::runtime::{current_docker_cmd_from_app, current_runner_from_app};
 use crate::ui::core::types::{DeployMarker, InspectTarget, StackUpdateService};
+use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{
     ActiveView, MsgLevel, ShellFocus, ShellView, TemplatesKind, shell_begin_confirm,
@@ -400,7 +403,10 @@ pub(in crate::ui) fn execute_cmdline(
                     }
                 }
                 "edit" => {
-                    let name = it.next().map(|s| s.to_string()).unwrap_or_else(|| app.theme_name.clone());
+                    let name = it
+                        .next()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| app.theme_name.clone());
                     if let Err(e) = theme_cmd::edit_theme(app, &name) {
                         app.set_error(format!("{e:#}"));
                     }
@@ -486,9 +492,7 @@ pub(in crate::ui) fn execute_cmdline(
                 "start" | "stop" | "restart" | "rm" | "remove" | "delete" | "check" | "updates" => {
                     let name = args.first().copied();
                     if args.len() > 1 {
-                        app.set_warn(
-                            "usage: :stack (start|stop|restart|rm|check) [name]",
-                        );
+                        app.set_warn("usage: :stack (start|stop|restart|rm|check) [name]");
                         return;
                     }
                     match sub {
@@ -546,11 +550,9 @@ pub(in crate::ui) fn execute_cmdline(
                                 return;
                             };
                             let mut images: HashSet<String> = HashSet::new();
-                            for c in app
-                                .containers
-                                .iter()
-                                .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(stack.as_str()))
-                            {
+                            for c in app.containers.iter().filter(|c| {
+                                stack_name_from_labels(&c.labels).as_deref() == Some(stack.as_str())
+                            }) {
                                 images.insert(c.image.clone());
                             }
                             crate::ui::actions::check_image_updates(
@@ -605,11 +607,7 @@ pub(in crate::ui) fn execute_cmdline(
                     }
                     if let Some(target) = name {
                         // Temporarily select the target stack if it exists.
-                        if let Some(idx) = app
-                            .stacks
-                            .iter()
-                            .position(|s| s.name == target)
-                        {
+                        if let Some(idx) = app.stacks.iter().position(|s| s.name == target) {
                             app.stacks_selected = idx;
                         }
                     }
@@ -637,13 +635,9 @@ pub(in crate::ui) fn execute_cmdline(
                     }
                     let runner = current_runner_from_app(app);
                     let mut services: HashMap<String, StackUpdateService> = HashMap::new();
-                    for c in app
-                        .containers
-                        .iter()
-                        .filter(|c| {
-                            stack_name_from_labels(&c.labels).as_deref() == Some(target.as_str())
-                        })
-                    {
+                    for c in app.containers.iter().filter(|c| {
+                        stack_name_from_labels(&c.labels).as_deref() == Some(target.as_str())
+                    }) {
                         let svc =
                             service_name_from_label_list(&c.labels, Some(target.as_str()), &c.name);
                         services.entry(svc.clone()).or_insert(StackUpdateService {
@@ -817,13 +811,8 @@ pub(in crate::ui) fn execute_cmdline(
 
     if cmd == "template" || cmd == "tpl" {
         let args: Vec<&str> = it.collect();
-        let _ = templates_cmd::handle_template(
-            app,
-            force,
-            cmdline_full.clone(),
-            &args,
-            action_req_tx,
-        );
+        let _ =
+            templates_cmd::handle_template(app, force, cmdline_full.clone(), &args, action_req_tx);
         return;
     }
 

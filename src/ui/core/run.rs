@@ -6,20 +6,19 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 
 use crate::config::{KeyBinding, ServerEntry};
-use crate::docker::{DockerCfg};
+use crate::docker::DockerCfg;
 use crate::runner::Runner;
 use crate::ui::commands::theme_cmd;
+use crate::ui::core::run_apply::process_background_updates;
+use crate::ui::core::run_spawn::{SpawnInputs, spawn_background_tasks};
 use crate::ui::input;
 use crate::ui::theme;
 use crate::{config, ui};
-use crate::ui::core::run_apply::process_background_updates;
-use crate::ui::core::run_spawn::{SpawnInputs, spawn_background_tasks};
 use ui::{
-    ActionRequest, App, Connection, ContainerRow, DashboardSnapshot, ImageRow,
-    InspectTarget, MsgLevel, NetworkRow, Picker, ShellInteractive, TemplatesKind,
-    UsageSnapshot, VolumeRow, current_runner_from_app, draw, expand_user_path,
-    maybe_autocommit_templates, restore_terminal, run_interactive_command,
-    run_interactive_local_command, setup_terminal,
+    ActionRequest, App, Connection, ContainerRow, DashboardSnapshot, ImageRow, InspectTarget,
+    MsgLevel, NetworkRow, Picker, ShellInteractive, TemplatesKind, UsageSnapshot, VolumeRow,
+    current_runner_from_app, draw, expand_user_path, maybe_autocommit_templates, restore_terminal,
+    run_interactive_command, run_interactive_local_command, setup_terminal,
 };
 
 pub async fn run_tui(
@@ -91,7 +90,10 @@ pub async fn run_tui(
         app.log_msg(MsgLevel::Warn, format!("failed to load theme: {:#}", e));
     }
     if let Some(e) = registries_err {
-        app.log_msg(MsgLevel::Warn, format!("failed to load registries: {:#}", e));
+        app.log_msg(
+            MsgLevel::Warn,
+            format!("failed to load registries: {:#}", e),
+        );
     }
     app.current_target = runner.key();
     if cfg.docker_cmd.is_empty() {
@@ -126,8 +128,7 @@ pub async fn run_tui(
         mpsc::unbounded_channel::<(String, anyhow::Result<Value>)>();
 
     let (action_req_tx, action_req_rx) = mpsc::unbounded_channel::<ActionRequest>();
-    let (image_update_req_tx, image_update_req_rx) =
-        mpsc::unbounded_channel::<(String, bool)>();
+    let (image_update_req_tx, image_update_req_rx) = mpsc::unbounded_channel::<(String, bool)>();
     let (action_res_tx, mut action_res_rx) =
         mpsc::unbounded_channel::<(ActionRequest, anyhow::Result<String>)>();
 

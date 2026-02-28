@@ -1,7 +1,7 @@
 use image::DynamicImage;
 
-use crate::ui::App;
 use super::{apply_dashboard_theme, build_dashboard_image, init_dashboard_image};
+use crate::ui::App;
 
 impl App {
     pub(in crate::ui) fn dashboard_image_enabled(&self) -> bool {

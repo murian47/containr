@@ -1,5 +1,5 @@
-pub(in crate::ui) mod dashboard;
 pub(in crate::ui) mod containers;
+pub(in crate::ui) mod dashboard;
 pub(in crate::ui) mod inspect;
 pub(in crate::ui) mod logs;
 pub(in crate::ui) mod registry;

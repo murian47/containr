@@ -3,10 +3,10 @@ use tokio::sync::{mpsc, watch};
 use crate::runner::Runner;
 use crate::ssh::Ssh;
 
-use crate::ui::render::sidebar::shell_sidebar_select_item;
 use crate::docker::DockerCfg;
 use crate::ui::core::requests::Connection;
 use crate::ui::core::types::DashboardHostState;
+use crate::ui::render::sidebar::shell_sidebar_select_item;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ShellSidebarItem, ShellView};
 

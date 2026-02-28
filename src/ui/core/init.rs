@@ -13,9 +13,9 @@ use crate::ui::core::types::{
 use crate::ui::helpers::build_server_shortcuts;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{
-    ActiveView, InspectState, ListMode, LogsState, ShellCmdlineState, ShellFocus,
-    ShellHelpState, ShellMessagesState, ShellSplitMode, ShellView, TemplatesKind,
-    TemplatesState, ThemeSelectorState,
+    ActiveView, InspectState, ListMode, LogsState, ShellCmdlineState, ShellFocus, ShellHelpState,
+    ShellMessagesState, ShellSplitMode, ShellView, TemplatesKind, TemplatesState,
+    ThemeSelectorState,
 };
 use crate::ui::theme;
 
@@ -67,7 +67,9 @@ impl App {
         rate_limits.retain(|_, v| {
             v.hits
                 .retain(|ts| now.saturating_sub(*ts) <= RATE_LIMIT_WINDOW_SECS);
-            if let Some(until) = v.limited_until && now >= until {
+            if let Some(until) = v.limited_until
+                && now >= until
+            {
                 v.limited_until = None;
             }
             !v.hits.is_empty() || v.limited_until.is_some()
@@ -198,7 +200,8 @@ impl App {
             },
             dashboard_all,
             dashboard_image: if kitty_graphics {
-                dashboard_picker.map(|p| crate::ui::features::dashboard::init_dashboard_image(p, &theme))
+                dashboard_picker
+                    .map(|p| crate::ui::features::dashboard::init_dashboard_image(p, &theme))
             } else {
                 None
             },

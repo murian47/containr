@@ -1,18 +1,18 @@
 //! Templates view rendering.
 
-use ratatui::layout::Rect;
-use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};
 use ratatui::Frame;
+use ratatui::layout::Constraint;
+use ratatui::layout::Rect;
+use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::layout::Constraint;
-use ratatui::style::Modifier;
+use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};
 use std::time::Instant;
 
+use crate::ui::core::types::ActionErrorKind;
 use crate::ui::render::status::action_error_label;
 use crate::ui::render::tables::shell_header_style;
 use crate::ui::render::utils::shell_row_highlight;
-use crate::ui::core::types::ActionErrorKind;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{GitRemoteStatus, TemplatesKind};
 
@@ -105,25 +105,24 @@ fn draw_shell_stack_templates_table(f: &mut Frame, app: &mut App, area: Rect) {
             } else {
                 (false, false)
             };
-            let (state, state_style) = if let Some(m) =
-                app.templates_state.template_deploy_inflight.get(&t.name)
-            {
-                let secs = now.duration_since(m.started).as_secs();
-                (
-                    format!("deploy {secs}s"),
-                    Style::default().patch(app.theme.text_warn.to_style()),
-                )
-            } else if let Some(err) = app.template_action_error.get(&t.name) {
-                let st = match err.kind {
-                    ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
-                    ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+            let (state, state_style) =
+                if let Some(m) = app.templates_state.template_deploy_inflight.get(&t.name) {
+                    let secs = now.duration_since(m.started).as_secs();
+                    (
+                        format!("deploy {secs}s"),
+                        Style::default().patch(app.theme.text_warn.to_style()),
+                    )
+                } else if let Some(err) = app.template_action_error.get(&t.name) {
+                    let st = match err.kind {
+                        ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                        ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                    };
+                    (action_error_label(err).to_string(), st)
+                } else if deployed_any {
+                    ("deployed".to_string(), Style::default())
+                } else {
+                    (String::new(), Style::default())
                 };
-                (action_error_label(err).to_string(), st)
-            } else if deployed_any {
-                ("deployed".to_string(), Style::default())
-            } else {
-                (String::new(), Style::default())
-            };
             let row_style = if deployed_on_active
                 || app
                     .templates_state
@@ -132,7 +131,8 @@ fn draw_shell_stack_templates_table(f: &mut Frame, app: &mut App, area: Rect) {
             {
                 Style::default()
             } else {
-                bg.patch(app.theme.text_dim.to_style()).add_modifier(Modifier::DIM)
+                bg.patch(app.theme.text_dim.to_style())
+                    .add_modifier(Modifier::DIM)
             };
             max_state = max_state.max(state.chars().count());
             Row::new(vec![
@@ -199,7 +199,10 @@ fn draw_shell_net_templates_table(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     if app.templates_state.net_templates.is_empty() {
-        let msg = format!("No network templates in {}", app.net_templates_dir().display());
+        let msg = format!(
+            "No network templates in {}",
+            app.net_templates_dir().display()
+        );
         f.render_widget(
             Paragraph::new(msg)
                 .style(bg.patch(app.theme.text_dim.to_style()))
@@ -262,8 +265,10 @@ fn draw_shell_net_templates_table(f: &mut Frame, app: &mut App, area: Rect) {
                 } else {
                     (false, false)
                 };
-            let (state, state_style) = if let Some(m) =
-                app.templates_state.net_template_deploy_inflight.get(&t.name)
+            let (state, state_style) = if let Some(m) = app
+                .templates_state
+                .net_template_deploy_inflight
+                .get(&t.name)
             {
                 let secs = now.duration_since(m.started).as_secs();
                 (
@@ -289,7 +294,8 @@ fn draw_shell_net_templates_table(f: &mut Frame, app: &mut App, area: Rect) {
             {
                 Style::default()
             } else {
-                bg.patch(app.theme.text_dim.to_style()).add_modifier(Modifier::DIM)
+                bg.patch(app.theme.text_dim.to_style())
+                    .add_modifier(Modifier::DIM)
             };
             max_state = max_state.max(state.chars().count());
             Row::new(vec![

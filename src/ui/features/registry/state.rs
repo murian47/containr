@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use crate::config;
 use crate::docker::ImageRow;
-use crate::ui::render::utils::expand_user_path;
 use crate::ui::core::secrets::{decrypt_age_secret, load_age_identities};
 use crate::ui::core::types::RegistryAuthResolved;
+use crate::ui::render::utils::expand_user_path;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::MsgLevel;
 
@@ -135,7 +135,10 @@ impl App {
         self.registry_auths = out;
     }
 
-    pub(in crate::ui) fn registry_auth_for_host(&self, host: &str) -> anyhow::Result<RegistryAuthResolved> {
+    pub(in crate::ui) fn registry_auth_for_host(
+        &self,
+        host: &str,
+    ) -> anyhow::Result<RegistryAuthResolved> {
         let host = host.trim().to_ascii_lowercase();
         let entry = self
             .registries_cfg

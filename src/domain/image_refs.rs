@@ -52,7 +52,10 @@ pub fn normalize_image_ref_for_updates(image: &str) -> Option<NormalizedImageRef
         return None;
     }
     let digest = normalized.split_once('@').map(|(_, d)| d.to_string());
-    Some(NormalizedImageRef { reference: normalized, digest })
+    Some(NormalizedImageRef {
+        reference: normalized,
+        digest,
+    })
 }
 
 pub fn image_registry_for_ref(image_ref: &str) -> String {

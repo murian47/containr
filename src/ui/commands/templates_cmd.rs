@@ -1,8 +1,8 @@
 //! Template commands (`:templates ...`, `:template ...`, `:nettemplate ...`).
 
 use super::super::{
-    ActionRequest, App, ShellInteractive, ShellSidebarItem, ShellView, TemplatesKind, shell_begin_confirm,
-    shell_escape_sh_arg, shell_sidebar_select_item,
+    ActionRequest, App, ShellInteractive, ShellSidebarItem, ShellView, TemplatesKind,
+    shell_begin_confirm, shell_escape_sh_arg, shell_sidebar_select_item,
 };
 use std::path::PathBuf;
 use tokio::sync::mpsc;
@@ -177,9 +177,7 @@ pub(in crate::ui) fn handle_template(
             }
             let templates_dir = app.stack_templates_dir();
             let source = format!("stack {stack_name}");
-            app.set_info(format!(
-                "exporting template {name} from stack {stack_name}"
-            ));
+            app.set_info(format!("exporting template {name} from stack {stack_name}"));
             let _ = action_req_tx.send(ActionRequest::TemplateFromStack {
                 name: name.to_string(),
                 stack_name,
@@ -201,10 +199,7 @@ pub(in crate::ui) fn handle_template(
             let container_id = container.id.clone();
             let container_name = container.name.clone();
             let templates_dir = app.stack_templates_dir();
-            let source = format!(
-                "container {}",
-                container_name.trim_start_matches('/')
-            );
+            let source = format!("container {}", container_name.trim_start_matches('/'));
             app.set_info(format!(
                 "exporting template {name} from container {}",
                 container_name
@@ -238,9 +233,7 @@ pub(in crate::ui) fn handle_template(
                 (net.id.clone(), arg1, format!("network {}", net.name))
             };
             let templates_dir = app.net_templates_dir();
-            app.set_info(format!(
-                "exporting network template {name} from {source}"
-            ));
+            app.set_info(format!("exporting network template {name} from {source}"));
             let _ = action_req_tx.send(ActionRequest::TemplateFromNetwork {
                 name: name.to_string(),
                 source,
@@ -541,7 +534,14 @@ pub(in crate::ui) fn handle_template_ai(app: &mut App) -> bool {
     let (kind, name, path, has_file) = match app.templates_state.kind {
         TemplatesKind::Stacks => app
             .selected_template()
-            .map(|t| ("stack", t.name.clone(), t.compose_path.clone(), t.has_compose))
+            .map(|t| {
+                (
+                    "stack",
+                    t.name.clone(),
+                    t.compose_path.clone(),
+                    t.has_compose,
+                )
+            })
             .unwrap_or(("stack", String::new(), PathBuf::new(), false)),
         TemplatesKind::Networks => app
             .selected_net_template()

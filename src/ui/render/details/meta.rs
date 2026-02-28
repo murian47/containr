@@ -1,17 +1,13 @@
 use super::panel_bg;
+use crate::ui::App;
 use crate::ui::render::inspect::current_match_pos;
 use crate::ui::render::text::truncate_end;
-use crate::ui::App;
 use ratatui::layout::{Alignment, Margin};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
-pub(super) fn draw_shell_logs_meta(
-    f: &mut ratatui::Frame,
-    app: &App,
-    area: ratatui::layout::Rect,
-) {
+pub(super) fn draw_shell_logs_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
     let bg = panel_bg(app);
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(Margin {
@@ -26,7 +22,11 @@ pub(super) fn draw_shell_logs_meta(
     } else {
         format!("Matches: {}", app.logs.match_lines.len())
     };
-    let re = if app.logs.use_regex { "regex:on" } else { "regex:off" };
+    let re = if app.logs.use_regex {
+        "regex:on"
+    } else {
+        "regex:off"
+    };
     let pos = format!(
         "Line: {}/{}",
         app.logs.cursor.saturating_add(1),
@@ -45,7 +45,10 @@ pub(super) fn draw_shell_logs_meta(
         Span::raw("   "),
         Span::styled(pos, Style::default().fg(Color::Gray)),
     ]);
-    f.render_widget(Paragraph::new(line).style(bg).wrap(Wrap { trim: true }), inner);
+    f.render_widget(
+        Paragraph::new(line).style(bg).wrap(Wrap { trim: true }),
+        inner,
+    );
 }
 
 pub(super) fn draw_shell_inspect_meta(
@@ -87,14 +90,13 @@ pub(super) fn draw_shell_inspect_meta(
             Style::default().fg(Color::White),
         ),
     ]);
-    f.render_widget(Paragraph::new(line).style(bg).wrap(Wrap { trim: true }), inner);
+    f.render_widget(
+        Paragraph::new(line).style(bg).wrap(Wrap { trim: true }),
+        inner,
+    );
 }
 
-pub(super) fn draw_shell_help_meta(
-    f: &mut ratatui::Frame,
-    app: &App,
-    area: ratatui::layout::Rect,
-) {
+pub(super) fn draw_shell_help_meta(f: &mut ratatui::Frame, app: &App, area: ratatui::layout::Rect) {
     let bg = panel_bg(app);
     f.render_widget(Block::default().style(bg), area);
     let inner = area.inner(Margin {

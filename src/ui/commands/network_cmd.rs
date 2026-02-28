@@ -1,7 +1,7 @@
 //! Network commands (`:network ...` / `:net ...`).
 
-use super::common::{force_or_confirm, subcommand, warn_usage};
 use super::super::App;
+use super::common::{force_or_confirm, subcommand, warn_usage};
 use tokio::sync::mpsc;
 
 const USAGE: &str = ":network rm";

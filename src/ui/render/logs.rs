@@ -113,10 +113,7 @@ pub(in crate::ui) fn draw_shell_logs_view(
             let prefix = format!("{:>width$} ", idx + 1, width = digits);
             l.spans.insert(
                 0,
-                ratatui::text::Span::styled(
-                    prefix,
-                    bg.patch(app.theme.text_dim.to_style()),
-                ),
+                ratatui::text::Span::styled(prefix, bg.patch(app.theme.text_dim.to_style())),
             );
         }
         let selected = sel.map(|(a, b)| idx >= a && idx <= b).unwrap_or(false);

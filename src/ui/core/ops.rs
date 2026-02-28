@@ -41,11 +41,17 @@ pub(in crate::ui) async fn perform_template_deploy(
     let compose_cmd = docker.docker_cmd.to_compose_shell();
     let mkdir_cmd = format!("mkdir -p {remote_dir_q}");
     let pull_cmd = format!("cd {remote_dir_q} && {compose_cmd} -f compose.rendered.yaml pull");
-    let recreate_flag = if force_recreate { " --force-recreate" } else { "" };
+    let recreate_flag = if force_recreate {
+        " --force-recreate"
+    } else {
+        ""
+    };
     let up_cmd =
         format!("cd {remote_dir_q} && {compose_cmd} -f compose.rendered.yaml up -d{recreate_flag}");
     runner.run(&mkdir_cmd).await?;
-    runner.copy_file_to(rendered_path.as_ref(), &remote_compose).await?;
+    runner
+        .copy_file_to(rendered_path.as_ref(), &remote_compose)
+        .await?;
     if pull {
         let _ = run_with_local_compose_fallback(runner, &pull_cmd).await?;
     }
@@ -70,8 +76,9 @@ pub(in crate::ui) async fn run_with_local_compose_fallback(
             let home = std::env::var("HOME")
                 .map_err(|_| anyhow::anyhow!("HOME is not set for local compose fallback"))?;
             let cfg_dir = PathBuf::from(home).join(".config/containr/docker-no-creds");
-            fs::create_dir_all(&cfg_dir)
-                .map_err(|err| anyhow::anyhow!("failed to create local docker fallback dir: {err}"))?;
+            fs::create_dir_all(&cfg_dir).map_err(|err| {
+                anyhow::anyhow!("failed to create local docker fallback dir: {err}")
+            })?;
             let cfg_file = cfg_dir.join("config.json");
             fs::write(&cfg_file, "{\"auths\":{}}\n").map_err(|err| {
                 anyhow::anyhow!("failed to write local docker fallback config: {err}")
@@ -182,12 +189,10 @@ pub(in crate::ui) async fn perform_stack_update(
             }
             let container_id_q = shell_single_quote(container_id);
             let image_ref_q = shell_single_quote(image_ref);
-            let container_cmd = format!(
-                "{docker_cmd} inspect --format '{{{{.Image}}}}' {container_id_q}"
-            );
-            let image_cmd = format!(
-                "{docker_cmd} image inspect --format '{{{{.Id}}}}' {image_ref_q}"
-            );
+            let container_cmd =
+                format!("{docker_cmd} inspect --format '{{{{.Image}}}}' {container_id_q}");
+            let image_cmd =
+                format!("{docker_cmd} image inspect --format '{{{{.Id}}}}' {image_ref_q}");
             let current = runner.run(&container_cmd).await?.trim().to_string();
             let latest = runner.run(&image_cmd).await?.trim().to_string();
             let cur_short = if current.len() > 20 {
@@ -370,7 +375,12 @@ pub(in crate::ui) async fn perform_net_template_deploy(
     parts.push("network".to_string());
     parts.push("create".to_string());
 
-    let driver = spec.driver.as_deref().unwrap_or("bridge").trim().to_string();
+    let driver = spec
+        .driver
+        .as_deref()
+        .unwrap_or("bridge")
+        .trim()
+        .to_string();
     parts.push("--driver".to_string());
     parts.push(shell_single_quote(&driver));
 

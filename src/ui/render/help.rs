@@ -26,7 +26,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Always", "F1", "Open help"));
     out.push(item("Global", ":q", "Quit (prompts y/n)"));
     out.push(item("Global", ":q!", "Quit immediately (! auto-confirms)"));
-    out.push(item("Global", ":! <cmd>", "Run command with auto-confirm (! modifier)"));
+    out.push(item(
+        "Global",
+        ":! <cmd>",
+        "Run command with auto-confirm (! modifier)",
+    ));
     out.push(item(
         "Note",
         "confirm",
@@ -34,7 +38,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     ));
     out.push(item("Global", ":?", "Open help"));
     out.push(item("Global", ":help", "Open help"));
-    out.push(item("Global", ":messages", "Toggle messages view (session log)"));
+    out.push(item(
+        "Global",
+        ":messages",
+        "Toggle messages view (session log)",
+    ));
     out.push(item(
         "Global",
         ":messages save <file>",
@@ -45,7 +53,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":messages save! <file>",
         "Overwrite when the file exists",
     ));
-    out.push(item("Global", ":ack [all]", "Clear per-item action error markers"));
+    out.push(item(
+        "Global",
+        ":ack [all]",
+        "Clear per-item action error markers",
+    ));
     out.push(item("Global", ":refresh", "Trigger immediate refresh"));
     out.push(item(
         "Global",
@@ -164,7 +176,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":theme list",
         "Open theme selector (preview + apply)",
     ));
-    out.push(item("Global", ":theme use <name>", "Switch active theme (persisted)"));
+    out.push(item(
+        "Global",
+        ":theme use <name>",
+        "Switch active theme (persisted)",
+    ));
     out.push(item(
         "Global",
         ":theme new <name>",
@@ -175,7 +191,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":theme edit [name]",
         "Edit theme file via configured editor/$EDITOR/vi (creates if missing)",
     ));
-    out.push(item("Global", ":theme rm[!] <name>", "Delete theme (! skips confirmation)"));
+    out.push(item(
+        "Global",
+        ":theme rm[!] <name>",
+        "Delete theme (! skips confirmation)",
+    ));
     out.push(Line::from(""));
 
     out.push(h("Messages"));
@@ -186,14 +206,26 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         "Toggle docked messages panel (height 3..12)",
     ));
     out.push(item("Global", ":messages copy", "Copy selected message"));
-    out.push(item("Global", ":messages save <file>", "Save messages to file"));
+    out.push(item(
+        "Global",
+        ":messages save <file>",
+        "Save messages to file",
+    ));
     out.push(Line::from(""));
 
     out.push(h("Git"));
-    out.push(item("Git", ":git templates status", "Show repo status (short)"));
+    out.push(item(
+        "Git",
+        ":git templates status",
+        "Show repo status (short)",
+    ));
     out.push(item("Git", ":git templates diff", "Show repo diff"));
     out.push(item("Git", ":git templates log", "Show recent commits"));
-    out.push(item("Git", ":git templates commit -m", "Commit with prompt for message"));
+    out.push(item(
+        "Git",
+        ":git templates commit -m",
+        "Commit with prompt for message",
+    ));
     out.push(item(
         "Git",
         ":git templates config user.name|user.email <value>",
@@ -201,8 +233,16 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     ));
     out.push(item("Git", ":git templates pull", "git pull --rebase"));
     out.push(item("Git", ":git templates push", "git push"));
-    out.push(item("Git", ":git templates init", "Initialize repo (only if empty)"));
-    out.push(item("Git", ":git templates clone <url>", "Clone repo (only if empty)"));
+    out.push(item(
+        "Git",
+        ":git templates init",
+        "Initialize repo (only if empty)",
+    ));
+    out.push(item(
+        "Git",
+        ":git templates clone <url>",
+        "Clone repo (only if empty)",
+    ));
     out.push(Line::from(""));
 
     out.push(h("Servers"));
@@ -232,8 +272,16 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":templates kind (stacks|networks|toggle)",
         "Switch between stack templates and network templates",
     ));
-    out.push(item("Templates", "^t", "Toggle stacks/networks (default binding)"));
-    out.push(item("Templates", "^a", "Run configured AI agent (default binding)"));
+    out.push(item(
+        "Templates",
+        "^t",
+        "Toggle stacks/networks (default binding)",
+    ));
+    out.push(item(
+        "Templates",
+        "^a",
+        "Run configured AI agent (default binding)",
+    ));
     out.push(item(
         "Templates",
         ":template/:tpl add <name>",
@@ -288,13 +336,21 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(Line::from(""));
 
     out.push(h("Registries"));
-    out.push(item("Registries", ":registries [view|list]", "Open view or list entries"));
+    out.push(item(
+        "Registries",
+        ":registries [view|list]",
+        "Open view or list entries",
+    ));
     out.push(item(
         "Registries",
         ":registries identity <path>",
         "Set age identity path for encrypted secrets",
     ));
-    out.push(item("Registries", ":registry add <host>", "Add registry entry"));
+    out.push(item(
+        "Registries",
+        ":registry add <host>",
+        "Add registry entry",
+    ));
     out.push(item(
         "Registries",
         ":registry default [host|none]",
@@ -330,8 +386,16 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":registry test [host]",
         "Test registry credentials (uses selected if omitted)",
     ));
-    out.push(item("Registries", "^y", "Test selected registry (default binding)"));
-    out.push(item("Registries", ":registry rm[!] <host>", "Remove registry entry"));
+    out.push(item(
+        "Registries",
+        "^y",
+        "Test selected registry (default binding)",
+    ));
+    out.push(item(
+        "Registries",
+        ":registry rm[!] <host>",
+        "Remove registry entry",
+    ));
     out.push(Line::from(""));
 
     out.push(h("Stacks"));
@@ -373,7 +437,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":container/:ctr console [-u USER] [bash|sh|SHELL]",
         "Open console for selected running container (default user: root)",
     ));
-    out.push(item("Containers", ":container/:ctr tree", "Toggle stack (tree) view"));
+    out.push(item(
+        "Containers",
+        ":container/:ctr tree",
+        "Toggle stack (tree) view",
+    ));
     out.push(Line::from(""));
 
     out.push(h("Images"));
@@ -387,11 +455,19 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
         ":image/:img untag",
         "Remove tag from selected/marked image",
     ));
-    out.push(item("Images", ":image/:img rm", "Remove selected/marked image"));
+    out.push(item(
+        "Images",
+        ":image/:img rm",
+        "Remove selected/marked image",
+    ));
     out.push(Line::from(""));
 
     out.push(h("Volumes"));
-    out.push(item("Volumes", ":volume/:vol rm", "Remove selected/marked volume"));
+    out.push(item(
+        "Volumes",
+        ":volume/:vol rm",
+        "Remove selected/marked volume",
+    ));
     out.push(Line::from(""));
 
     out.push(h("Networks"));
@@ -413,7 +489,11 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Logs", "j/k", "Down/up"));
     out.push(item("Logs", "j <n>", "Jump to line n (1-based)"));
     out.push(item("Logs", "save <file>", "Save full logs to a file"));
-    out.push(item("Logs", "save! <file>", "Overwrite when the file exists"));
+    out.push(item(
+        "Logs",
+        "save! <file>",
+        "Overwrite when the file exists",
+    ));
     out.push(item("Logs", "set number", "Enable line numbers"));
     out.push(item("Logs", "set nonumber", "Disable line numbers"));
     out.push(item("Logs", "set regex", "Enable regex search"));
@@ -427,8 +507,16 @@ pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     out.push(item("Inspect", "n/N", "Next/previous match"));
     out.push(item("Inspect", "expand", "Expand all"));
     out.push(item("Inspect", "collapse", "Collapse all"));
-    out.push(item("Inspect", "save <file>", "Save full inspect JSON to a file"));
-    out.push(item("Inspect", "save! <file>", "Overwrite when the file exists"));
+    out.push(item(
+        "Inspect",
+        "save <file>",
+        "Save full inspect JSON to a file",
+    ));
+    out.push(item(
+        "Inspect",
+        "save! <file>",
+        "Overwrite when the file exists",
+    ));
     out.push(item("Inspect", "y", "Copy selected value (pretty)"));
     out.push(item("Inspect", "p", "Copy selected JSON pointer path"));
     out

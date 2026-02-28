@@ -11,16 +11,18 @@ pub(in crate::ui) fn header_logo_spans(app: &App, base: Style, shown: &str) -> V
         Color::Rgb(r, g, b) => Some((r, g, b)),
         _ => None,
     };
-    let is_dark = bg_rgb.map(|(r, g, b)| rel_luma(r, g, b) < 0.55).unwrap_or(true);
+    let is_dark = bg_rgb
+        .map(|(r, g, b)| rel_luma(r, g, b) < 0.55)
+        .unwrap_or(true);
 
     let bright_palette: [Color; 8] = [
-        Color::Rgb(255, 95, 86),  // red
-        Color::Rgb(255, 189, 46), // yellow
-        Color::Rgb(39, 201, 63),  // green
-        Color::Rgb(64, 156, 255), // blue
-        Color::Rgb(175, 82, 222), // purple
+        Color::Rgb(255, 95, 86),   // red
+        Color::Rgb(255, 189, 46),  // yellow
+        Color::Rgb(39, 201, 63),   // green
+        Color::Rgb(64, 156, 255),  // blue
+        Color::Rgb(175, 82, 222),  // purple
         Color::Rgb(255, 105, 180), // pink
-        Color::Rgb(0, 212, 212),  // cyan
+        Color::Rgb(0, 212, 212),   // cyan
         Color::Rgb(255, 255, 255), // white
     ];
     let dark_palette: [Color; 8] = [
@@ -33,7 +35,11 @@ pub(in crate::ui) fn header_logo_spans(app: &App, base: Style, shown: &str) -> V
         Color::Rgb(0, 90, 90),
         Color::Rgb(0, 0, 0),
     ];
-    let palette: &[Color] = if is_dark { &bright_palette } else { &dark_palette };
+    let palette: &[Color] = if is_dark {
+        &bright_palette
+    } else {
+        &dark_palette
+    };
 
     let seed = app.header_logo_seed;
     let offset = (seed as usize) % palette.len();

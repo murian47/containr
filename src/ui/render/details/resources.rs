@@ -1,7 +1,7 @@
 use super::panel_bg;
-use crate::ui::render::status::{action_error_details, action_error_label};
-use crate::ui::render::table::{render_detail_table, DetailRow};
 use crate::ui::core::types::ActionErrorKind;
+use crate::ui::render::status::{action_error_details, action_error_label};
+use crate::ui::render::table::{DetailRow, render_detail_table};
 use crate::ui::state::app::App;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::Block;
@@ -191,7 +191,11 @@ pub(super) fn draw_shell_network_details(
     };
     let val = bg;
     let type_style = if is_system {
-        bg.patch(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        bg.patch(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
         bg.patch(Style::default().fg(Color::White))
     };

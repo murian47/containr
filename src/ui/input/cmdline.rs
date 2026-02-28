@@ -106,7 +106,11 @@ pub(super) fn handle_cmdline_mode(app: &mut App, key: KeyEvent, ctx: &InputCtx<'
                     _ => {}
                 }
             } else if !ch.is_control() {
-                insert_char_at_cursor(&mut app.shell_cmdline.input, &mut app.shell_cmdline.cursor, ch);
+                insert_char_at_cursor(
+                    &mut app.shell_cmdline.input,
+                    &mut app.shell_cmdline.cursor,
+                    ch,
+                );
                 app.shell_cmdline.history.on_edit();
             }
         }

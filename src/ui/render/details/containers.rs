@@ -1,10 +1,10 @@
 use super::panel_bg;
-use crate::ui::render::status::{action_error_details, action_error_label, action_status_prefix};
-use crate::ui::render::table::{render_detail_table, DetailRow};
-use crate::ui::state::image_updates::resolve_image_update_state;
-use crate::ui::render::status::image_update_indicator;
 use crate::ui::core::types::ActionErrorKind;
+use crate::ui::render::status::image_update_indicator;
+use crate::ui::render::status::{action_error_details, action_error_label, action_status_prefix};
+use crate::ui::render::table::{DetailRow, render_detail_table};
 use crate::ui::state::app::App;
+use crate::ui::state::image_updates::resolve_image_update_state;
 use ratatui::layout::Margin;
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
