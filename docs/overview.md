@@ -8,6 +8,13 @@ A terminal UI client for Docker/Podman over SSH: manage containers, stacks, imag
 
 ---
 
+## Plattformen / Platform Support
+- Linux: primary target platform
+- macOS: supported development and client platform
+- `*BSD`, Windows: currently not part of the supported `0.5.0` target matrix
+
+---
+
 ## Kernfunktionen / Core Features
 - Mehrere Server per SSH, Hot-Switching.
 - Stacks & Container starten/stoppen/restart/delete; Recreate mit optionalem Pull.

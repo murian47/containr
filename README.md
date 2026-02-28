@@ -2,6 +2,18 @@
 
 Lokales TUI-Dashboard im Midnight-Commander-Stil fuer Docker-Container auf Remote-Hosts via `ssh` (oder lokal).
 
+## Offiziell unterstuetzte Plattformen
+
+- Linux: Hauptzielplattform fuer lokale und entfernte Docker/Podman-Workflows
+- macOS: unterstuetzte Entwicklungs- und Client-Plattform, inklusive lokalem Docker-Setup
+
+Nicht Teil des `0.5.0`-Supports:
+
+- `*BSD`
+- Windows
+
+Andere Plattformen koennen im Einzelfall funktionieren, gelten derzeit aber nur als best effort.
+
 ## Voraussetzungen
 
 - macOS/Linux lokal: `ssh` im PATH (Keys/Agent/`~/.ssh/config` wie ueblich)

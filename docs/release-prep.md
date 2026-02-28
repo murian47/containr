@@ -23,6 +23,7 @@
 - Changelog: short list of notable features/changes.
 - License + contribution guidelines.
 - Docs relevance matrix: `docs/docs-status.md`.
+- Supported platform statement for `v0.5.0`: Linux + macOS only.
 
 Current gap before public release:
 - Manual smoke checklist in `docs/testing-checklist.md` still needs an explicit pass and sign-off.
