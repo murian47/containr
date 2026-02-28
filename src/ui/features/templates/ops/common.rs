@@ -360,7 +360,7 @@ pub(super) fn filter_labels(labels: &HashMap<String, String>) -> BTreeMap<String
     out
 }
 
-pub(super) fn write_stack_template_compose(
+pub(in crate::ui) fn write_stack_template_compose(
     templates_dir: &PathBuf,
     name: &str,
     compose: &str,

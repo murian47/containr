@@ -133,9 +133,9 @@ fn draw_stack_containers_table(
             } else {
                 c.status.clone()
             };
-            let status_style = if app.is_stack_update_container(&c.id) {
-                bg.patch(app.theme.text_warn.to_style())
-            } else if app.action_inflight.contains_key(&c.id) {
+            let status_style = if app.is_stack_update_container(&c.id)
+                || app.action_inflight.contains_key(&c.id)
+            {
                 bg.patch(app.theme.text_warn.to_style())
             } else if let Some(err) = app.container_action_error.get(&c.id) {
                 match err.kind {

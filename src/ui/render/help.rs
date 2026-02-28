@@ -4,6 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
+#[allow(clippy::vec_init_then_push)]
 pub fn shell_help_lines(theme: &theme::ThemeSpec) -> Vec<Line<'static>> {
     let h = |title: &str| -> Line<'static> {
         Line::from(Span::styled(

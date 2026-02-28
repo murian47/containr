@@ -144,10 +144,7 @@ pub(in crate::ui) fn spawn_background_tasks(inputs: SpawnInputs) -> BackgroundTa
                 if let Some(child) = child_opt.take() {
                     child.wait_with_output().await
                 } else {
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "overview child already consumed",
-                    ))
+                    Err(std::io::Error::other("overview child already consumed"))
                 }
               } => out,
               changed_res = conn_rx.changed() => {

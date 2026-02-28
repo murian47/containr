@@ -2,6 +2,7 @@ use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
 
 use crate::ui::theme::ThemeSpec;
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::ui) fn draw_shell_scrollbar_v(
     f: &mut ratatui::Frame,
     area: ratatui::layout::Rect,
@@ -34,6 +35,7 @@ pub(in crate::ui) fn draw_shell_scrollbar_v(
     f.render_stateful_widget(sb, area, &mut sb_state);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::ui) fn draw_shell_scrollbar_h(
     f: &mut ratatui::Frame,
     area: ratatui::layout::Rect,

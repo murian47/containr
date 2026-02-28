@@ -258,10 +258,10 @@ impl App {
         self.rate_limits.retain(|_, v| {
             v.hits
                 .retain(|ts| now.saturating_sub(*ts) <= RATE_LIMIT_WINDOW_SECS);
-            if let Some(until) = v.limited_until {
-                if now >= until {
-                    v.limited_until = None;
-                }
+            if let Some(until) = v.limited_until
+                && now >= until
+            {
+                v.limited_until = None;
             }
             !v.hits.is_empty() || v.limited_until.is_some()
         });
@@ -302,18 +302,16 @@ impl App {
         let mut limited: Option<(String, i64)> = None;
         let mut warn: Option<(String, usize)> = None;
         for (reg, entry) in &self.rate_limits {
-            if let Some(until) = entry.limited_until {
-                if until > now {
-                    let remaining = until.saturating_sub(now);
-                    limited = Some((reg.clone(), remaining));
-                    break;
-                }
+            if let Some(until) = entry.limited_until
+                && until > now
+            {
+                let remaining = until.saturating_sub(now);
+                limited = Some((reg.clone(), remaining));
+                break;
             }
             let count = entry.hits.len();
-            if count >= RATE_LIMIT_WARN {
-                if warn.as_ref().map(|(_, c)| count > *c).unwrap_or(true) {
-                    warn = Some((reg.clone(), count));
-                }
+            if count >= RATE_LIMIT_WARN && warn.as_ref().map(|(_, c)| count > *c).unwrap_or(true) {
+                warn = Some((reg.clone(), count));
             }
         }
         if let Some((reg, remaining)) = limited {

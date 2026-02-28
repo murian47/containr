@@ -16,9 +16,7 @@ impl App {
         match self.list_mode {
             ListMode::Flat => self.containers.get(self.selected),
             ListMode::Tree => {
-                let Some(entry) = self.view.get(self.selected) else {
-                    return None;
-                };
+                let entry = self.view.get(self.selected)?;
                 let ViewEntry::Container { id, .. } = entry else {
                     return None;
                 };
@@ -35,9 +33,7 @@ impl App {
         if self.list_mode != ListMode::Tree {
             return None;
         }
-        let Some(entry) = self.view.get(self.selected) else {
-            return None;
-        };
+        let entry = self.view.get(self.selected)?;
         match entry {
             ViewEntry::StackHeader {
                 name,
@@ -60,9 +56,7 @@ impl App {
             return None;
         }
         self.ensure_view();
-        let Some(entry) = self.view.get(self.selected) else {
-            return None;
-        };
+        let entry = self.view.get(self.selected)?;
         let ViewEntry::StackHeader { name, .. } = entry else {
             return None;
         };
@@ -195,23 +189,22 @@ impl App {
 
         // Restore selection when possible.
         if let Some((id, stack)) = anchor {
-            if !id.is_empty() {
-                if let Some(idx) = self
+            if !id.is_empty()
+                && let Some(idx) = self
                     .view
                     .iter()
                     .position(|e| matches!(e, ViewEntry::Container { id: cid, .. } if cid == &id))
-                {
-                    self.selected = idx;
-                    return;
-                }
+            {
+                self.selected = idx;
+                return;
             }
-            if let Some(stack) = stack {
-                if let Some(idx) = self.view.iter().position(
+            if let Some(stack) = stack
+                && let Some(idx) = self.view.iter().position(
                     |e| matches!(e, ViewEntry::StackHeader { name, .. } if name == &stack),
-                ) {
-                    self.selected = idx;
-                    return;
-                }
+                )
+            {
+                self.selected = idx;
+                return;
             }
         }
         if self.selected >= self.view.len() {

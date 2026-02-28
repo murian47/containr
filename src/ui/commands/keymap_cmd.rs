@@ -137,7 +137,7 @@ pub(in crate::ui) fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bo
             .join(" ");
         (scope, key_str, cmd_rest)
     } else {
-        let cmd_rest = rest.iter().copied().collect::<Vec<&str>>().join(" ");
+        let cmd_rest = rest.to_vec().join(" ");
         (KeyScope::Global, sub, cmd_rest)
     };
     if cmd_rest.trim().is_empty() {

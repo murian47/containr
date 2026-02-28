@@ -115,10 +115,10 @@ fn normalize_uptime_line(raw: &str) -> String {
     // BSD/macOS uptime often looks like:
     // "14:03  up 5 days,  3:02, 3 users, load averages: 1.11 1.08 1.05"
     // Keep only the actual uptime segment.
-    if !s.starts_with("up ") {
-        if let Some((_, rest)) = s.split_once(" up ") {
-            s = format!("up {}", rest.trim());
-        }
+    if !s.starts_with("up ")
+        && let Some((_, rest)) = s.split_once(" up ")
+    {
+        s = format!("up {}", rest.trim());
     }
 
     if let Some((left, _)) = s.split_once(", load average") {
@@ -132,10 +132,11 @@ fn normalize_uptime_line(raw: &str) -> String {
     if let Some(idx) = s.rfind(",") {
         let tail = s[idx + 1..].trim();
         let mut it = tail.split_whitespace();
-        if let (Some(n), Some(u)) = (it.next(), it.next()) {
-            if n.chars().all(|c| c.is_ascii_digit()) && (u == "user" || u == "users") {
-                s = s[..idx].trim().to_string();
-            }
+        if let (Some(n), Some(u)) = (it.next(), it.next())
+            && n.chars().all(|c| c.is_ascii_digit())
+            && (u == "user" || u == "users")
+        {
+            s = s[..idx].trim().to_string();
         }
     }
 
@@ -244,7 +245,7 @@ pub(in crate::ui) fn parse_dashboard_output(out: &str) -> anyhow::Result<Dashboa
         .get(LOAD)
         .and_then(|xs| xs.iter().find(|s| !s.trim().is_empty()))
     {
-        let cleaned = line.replace('{', "").replace('}', "");
+        let cleaned = line.replace(['{', '}'], "");
         let toks: Vec<&str> = cleaned.split_whitespace().collect();
         if toks.len() >= 3 {
             load1 = toks[0].parse::<f32>().unwrap_or(0.0);
@@ -611,18 +612,16 @@ fn collapse_disks(mut entries: Vec<DiskEntry>) -> Vec<DiskEntry> {
 
     for e in other {
         let m = e.mount.as_str();
-        if m == "/"
+        if (m == "/"
             || m == "/var/lib/docker"
             || m.starts_with("/mnt/")
             || m.starts_with("/data/")
-            || m.starts_with("/srv/")
-        {
-            if !out
+            || m.starts_with("/srv/"))
+            && !out
                 .iter()
                 .any(|x| x.mount == e.mount && !x.mount.is_empty())
-            {
-                out.push(e);
-            }
+        {
+            out.push(e);
         }
     }
 

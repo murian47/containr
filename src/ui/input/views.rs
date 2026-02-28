@@ -12,43 +12,43 @@ use crate::ui::state::shell_types::{
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub(super) fn handle_view_navigation(app: &mut App, key: KeyEvent, ctx: &InputCtx<'_>) {
-    if key.modifiers.is_empty() {
-        if let KeyCode::Char(mut ch) = key.code {
-            for (i, hint) in app.shell_server_shortcuts.iter().copied().enumerate() {
-                if hint == '\0' {
-                    continue;
-                }
-                if hint.is_ascii_alphabetic() {
-                    ch = ch.to_ascii_uppercase();
-                }
-                if ch == hint {
-                    app.switch_server(
-                        i,
-                        ctx.conn_tx,
-                        ctx.refresh_tx,
-                        ctx.dash_refresh_tx,
-                        ctx.dash_all_enabled_tx,
-                    );
-                    return;
-                }
+    if key.modifiers.is_empty()
+        && let KeyCode::Char(mut ch) = key.code
+    {
+        for (i, hint) in app.shell_server_shortcuts.iter().copied().enumerate() {
+            if hint == '\0' {
+                continue;
             }
-            if !matches!(app.shell_view, ShellView::Logs | ShellView::Inspect) {
-                let ch_lc = ch.to_ascii_lowercase();
-                for v in [
-                    ShellView::Dashboard,
-                    ShellView::Stacks,
-                    ShellView::Containers,
-                    ShellView::Images,
-                    ShellView::Volumes,
-                    ShellView::Networks,
-                    ShellView::Templates,
-                    ShellView::Registries,
-                ] {
-                    if ch_lc == shell_module_shortcut(v) {
-                        app.set_main_view(v);
-                        shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
-                        return;
-                    }
+            if hint.is_ascii_alphabetic() {
+                ch = ch.to_ascii_uppercase();
+            }
+            if ch == hint {
+                app.switch_server(
+                    i,
+                    ctx.conn_tx,
+                    ctx.refresh_tx,
+                    ctx.dash_refresh_tx,
+                    ctx.dash_all_enabled_tx,
+                );
+                return;
+            }
+        }
+        if !matches!(app.shell_view, ShellView::Logs | ShellView::Inspect) {
+            let ch_lc = ch.to_ascii_lowercase();
+            for v in [
+                ShellView::Dashboard,
+                ShellView::Stacks,
+                ShellView::Containers,
+                ShellView::Images,
+                ShellView::Volumes,
+                ShellView::Networks,
+                ShellView::Templates,
+                ShellView::Registries,
+            ] {
+                if ch_lc == shell_module_shortcut(v) {
+                    app.set_main_view(v);
+                    shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
+                    return;
                 }
             }
         }
@@ -114,7 +114,7 @@ pub(super) fn handle_view_navigation(app: &mut App, key: KeyEvent, ctx: &InputCt
                 } else {
                     None
                 };
-                let stack_counts = if let (ShellView::Stacks, Some(ref name)) =
+                let stack_counts = if let (ShellView::Stacks, Some(name)) =
                     (app.shell_view, stack_name.as_ref())
                 {
                     let containers = app.stack_container_count(name);

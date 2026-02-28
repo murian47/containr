@@ -1,6 +1,6 @@
 //! Template import/export helpers.
 
-mod common;
+pub(in crate::ui) mod common;
 mod export;
 mod template_fs;
 

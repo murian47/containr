@@ -210,6 +210,7 @@ fn draw_preview_body(
     draw_preview_main(f, theme, cols[2]);
 }
 
+#[allow(clippy::vec_init_then_push)]
 fn draw_preview_sidebar(f: &mut ratatui::Frame, theme: &theme::ThemeSpec, area: Rect) {
     let st = theme.panel.to_style();
     f.render_widget(Block::default().style(st), area);
@@ -418,7 +419,7 @@ fn preview_logo_spans(app: &App, theme: &theme::ThemeSpec, shown: &str) -> Vec<S
 
     let seed = app.header_logo_seed as usize;
     let offset = seed % palette.len();
-    let mut step = (((seed >> 8) as usize) % (palette.len().saturating_sub(1)).max(1)).max(1);
+    let mut step = ((seed >> 8) % (palette.len().saturating_sub(1)).max(1)).max(1);
     if gcd(step, palette.len()) != 1 {
         step = 1;
     }

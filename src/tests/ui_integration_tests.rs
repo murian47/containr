@@ -3,6 +3,10 @@ use crate::config::{DockerCmd, RegistriesConfig, ServerEntry};
 use crate::docker::{self, ContainerAction, DockerCfg};
 use crate::runner::Runner;
 use crate::ssh::Ssh;
+use crate::ui::core::ops::{perform_net_template_deploy, perform_template_deploy};
+use crate::ui::features::templates::ops::common::write_stack_template_compose;
+use crate::ui::helpers::{deploy_remote_dir_for, deploy_remote_net_dir_for, shell_single_quote};
+use anyhow::Context as _;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -212,6 +216,7 @@ async fn integration_stack_deploy_and_lifecycle() -> anyhow::Result<()> {
             &compose_path,
             false,
             false,
+            None,
         )
         .await?;
         let containers = docker::fetch_containers(&ctx.runner, &ctx.docker).await?;

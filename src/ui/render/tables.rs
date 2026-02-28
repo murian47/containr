@@ -91,18 +91,17 @@ pub(in crate::ui) fn draw_shell_containers_table(
         } else {
             c.status.clone()
         };
-        let status_style = if app.is_stack_update_container(&c.id) {
-            bg.patch(app.theme.text_warn.to_style())
-        } else if app.action_inflight.contains_key(&c.id) {
-            bg.patch(app.theme.text_warn.to_style())
-        } else if let Some(err) = app.container_action_error.get(&c.id) {
-            match err.kind {
-                ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
-                ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
-            }
-        } else {
-            row_style
-        };
+        let status_style =
+            if app.is_stack_update_container(&c.id) || app.action_inflight.contains_key(&c.id) {
+                bg.patch(app.theme.text_warn.to_style())
+            } else if let Some(err) = app.container_action_error.get(&c.id) {
+                match err.kind {
+                    ActionErrorKind::InUse => bg.patch(app.theme.text_warn.to_style()),
+                    ActionErrorKind::Other => bg.patch(app.theme.text_error.to_style()),
+                }
+            } else {
+                row_style
+            };
 
         let name = format!("{name_prefix}{}", c.name);
         let (upd_text, upd_style) =
@@ -179,11 +178,11 @@ pub(in crate::ui) fn draw_shell_containers_table(
                     );
                 }
                 ViewEntry::Container { id, indent, .. } => {
-                    if let Some(idx) = app.container_idx_by_id.get(id).copied() {
-                        if let Some(c) = app.containers.get(idx) {
-                            let prefix = "  ".repeat(*indent);
-                            rows.push(make_container_row(c, &prefix));
-                        }
+                    if let Some(idx) = app.container_idx_by_id.get(id).copied()
+                        && let Some(c) = app.containers.get(idx)
+                    {
+                        let prefix = "  ".repeat(*indent);
+                        rows.push(make_container_row(c, &prefix));
                     }
                 }
             }

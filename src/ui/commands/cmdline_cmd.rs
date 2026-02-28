@@ -108,6 +108,7 @@ pub(in crate::ui) fn stack_update(
     app.log_msg(MsgLevel::Info, format!("stack update started: {target}"));
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::ui) fn execute_cmdline(
     app: &mut App,
     cmdline: &str,

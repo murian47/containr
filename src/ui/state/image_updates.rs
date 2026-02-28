@@ -44,13 +44,13 @@ pub(in crate::ui) fn resolve_image_ref_for_updates(
     if is_digest_only_image(image) {
         let needle = normalize_image_id(image);
         for img in &app.images {
-            if normalize_image_id(&img.id) == needle {
-                if let Some(reference) = App::image_row_ref(img) {
-                    return Some(NormalizedImageRef {
-                        reference,
-                        digest: None,
-                    });
-                }
+            if normalize_image_id(&img.id) == needle
+                && let Some(reference) = App::image_row_ref(img)
+            {
+                return Some(NormalizedImageRef {
+                    reference,
+                    digest: None,
+                });
             }
         }
         return None;

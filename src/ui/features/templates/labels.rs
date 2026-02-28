@@ -60,7 +60,7 @@ fn inject_template_labels(
         .as_mapping_mut()
         .ok_or_else(|| anyhow::anyhow!("compose root is not a mapping"))?;
     for key in ["services", "networks", "volumes"] {
-        let Some(section) = obj.get_mut(&YamlValue::String(key.to_string())) else {
+        let Some(section) = obj.get_mut(YamlValue::String(key.to_string())) else {
             continue;
         };
         let Some(items) = section.as_mapping_mut() else {

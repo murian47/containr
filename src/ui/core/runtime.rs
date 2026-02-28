@@ -77,17 +77,17 @@ pub(in crate::ui) fn run_interactive_local_command(cmd: &str) -> anyhow::Result<
 }
 
 pub(in crate::ui) fn current_runner_from_app(app: &App) -> Runner {
-    if let Some(name) = &app.active_server {
-        if let Some(s) = app.servers.iter().find(|x| &x.name == name) {
-            if s.target == "local" {
-                return Runner::Local;
-            }
-            return Runner::Ssh(Ssh {
-                target: s.target.clone(),
-                identity: s.identity.clone(),
-                port: s.port,
-            });
+    if let Some(name) = &app.active_server
+        && let Some(s) = app.servers.iter().find(|x| &x.name == name)
+    {
+        if s.target == "local" {
+            return Runner::Local;
         }
+        return Runner::Ssh(Ssh {
+            target: s.target.clone(),
+            identity: s.identity.clone(),
+            port: s.port,
+        });
     }
     if app.current_target == "local" {
         Runner::Local
@@ -101,10 +101,10 @@ pub(in crate::ui) fn current_runner_from_app(app: &App) -> Runner {
 }
 
 pub(in crate::ui) fn current_docker_cmd_from_app(app: &App) -> DockerCmd {
-    if let Some(name) = &app.active_server {
-        if let Some(s) = app.servers.iter().find(|x| &x.name == name) {
-            return s.docker_cmd.clone();
-        }
+    if let Some(name) = &app.active_server
+        && let Some(s) = app.servers.iter().find(|x| &x.name == name)
+    {
+        return s.docker_cmd.clone();
     }
     DockerCmd::default()
 }

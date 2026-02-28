@@ -1,5 +1,5 @@
 mod labels;
-mod ops;
+pub(in crate::ui) mod ops;
 mod state;
 
 pub(in crate::ui) use labels::{

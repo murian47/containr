@@ -152,6 +152,13 @@ pub struct NetworkRow {
     pub labels: String,
 }
 
+type OverviewRows = (
+    Vec<ContainerRow>,
+    Vec<ImageRow>,
+    Vec<VolumeRow>,
+    Vec<NetworkRow>,
+);
+
 fn parse_json_lines<T: for<'de> Deserialize<'de>>(text: &str) -> anyhow::Result<Vec<T>> {
     // Docker can output one JSON object per line using --format '{{json .}}'.
     let mut rows = Vec::new();
@@ -272,14 +279,7 @@ pub fn parse_containers_output(out: &str) -> anyhow::Result<Vec<ContainerRow>> {
     Ok(out_rows)
 }
 
-pub fn parse_overview_output(
-    out: &str,
-) -> anyhow::Result<(
-    Vec<ContainerRow>,
-    Vec<ImageRow>,
-    Vec<VolumeRow>,
-    Vec<NetworkRow>,
-)> {
+pub fn parse_overview_output(out: &str) -> anyhow::Result<OverviewRows> {
     const S1: &str = "__MCDOC_SPLIT_1__";
     const S2: &str = "__MCDOC_SPLIT_2__";
     const S3: &str = "__MCDOC_SPLIT_3__";
@@ -358,7 +358,7 @@ pub fn parse_overview_output(
             size: r.size,
         })
         .collect();
-    images.sort_by(|a, b| a.name().to_lowercase().cmp(&b.name().to_lowercase()));
+    images.sort_by_key(|a| a.name().to_lowercase());
 
     let volumes_raw: Vec<VolumeLsRow> = parse_json_lines(&part_volumes)?;
     let mut volumes: Vec<VolumeRow> = volumes_raw
@@ -687,7 +687,7 @@ pub async fn fetch_logs(
         tail = tail,
         arg = shell_escape_arg(id_or_name)
     );
-    Ok(runner.run(&cmd).await?)
+    runner.run(&cmd).await
 }
 
 fn shell_escape_arg(text: &str) -> String {

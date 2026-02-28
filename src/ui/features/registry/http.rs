@@ -93,15 +93,15 @@ async fn registry_fetch_token(
     let mut url = Url::parse(realm).context("invalid token realm url")?;
     {
         let mut pairs = url.query_pairs_mut();
-        if let Some(service) = service {
-            if !service.trim().is_empty() {
-                pairs.append_pair("service", service);
-            }
+        if let Some(service) = service
+            && !service.trim().is_empty()
+        {
+            pairs.append_pair("service", service);
         }
-        if let Some(scope) = scope {
-            if !scope.trim().is_empty() {
-                pairs.append_pair("scope", scope);
-            }
+        if let Some(scope) = scope
+            && !scope.trim().is_empty()
+        {
+            pairs.append_pair("scope", scope);
         }
     }
     let mut req = client.get(url);
@@ -158,10 +158,10 @@ pub(in crate::ui) async fn registry_test(
     }
 
     let mut request = client.get(&url);
-    if let config::RegistryAuth::BearerToken = auth.auth {
-        if let Some(token) = auth.secret.as_deref() {
-            request = request.bearer_auth(token);
-        }
+    if let config::RegistryAuth::BearerToken = auth.auth
+        && let Some(token) = auth.secret.as_deref()
+    {
+        request = request.bearer_auth(token);
     }
     let resp = request.send().await.context("registry request failed")?;
     if resp.status().is_success() {

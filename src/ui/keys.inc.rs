@@ -56,15 +56,14 @@ pub(in crate::ui) fn parse_key_spec(s: &str) -> Result<KeySpec, String> {
     // A plain "a" should mean the "a" key, not "Alt-" with a missing key part.
     if parts.len() == 1 {
         let kp_u = parts[0].trim().to_ascii_uppercase();
-        if let Some(n_str) = kp_u.strip_prefix('F') {
-            if let Ok(n) = n_str.parse::<u8>() {
-                if (1..=24).contains(&n) {
-                    return Ok(KeySpec {
-                        mods: 0,
-                        code: KeyCodeNorm::F(n),
-                    });
-                }
-            }
+        if let Some(n_str) = kp_u.strip_prefix('F')
+            && let Ok(n) = n_str.parse::<u8>()
+            && (1..=24).contains(&n)
+        {
+            return Ok(KeySpec {
+                mods: 0,
+                code: KeyCodeNorm::F(n),
+            });
         }
         return match kp_u.as_str() {
             "ENTER" | "RET" | "RETURN" => Ok(KeySpec {
@@ -165,15 +164,14 @@ pub(in crate::ui) fn parse_key_spec(s: &str) -> Result<KeySpec, String> {
     }
     let kp_u = key_part.to_ascii_uppercase();
     // F-keys: allow with modifiers too (e.g. C-F5).
-    if let Some(n_str) = kp_u.strip_prefix('F') {
-        if let Ok(n) = n_str.parse::<u8>() {
-            if (1..=24).contains(&n) {
-                return Ok(KeySpec {
-                    mods,
-                    code: KeyCodeNorm::F(n),
-                });
-            }
-        }
+    if let Some(n_str) = kp_u.strip_prefix('F')
+        && let Ok(n) = n_str.parse::<u8>()
+        && (1..=24).contains(&n)
+    {
+        return Ok(KeySpec {
+            mods,
+            code: KeyCodeNorm::F(n),
+        });
     }
 
     let code = match kp_u.as_str() {

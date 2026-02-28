@@ -135,12 +135,12 @@ pub(in crate::ui) fn bar_spans_threshold(
     let mut out: Vec<Span<'static>> = Vec::new();
     if filled > 0 {
         let mut s = String::with_capacity(filled);
-        s.extend(std::iter::repeat(on).take(filled));
+        s.extend(std::iter::repeat_n(on, filled));
         out.push(Span::styled(s, filled_style));
     }
     if width > filled {
         let mut s = String::with_capacity(width - filled);
-        s.extend(std::iter::repeat(off).take(width - filled));
+        s.extend(std::iter::repeat_n(off, width - filled));
         out.push(Span::styled(s, empty_style));
     }
     out
@@ -193,7 +193,7 @@ pub(in crate::ui) fn bar_spans_gradient(
     }
     if width > filled {
         let mut s = String::with_capacity(width - filled);
-        s.extend(std::iter::repeat(off).take(width - filled));
+        s.extend(std::iter::repeat_n(off, width - filled));
         out.push(Span::styled(s, empty_style));
     }
     out

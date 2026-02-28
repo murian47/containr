@@ -19,6 +19,7 @@ pub(in crate::ui) fn image_updates_path() -> PathBuf {
     PathBuf::from("state.json")
 }
 
+#[allow(clippy::type_complexity)]
 pub(in crate::ui) fn load_local_state() -> (
     PathBuf,
     HashMap<String, ImageUpdateEntry>,
@@ -43,76 +44,72 @@ pub(in crate::ui) fn load_local_state() -> (
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
     let mut template_deploys: HashMap<String, Vec<TemplateDeployEntry>> = HashMap::new();
-    if let Some(v) = value.as_ref().and_then(|v| v.get("template_deploys")) {
-        if let Some(obj) = v.as_object() {
-            for (key, entry) in obj {
-                if entry.is_array() {
-                    if let Ok(list) =
-                        serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
-                    {
-                        if !list.is_empty() {
-                            template_deploys.insert(key.clone(), list);
-                        }
-                    }
-                    continue;
+    if let Some(v) = value.as_ref().and_then(|v| v.get("template_deploys"))
+        && let Some(obj) = v.as_object()
+    {
+        for (key, entry) in obj {
+            if entry.is_array() {
+                if let Ok(list) = serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
+                    && !list.is_empty()
+                {
+                    template_deploys.insert(key.clone(), list);
                 }
-                if let Ok(single) = serde_json::from_value::<TemplateDeployEntry>(entry.clone()) {
-                    template_deploys.insert(key.clone(), vec![single]);
-                    continue;
-                }
-                let server_name = entry
-                    .get("server_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let timestamp = entry.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
-                if !server_name.trim().is_empty() && timestamp > 0 {
-                    template_deploys.insert(
-                        key.clone(),
-                        vec![TemplateDeployEntry {
-                            server_name,
-                            timestamp,
-                            commit: None,
-                        }],
-                    );
-                }
+                continue;
+            }
+            if let Ok(single) = serde_json::from_value::<TemplateDeployEntry>(entry.clone()) {
+                template_deploys.insert(key.clone(), vec![single]);
+                continue;
+            }
+            let server_name = entry
+                .get("server_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let timestamp = entry.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
+            if !server_name.trim().is_empty() && timestamp > 0 {
+                template_deploys.insert(
+                    key.clone(),
+                    vec![TemplateDeployEntry {
+                        server_name,
+                        timestamp,
+                        commit: None,
+                    }],
+                );
             }
         }
     }
     let mut net_template_deploys: HashMap<String, Vec<TemplateDeployEntry>> = HashMap::new();
-    if let Some(v) = value.as_ref().and_then(|v| v.get("net_template_deploys")) {
-        if let Some(obj) = v.as_object() {
-            for (key, entry) in obj {
-                if entry.is_array() {
-                    if let Ok(list) =
-                        serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
-                    {
-                        if !list.is_empty() {
-                            net_template_deploys.insert(key.clone(), list);
-                        }
-                    }
-                    continue;
+    if let Some(v) = value.as_ref().and_then(|v| v.get("net_template_deploys"))
+        && let Some(obj) = v.as_object()
+    {
+        for (key, entry) in obj {
+            if entry.is_array() {
+                if let Ok(list) = serde_json::from_value::<Vec<TemplateDeployEntry>>(entry.clone())
+                    && !list.is_empty()
+                {
+                    net_template_deploys.insert(key.clone(), list);
                 }
-                if let Ok(single) = serde_json::from_value::<TemplateDeployEntry>(entry.clone()) {
-                    net_template_deploys.insert(key.clone(), vec![single]);
-                    continue;
-                }
-                let server_name = entry
-                    .get("server_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let timestamp = entry.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
-                if !server_name.trim().is_empty() && timestamp > 0 {
-                    net_template_deploys.insert(
-                        key.clone(),
-                        vec![TemplateDeployEntry {
-                            server_name,
-                            timestamp,
-                            commit: None,
-                        }],
-                    );
-                }
+                continue;
+            }
+            if let Ok(single) = serde_json::from_value::<TemplateDeployEntry>(entry.clone()) {
+                net_template_deploys.insert(key.clone(), vec![single]);
+                continue;
+            }
+            let server_name = entry
+                .get("server_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let timestamp = entry.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
+            if !server_name.trim().is_empty() && timestamp > 0 {
+                net_template_deploys.insert(
+                    key.clone(),
+                    vec![TemplateDeployEntry {
+                        server_name,
+                        timestamp,
+                        commit: None,
+                    }],
+                );
             }
         }
     }

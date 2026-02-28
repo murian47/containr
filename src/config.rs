@@ -402,16 +402,18 @@ pub fn registries_path(config_path: &Path) -> PathBuf {
 pub fn load_registries(config_path: &Path) -> anyhow::Result<RegistriesConfig> {
     let path = registries_path(config_path);
     if !path.exists() {
-        let mut cfg = RegistriesConfig::default();
-        cfg.age_identity = "~/.config/containr/age.key".to_string();
-        cfg.registries.push(RegistryEntry {
-            host: "docker.io".to_string(),
-            auth: RegistryAuth::Anonymous,
-            username: None,
-            secret: None,
-            secret_keyring: None,
-            test_repo: None,
-        });
+        let cfg = RegistriesConfig {
+            age_identity: "~/.config/containr/age.key".to_string(),
+            registries: vec![RegistryEntry {
+                host: "docker.io".to_string(),
+                auth: RegistryAuth::Anonymous,
+                username: None,
+                secret: None,
+                secret_keyring: None,
+                test_repo: None,
+            }],
+            ..RegistriesConfig::default()
+        };
         let _ = save_registries(&path, &cfg);
         return Ok(cfg);
     }

@@ -96,7 +96,7 @@ pub(in crate::ui) fn handle_image(
             };
             let image_ref = image_ref.or_else(|| {
                 app.selected_image()
-                    .and_then(|img| App::image_row_ref(img))
+                    .and_then(App::image_row_ref)
             });
             let Some(image_ref) = image_ref else {
                 app.set_warn("no image selected");
@@ -113,10 +113,11 @@ pub(in crate::ui) fn handle_image(
                 }
             });
             let tag = tag.unwrap_or_else(|| {
-                if let Some(t) = tag_from_ref(&image_ref) {
-                    if !t.trim().is_empty() && t != "<none>" {
-                        return t;
-                    }
+                if let Some(t) = tag_from_ref(&image_ref)
+                    && !t.trim().is_empty()
+                    && t != "<none>"
+                {
+                    return t;
                 }
                 if let Some(img) = app.selected_image() {
                     let t = img.tag.trim();

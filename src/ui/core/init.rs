@@ -23,6 +23,7 @@ use crate::ui::core::clock::now_unix;
 use crate::ui::core::local_state::load_local_state;
 
 impl App {
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::ui) fn new(
         servers: Vec<ServerEntry>,
         keymap: Vec<KeyBinding>,

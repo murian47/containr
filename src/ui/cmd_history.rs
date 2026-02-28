@@ -54,9 +54,7 @@ impl CmdHistory {
     }
 
     pub(in crate::ui) fn next(&mut self) -> Option<String> {
-        let Some(pos) = self.pos else {
-            return None;
-        };
+        let pos = self.pos?;
         let len = self.entries.len();
         if pos + 1 >= len {
             self.pos = None;

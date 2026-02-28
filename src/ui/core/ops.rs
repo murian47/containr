@@ -90,6 +90,7 @@ pub(in crate::ui) async fn run_with_local_compose_fallback(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::ui) async fn perform_stack_update(
     runner: &Runner,
     docker: &DockerCfg,

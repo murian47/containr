@@ -153,10 +153,10 @@ pub(in crate::ui) fn delete_template(app: &mut App, name: &str) -> anyhow::Resul
     );
 
     fs::remove_dir_all(&target)?;
-    if let Some(info) = extract_template_id(&dir.join("compose.yaml")) {
-        if app.template_deploys.remove(&info).is_some() {
-            app.save_local_state();
-        }
+    if let Some(info) = extract_template_id(&dir.join("compose.yaml"))
+        && app.template_deploys.remove(&info).is_some()
+    {
+        app.save_local_state();
     }
     Ok(())
 }
@@ -190,7 +190,7 @@ pub(in crate::ui) fn maybe_autocommit_templates(
     crate::ui::render::git::maybe_autocommit_templates(app, kind, action, name)
 }
 
-pub(in crate::ui) fn extract_template_description(path: &PathBuf) -> Option<String> {
+pub(in crate::ui) fn extract_template_description(path: &Path) -> Option<String> {
     extract_template_description_from_file(path)
 }
 

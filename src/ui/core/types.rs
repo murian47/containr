@@ -283,7 +283,7 @@ pub(in crate::ui) struct DashboardSnapshot {
     pub(in crate::ui) collected_at: OffsetDateTime,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(in crate::ui) struct DashboardState {
     pub(in crate::ui) loading: bool,
     pub(in crate::ui) error: Option<String>,
@@ -304,18 +304,6 @@ pub(in crate::ui) struct DashboardHostState {
 #[derive(Clone, Debug, Default)]
 pub(in crate::ui) struct DashboardAllState {
     pub(in crate::ui) hosts: Vec<DashboardHostState>,
-}
-
-impl Default for DashboardState {
-    fn default() -> Self {
-        Self {
-            loading: false,
-            error: None,
-            snap: None,
-            last_disk_count: 0,
-            suppress_image_frames: 0,
-        }
-    }
 }
 
 pub(in crate::ui) struct DashboardImageState {

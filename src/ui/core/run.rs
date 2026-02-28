@@ -21,6 +21,11 @@ use ui::{
     run_interactive_command, run_interactive_local_command, setup_terminal,
 };
 
+#[allow(
+    clippy::collapsible_if,
+    clippy::single_match,
+    clippy::too_many_arguments
+)]
 pub async fn run_tui(
     runner: Runner,
     cfg: DockerCfg,

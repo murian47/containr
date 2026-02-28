@@ -4,16 +4,14 @@ pub(in crate::ui) fn clamp_cursor_to_text(text: &str, cursor: usize) -> usize {
 
 pub(in crate::ui) fn insert_char_at_cursor(text: &mut String, cursor: &mut usize, ch: char) {
     let mut out = String::new();
-    let mut idx = 0usize;
     let target = clamp_cursor_to_text(text, *cursor);
     let mut inserted = false;
-    for c in text.chars() {
+    for (idx, c) in text.chars().enumerate() {
         if idx == target {
             out.push(ch);
             inserted = true;
         }
         out.push(c);
-        idx += 1;
     }
     if !inserted {
         out.push(ch);

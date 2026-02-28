@@ -1,3 +1,9 @@
+#![allow(
+    clippy::collapsible_if,
+    clippy::if_same_then_else,
+    clippy::needless_borrow
+)]
+
 use super::common::{
     ComposeHealthcheck, ComposeNetwork, ComposeNetworkIpam, ComposeNetworkIpamConfig,
     ComposeService, ComposeVolume, ContainerInspect, NetworkInspect, NetworkTemplateSpecWrite,

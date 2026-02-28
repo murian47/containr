@@ -9,6 +9,7 @@ use crate::config::ServerEntry;
 use std::fmt::Write as _;
 use tokio::sync::{mpsc, watch};
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::ui) fn handle_server(
     app: &mut App,
     force: bool,
@@ -56,14 +57,13 @@ pub(in crate::ui) fn handle_server(
                     port = s.port;
                     identity = s.identity.clone();
                 }
-            } else if let Some(active) = &app.active_server {
-                if let Some(idx) = find_server_by_name(&app.servers, active) {
-                    if let Some(s) = app.servers.get(idx) {
-                        target = Some(s.target.clone());
-                        port = s.port;
-                        identity = s.identity.clone();
-                    }
-                }
+            } else if let Some(active) = &app.active_server
+                && let Some(idx) = find_server_by_name(&app.servers, active)
+                && let Some(s) = app.servers.get(idx)
+            {
+                target = Some(s.target.clone());
+                port = s.port;
+                identity = s.identity.clone();
             }
 
             let target = target.unwrap_or_else(|| app.current_target.clone());
@@ -87,10 +87,10 @@ pub(in crate::ui) fn handle_server(
             if let Some(p) = port {
                 let _ = write!(cmd, " -p {p}");
             }
-            if let Some(identity) = identity {
-                if !identity.trim().is_empty() {
-                    let _ = write!(cmd, " -i {}", shell_escape_sh_arg(identity.trim()));
-                }
+            if let Some(identity) = identity
+                && !identity.trim().is_empty()
+            {
+                let _ = write!(cmd, " -i {}", shell_escape_sh_arg(identity.trim()));
             }
             let _ = write!(cmd, " {}", shell_escape_sh_arg(target.trim()));
             app.shell_pending_interactive = Some(ShellInteractive::RunLocalCommand { cmd });
@@ -159,12 +159,12 @@ pub(in crate::ui) fn handle_server(
             };
 
             let mut rest: Vec<String> = args.iter().skip(3).map(|s| (*s).to_string()).collect();
-            let (port, identity, docker_cmd, tail) = parse_kv_args(rest.drain(..).into_iter());
+            let (port, identity, docker_cmd, tail) = parse_kv_args(rest.drain(..));
             let docker_cmd = docker_cmd.unwrap_or_default();
 
             match kind {
                 "ssh" => {
-                    let target = tail.get(0).cloned().unwrap_or_default();
+                    let target = tail.first().cloned().unwrap_or_default();
                     if target.trim().is_empty() {
                         app.set_warn("usage: :server add <name> ssh <target> [opts]");
                         return true;

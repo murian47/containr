@@ -315,11 +315,11 @@ pub(in crate::ui) fn render_dashboard_impl(f: &mut ratatui::Frame, app: &mut App
     let metric_row =
         |name: &str, val: String, bar: Vec<Span<'static>>, extra: Option<String>| -> Row<'static> {
             let mut val = truncate_end(&val, m_val_w);
-            if let Some(extra) = extra {
-                if !extra.trim().is_empty() {
-                    let extra = format!(" {extra}");
-                    val = truncate_end(&(val + &extra), m_val_w);
-                }
+            if let Some(extra) = extra
+                && !extra.trim().is_empty()
+            {
+                let extra = format!(" {extra}");
+                val = truncate_end(&(val + &extra), m_val_w);
             }
             let name = truncate_end(name, m_key_w);
             Row::new(vec![
@@ -330,11 +330,11 @@ pub(in crate::ui) fn render_dashboard_impl(f: &mut ratatui::Frame, app: &mut App
         };
     let metric_row_text = |name: &str, val: String, extra: Option<String>| -> Row<'static> {
         let mut val = truncate_end(&val, m_val_w);
-        if let Some(extra) = extra {
-            if !extra.trim().is_empty() {
-                let extra = format!(" {extra}");
-                val = truncate_end(&(val + &extra), m_val_w);
-            }
+        if let Some(extra) = extra
+            && !extra.trim().is_empty()
+        {
+            let extra = format!(" {extra}");
+            val = truncate_end(&(val + &extra), m_val_w);
         }
         let name = truncate_end(name, m_key_w);
         Row::new(vec![
@@ -402,8 +402,8 @@ pub(in crate::ui) fn render_dashboard_impl(f: &mut ratatui::Frame, app: &mut App
                 bar_err,
                 bar_empty,
             );
-            metric_rows.push(metric_row(&label, val.clone(), dsk_bar, None));
-            metric_rows_text.push(metric_row_text(&label, val, None));
+            metric_rows.push(metric_row(label, val.clone(), dsk_bar, None));
+            metric_rows_text.push(metric_row_text(label, val, None));
         }
         for (idx, nic) in s.nics.iter().take(3).enumerate() {
             let label = if idx == 0 {

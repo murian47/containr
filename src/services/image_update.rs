@@ -312,9 +312,7 @@ fn manifest_entries(raw: &str) -> Vec<Value> {
         .ok()
         .and_then(|val| match val {
             Value::Object(obj) => {
-                let Some(manifests) = get_ci(&obj, "manifests") else {
-                    return None;
-                };
+                let manifests = get_ci(&obj, "manifests")?;
                 Some(manifests.as_array()?.clone())
             }
             _ => None,
@@ -358,9 +356,7 @@ fn entry_platform(obj: &Value) -> (Option<String>, Option<String>) {
 
 fn manifest_descriptor_digest(raw: &str) -> Option<String> {
     let entries = manifest_entries(raw);
-    entries
-        .iter()
-        .find_map(|entry| entry_descriptor_digest(entry))
+    entries.iter().find_map(entry_descriptor_digest)
 }
 
 fn manifest_digest_for_platform(raw: &str, arch: &str, os: &str) -> Option<String> {

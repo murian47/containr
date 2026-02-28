@@ -127,7 +127,7 @@ fn draw_shell_stack_template_details(
     let mut servers: Vec<String> = deploy_list
         .map(|list| list.iter().map(|info| info.server_name.clone()).collect())
         .unwrap_or_default();
-    servers.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    servers.sort_by_key(|a| a.to_lowercase());
     servers.dedup();
     let servers_text = if servers.is_empty() {
         "-".to_string()

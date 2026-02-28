@@ -171,9 +171,7 @@ pub(in crate::ui) fn draw_shell_inspect_view(
             text.push_str(&l.summary);
         }
         let visible = slice_window(&text, app.inspect.scroll, avail_w);
-        let line = if app.inspect.mode == InspectMode::Search && !q.is_empty() {
-            highlight_log_line_literal(&visible, q)
-        } else if l.matches {
+        let line = if (app.inspect.mode == InspectMode::Search && !q.is_empty()) || l.matches {
             highlight_log_line_literal(&visible, q)
         } else {
             ratatui::text::Line::from(visible)
@@ -204,6 +202,7 @@ pub(in crate::ui) fn draw_shell_inspect_view(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_inspect_lines_inner(
     value: &Value,
     expanded: &HashSet<String>,

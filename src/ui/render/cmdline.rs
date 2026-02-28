@@ -82,12 +82,8 @@ fn cmdline_common_prefix_len_ci(a: &str, b: &str) -> usize {
     let mut len = 0usize;
     let mut it_a = a.chars();
     let mut it_b = b.chars();
-    loop {
-        let (ca, cb) = match (it_a.next(), it_b.next()) {
-            (Some(a), Some(b)) => (a, b),
-            _ => break,
-        };
-        if ca.to_ascii_lowercase() != cb.to_ascii_lowercase() {
+    while let (Some(ca), Some(cb)) = (it_a.next(), it_b.next()) {
+        if !ca.eq_ignore_ascii_case(&cb) {
             break;
         }
         len += 1;
@@ -294,15 +290,15 @@ fn cmdline_normalize_cmd(tokens_before: &[String]) -> (Option<String>, usize) {
     if let Some(rest) = first.strip_prefix(':') {
         first = rest;
     }
-    if let Some(rest) = first.strip_prefix('!') {
-        if !rest.is_empty() {
-            return (Some(rest.to_string()), 0);
-        }
+    if let Some(rest) = first.strip_prefix('!')
+        && !rest.is_empty()
+    {
+        return (Some(rest.to_string()), 0);
     }
-    if let Some(rest) = first.strip_suffix('!') {
-        if !rest.is_empty() {
-            return (Some(rest.to_string()), 0);
-        }
+    if let Some(rest) = first.strip_suffix('!')
+        && !rest.is_empty()
+    {
+        return (Some(rest.to_string()), 0);
     }
     (Some(first.to_string()), 0)
 }

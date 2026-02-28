@@ -82,10 +82,10 @@ pub(in crate::ui) fn handle_container(
             }
             let mut images: HashSet<String> = HashSet::new();
             for id in ids {
-                if let Some(idx) = app.container_idx_by_id.get(&id).copied() {
-                    if let Some(c) = app.containers.get(idx) {
-                        images.insert(c.image.clone());
-                    }
+                if let Some(idx) = app.container_idx_by_id.get(&id).copied()
+                    && let Some(c) = app.containers.get(idx)
+                {
+                    images.insert(c.image.clone());
                 }
             }
             crate::ui::actions::check_image_updates(

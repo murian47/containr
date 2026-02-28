@@ -428,13 +428,13 @@ pub fn list_theme_names(config_path: &Path) -> anyhow::Result<Vec<String>> {
             continue;
         }
         let name = ent.file_name().to_string_lossy().to_string();
-        if let Some(stem) = name.strip_suffix(".json") {
-            if !stem.starts_with('.') {
-                out.push(stem.to_string());
-            }
+        if let Some(stem) = name.strip_suffix(".json")
+            && !stem.starts_with('.')
+        {
+            out.push(stem.to_string());
         }
     }
-    out.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    out.sort_by_key(|a| a.to_lowercase());
     Ok(out)
 }
 
@@ -487,16 +487,15 @@ pub fn parse_color(s: &str) -> Color {
     if raw.is_empty() || raw.eq_ignore_ascii_case("default") || raw.eq_ignore_ascii_case("reset") {
         return Color::Reset;
     }
-    if let Some(hex) = raw.strip_prefix('#') {
-        if hex.len() == 6 {
-            if let (Ok(r), Ok(g), Ok(b)) = (
-                u8::from_str_radix(&hex[0..2], 16),
-                u8::from_str_radix(&hex[2..4], 16),
-                u8::from_str_radix(&hex[4..6], 16),
-            ) {
-                return Color::Rgb(r, g, b);
-            }
-        }
+    if let Some(hex) = raw.strip_prefix('#')
+        && hex.len() == 6
+        && let (Ok(r), Ok(g), Ok(b)) = (
+            u8::from_str_radix(&hex[0..2], 16),
+            u8::from_str_radix(&hex[2..4], 16),
+            u8::from_str_radix(&hex[4..6], 16),
+        )
+    {
+        return Color::Rgb(r, g, b);
     }
     // Best-effort named colors.
     match raw.to_ascii_lowercase().as_str() {

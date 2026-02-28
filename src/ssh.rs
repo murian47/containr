@@ -48,6 +48,6 @@ impl Ssh {
             ));
         }
 
-        Ok(String::from_utf8(out.stdout).context("ssh stdout was not valid UTF-8")?)
+        String::from_utf8(out.stdout).context("ssh stdout was not valid UTF-8")
     }
 }

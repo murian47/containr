@@ -14,6 +14,7 @@ use crossterm::event::KeyEvent;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::ui) fn handle_shell_key(
     app: &mut App,
     key: KeyEvent,
