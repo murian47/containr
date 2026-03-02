@@ -28,7 +28,7 @@ A terminal UI client for Docker/Podman over SSH: manage containers, stacks, imag
 
 ## Voraussetzungen / Requirements
 - Docker oder Podman auf Ziel-Hosts (remote per SSH).
-- Rust-Toolchain (zum Bauen), keyring-Unterstützung des OS (macOS Keychain, Linux Secret Service / libsecret, Windows Credential Manager).
+- Rust-Toolchain (zum Bauen), keyring-Unterstützung des OS (macOS Keychain, Linux Secret Service / libsecret).
 - SSH-Zugang zu den Hosts; `docker`/`podman` muss ohne interaktives Passwort laufen (oder via SSH-identity).
 
 ---

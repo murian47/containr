@@ -7,7 +7,7 @@
 ## 2. Requirements
 - Docker or Podman on target hosts, reachable via SSH.
 - SSH key access (passwordless required).
-- Rust toolchain for builds; OS keyring support (macOS Keychain, Linux Secret Service, Windows Credential Manager).
+- Rust toolchain for builds; OS keyring support (macOS Keychain, Linux Secret Service).
 - Officially supported platforms for `0.5.0`: Linux and macOS.
 - `*BSD` and Windows are currently outside the supported target matrix.
 - Default paths:

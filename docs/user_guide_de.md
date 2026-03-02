@@ -7,7 +7,7 @@
 ## 2. Voraussetzungen
 - Docker oder Podman auf den Ziel-Hosts, per SSH erreichbar.
 - SSH-Schlüsselzugang (passwortlos erforderlich).
-- Rust-Toolchain zum Bauen; OS-Keyring-Unterstützung (macOS Keychain, Linux Secret Service, Windows Credential Manager).
+- Rust-Toolchain zum Bauen; OS-Keyring-Unterstützung (macOS Keychain, Linux Secret Service).
 - Offiziell unterstützte Plattformen für `0.5.0`: Linux und macOS.
 - `*BSD` und Windows sind derzeit nicht Teil der zugesicherten Zielplattformen.
 - Standardpfade:
