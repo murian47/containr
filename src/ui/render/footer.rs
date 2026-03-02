@@ -40,9 +40,7 @@ pub(in crate::ui) fn draw_shell_footer(
 
 fn footer_hint(view: ShellView) -> &'static str {
     match view {
-        ShellView::Dashboard => {
-            " F1 help  ^b sidebar  ^p layout  ^s start  ^o stop  ^r restart  ^d rm  :q quit"
-        }
+        ShellView::Dashboard => " F1 help  ^b sidebar  :q quit",
         ShellView::Stacks => " F1 help  ^b sidebar  ^p layout  :q quit",
         ShellView::Containers => " F1 help  ^b sidebar  ^p layout  :q quit",
         ShellView::Images | ShellView::Volumes | ShellView::Networks => {

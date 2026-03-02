@@ -31,7 +31,7 @@ pub(in crate::ui) fn render_dashboard_impl(f: &mut ratatui::Frame, app: &mut App
     }
     let content_area = inner;
     if app.servers.is_empty() && app.current_target.trim().is_empty() {
-        let msg = "No server configured. Use :server add to get started.";
+        let msg = "No server configured. Use :server add to get started. Press F1 or run :help for guidance.";
         f.render_widget(
             Paragraph::new(msg)
                 .style(bg.patch(app.theme.text_dim.to_style()))
