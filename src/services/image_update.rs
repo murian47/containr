@@ -307,14 +307,44 @@ impl<'a> ImageUpdateService<'a> {
     }
 }
 
+fn parse_manifest_json(raw: &str) -> Option<Value> {
+    if let Ok(value) = serde_json::from_str::<Value>(raw) {
+        return Some(value);
+    }
+
+    let starts: Vec<usize> = raw
+        .char_indices()
+        .filter_map(|(idx, ch)| matches!(ch, '{' | '[').then_some(idx))
+        .collect();
+    let ends: Vec<usize> = raw
+        .char_indices()
+        .filter_map(|(idx, ch)| matches!(ch, '}' | ']').then_some(idx + ch.len_utf8()))
+        .collect();
+
+    for start in starts {
+        for end in ends.iter().rev().copied() {
+            if end <= start {
+                continue;
+            }
+            if let Ok(value) = serde_json::from_str::<Value>(&raw[start..end]) {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
 fn manifest_entries(raw: &str) -> Vec<Value> {
-    serde_json::from_str::<Value>(raw)
-        .ok()
+    parse_manifest_json(raw)
         .and_then(|val| match val {
             Value::Object(obj) => {
-                let manifests = get_ci(&obj, "manifests")?;
-                Some(manifests.as_array()?.clone())
+                if let Some(manifests) = get_ci(&obj, "manifests").and_then(|v| v.as_array()) {
+                    Some(manifests.clone())
+                } else {
+                    Some(vec![Value::Object(obj)])
+                }
             }
+            Value::Array(items) => Some(items),
             _ => None,
         })
         .unwrap_or_default()
@@ -324,6 +354,7 @@ fn get_ci<'a>(map: &'a serde_json::Map<String, Value>, key: &str) -> Option<&'a 
     map.get(key)
         .or_else(|| map.get(&key.to_ascii_lowercase()))
         .or_else(|| map.get(&key.to_ascii_uppercase()))
+        .or_else(|| map.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v))
 }
 
 fn entry_descriptor_digest(obj: &Value) -> Option<String> {
@@ -332,6 +363,12 @@ fn entry_descriptor_digest(obj: &Value) -> Option<String> {
     };
     get_ci(obj, "digest")
         .and_then(|v| v.as_str())
+        .or_else(|| {
+            get_ci(obj, "descriptor")
+                .and_then(|v| v.as_object())
+                .and_then(|descriptor| get_ci(descriptor, "digest"))
+                .and_then(|v| v.as_str())
+        })
         .map(|s| s.to_string())
 }
 
@@ -341,6 +378,12 @@ fn entry_platform(obj: &Value) -> (Option<String>, Option<String>) {
     };
     let platform = get_ci(obj, "platform")
         .and_then(|v| v.as_object())
+        .or_else(|| {
+            get_ci(obj, "descriptor")
+                .and_then(|v| v.as_object())
+                .and_then(|descriptor| get_ci(descriptor, "platform"))
+                .and_then(|v| v.as_object())
+        })
         .or_else(|| get_ci(obj, "Platform").and_then(|v| v.as_object()));
     let Some(platform) = platform else {
         return (None, None);
@@ -427,6 +470,92 @@ fn truncate_msg(msg: &str, max: usize) -> String {
         let mut out: String = msg.chars().take(max - 3).collect();
         out.push_str("...");
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        manifest_descriptor_digest, manifest_digest_for_platform, manifest_platform_summary,
+        manifest_remote_digests, parse_manifest_json,
+    };
+
+    #[test]
+    fn manifest_parser_supports_single_manifest_verbose_output() {
+        let raw = r#"{
+  "Ref": "docker.io/library/redis:7-alpine",
+  "Descriptor": {
+    "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+    "digest": "sha256:remote-single",
+    "size": 1234,
+    "platform": {
+      "architecture": "amd64",
+      "os": "linux"
+    }
+  }
+}"#;
+
+        assert_eq!(
+            manifest_descriptor_digest(raw).as_deref(),
+            Some("sha256:remote-single")
+        );
+        assert_eq!(
+            manifest_digest_for_platform(raw, "amd64", "linux").as_deref(),
+            Some("sha256:remote-single")
+        );
+        assert_eq!(manifest_platform_summary(raw), "amd64/linux");
+        assert_eq!(manifest_remote_digests(raw).len(), 1);
+    }
+
+    #[test]
+    fn manifest_parser_supports_manifest_list_output() {
+        let raw = r#"{
+  "manifests": [
+    {
+      "digest": "sha256:amd64",
+      "platform": {
+        "architecture": "amd64",
+        "os": "linux"
+      }
+    },
+    {
+      "digest": "sha256:arm64",
+      "platform": {
+        "architecture": "arm64",
+        "os": "linux"
+      }
+    }
+  ]
+}"#;
+
+        assert_eq!(
+            manifest_digest_for_platform(raw, "arm64", "linux").as_deref(),
+            Some("sha256:arm64")
+        );
+        assert_eq!(manifest_platform_summary(raw), "amd64/linux,arm64/linux");
+        assert_eq!(manifest_remote_digests(raw).len(), 2);
+    }
+
+    #[test]
+    fn manifest_parser_extracts_json_from_wrapped_output() {
+        let raw = r#"warning: legacy output
+{
+  "Descriptor": {
+    "digest": "sha256:wrapped",
+    "platform": {
+      "architecture": "amd64",
+      "os": "linux"
+    }
+  }
+}
+"#;
+
+        let parsed = parse_manifest_json(raw);
+        assert!(parsed.is_some());
+        assert_eq!(
+            manifest_digest_for_platform(raw, "amd64", "linux").as_deref(),
+            Some("sha256:wrapped")
+        );
     }
 }
 
