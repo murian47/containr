@@ -7,7 +7,7 @@ use crate::ui::core::types::LogsMode;
 use crate::ui::core::view::{shell_cycle_focus, shell_cycle_focus_reverse};
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ShellFocus, ShellView};
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub(super) fn handle_scoped_bindings(app: &mut App, key: KeyEvent, ctx: &InputCtx<'_>) -> bool {
     let Some(spec) = key_spec_from_event(key) else {
@@ -42,21 +42,19 @@ pub(super) fn handle_dock_navigation(app: &mut App, key: KeyEvent) -> bool {
     {
         return false;
     }
-    match key.code {
-        KeyCode::Up | KeyCode::Char('k') => {
-            app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(1)
+    match (key.modifiers, key.code) {
+        (_, KeyCode::PageUp) => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(10),
+        (_, KeyCode::PageDown) => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(10),
+        (_, KeyCode::Home) => app.shell_msgs.scroll = 0,
+        (_, KeyCode::End) => app.shell_msgs.scroll = usize::MAX,
+        (KeyModifiers::ALT, KeyCode::Left) => {
+            app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_sub(4)
         }
-        KeyCode::Down | KeyCode::Char('j') => {
-            app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(1)
+        (KeyModifiers::ALT, KeyCode::Right) => {
+            app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_add(4)
         }
-        KeyCode::PageUp => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(10),
-        KeyCode::PageDown => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(10),
-        KeyCode::Left => app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_sub(4),
-        KeyCode::Right => app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_add(4),
-        KeyCode::Home => app.shell_msgs.scroll = 0,
-        KeyCode::End => app.shell_msgs.scroll = usize::MAX,
-        KeyCode::Tab => return false,
-        _ => {}
+        (_, KeyCode::Tab) => return false,
+        _ => return false,
     }
     true
 }

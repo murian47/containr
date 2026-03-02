@@ -200,14 +200,14 @@ fn dashboard_shows_no_server_message() {
 }
 
 #[test]
-fn sidebar_separator_uses_focused_background() {
+fn sidebar_separator_uses_panel_background() {
     let mut app = mk_test_app();
     app.loading = false;
     app.shell_view = ShellView::Containers;
     app.shell_focus = ShellFocus::Sidebar;
     let buf = render_buffer(&mut app, 120, 40);
     let mut found = false;
-    let expected_bg = theme::parse_color(&app.theme.panel_focused.bg);
+    let expected_bg = theme::parse_color(&app.theme.panel.bg);
     for y in 0..buf.area.height {
         for x in 0..buf.area.width {
             let cell = &buf[(x, y)];

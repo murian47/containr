@@ -5,8 +5,6 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::ui::render::format::{pad_right, wrap_text};
 use crate::ui::render::text::truncate_end;
 use crate::ui::state::app::App;
-use crate::ui::state::shell_types::ShellFocus;
-
 #[derive(Debug, Clone)]
 pub(in crate::ui) struct DetailRow {
     pub key: &'static str,
@@ -21,11 +19,7 @@ pub(in crate::ui) fn render_detail_table(
     mut rows: Vec<DetailRow>,
     scroll: usize,
 ) -> usize {
-    let bg = if app.shell_focus == ShellFocus::Details {
-        app.theme.panel_focused.to_style()
-    } else {
-        app.theme.panel.to_style()
-    };
+    let bg = app.theme.panel.to_style();
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 1,
         horizontal: 1,
