@@ -44,6 +44,65 @@ cd linux/containr
 cargo build --release
 ```
 
+## macOS Installation Script
+
+Fuer eine lokale macOS-Installation aus dem aktuellen Source-Tree:
+
+```bash
+cd linux/containr
+./packaging/macos/install.sh
+```
+
+Default-Installationspfade:
+
+- Binary-Payload: `/usr/local/libexec/containr/containr`
+- Wrapper: `/usr/local/bin/containr`
+- Themes: `/usr/local/share/containr/themes`
+
+Optional:
+
+```bash
+./packaging/macos/install.sh --prefix "$HOME/.local"
+./packaging/macos/install.sh --skip-build --source-binary target/release/containr
+```
+
+Deinstallation:
+
+```bash
+./packaging/macos/uninstall.sh
+./packaging/macos/uninstall.sh --prefix "$HOME/.local"
+./packaging/macos/uninstall.sh --keep-themes
+```
+
+## Linux Installation Script
+
+Fuer eine lokale Linux-Installation aus dem aktuellen Source-Tree:
+
+```bash
+cd linux/containr
+./packaging/linux/install.sh
+```
+
+Default-Installationspfade:
+
+- Binary: `/usr/local/bin/containr`
+- Themes: `/usr/local/share/containr/themes`
+
+Optional:
+
+```bash
+./packaging/linux/install.sh --prefix "$HOME/.local"
+./packaging/linux/install.sh --skip-build --source-binary target/release/containr
+```
+
+Deinstallation:
+
+```bash
+./packaging/linux/uninstall.sh
+./packaging/linux/uninstall.sh --prefix "$HOME/.local"
+./packaging/linux/uninstall.sh --keep-themes
+```
+
 ## Serverliste (lokal)
 
 Containr kann eine lokale Konfiguration laden/speichern:
