@@ -64,6 +64,12 @@ Not required for `1.0.0`:
   - keep current view on server change
   - or force switch to dashboard
   - target: post-`0.5.0`, not a release blocker
+- Image update check rework:
+  - deduplicate identical image-ref checks across stacks/servers
+  - prefer cached/stale status over immediate live re-checks
+  - expose "last checked" or stale semantics in the UI
+  - separate normal cached checks from explicit forced live refreshes
+  - target: post-`0.5.0`, not a release blocker
 
 ## Recently completed (for context)
 
