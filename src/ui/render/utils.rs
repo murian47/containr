@@ -1,6 +1,9 @@
 use anyhow::Context as _;
 use image::Rgba;
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
+use ratatui::text::Span;
+use ratatui::widgets::{Paragraph, Wrap};
 use std::fs;
 use std::path::PathBuf;
 
@@ -62,6 +65,37 @@ pub(in crate::ui) fn expand_user_path(path: &str) -> PathBuf {
 
 pub(in crate::ui) fn shell_row_highlight(app: &App) -> Style {
     app.theme.list_selected.to_style()
+}
+
+pub(in crate::ui) fn focus_marker_style(app: &App) -> Style {
+    let base = app.theme.panel.to_style();
+    let accent = app.theme.active.to_style();
+    base.fg(accent.fg.unwrap_or(Color::White))
+        .bg(base.bg.unwrap_or(Color::Reset))
+        .add_modifier(accent.add_modifier)
+}
+
+pub(in crate::ui) fn draw_focus_accent(
+    f: &mut ratatui::Frame,
+    app: &App,
+    area: Rect,
+    active: bool,
+) {
+    if !active || area.width == 0 || area.height == 0 {
+        return;
+    }
+    let accent = focus_marker_style(app);
+    let line = "▎\n".repeat(area.height.saturating_sub(1) as usize) + "▎";
+    let col = Rect {
+        x: area.x,
+        y: area.y,
+        width: 1,
+        height: area.height,
+    };
+    f.render_widget(
+        Paragraph::new(Span::styled(line, accent)).wrap(Wrap { trim: false }),
+        col,
+    );
 }
 
 pub(in crate::ui) fn truncate_end(s: &str, max: usize) -> String {

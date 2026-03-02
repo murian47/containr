@@ -5,6 +5,7 @@ mod resources;
 mod stacks;
 mod templates;
 
+use crate::ui::render::utils::draw_focus_accent;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ShellFocus, ShellView};
 use ratatui::style::Style;
@@ -29,12 +30,9 @@ pub(in crate::ui) fn draw_shell_main_details(
         ShellView::Messages => meta::draw_shell_messages_meta(f, app, area),
         ShellView::ThemeSelector => {}
     }
+    draw_focus_accent(f, app, area, app.shell_focus == ShellFocus::Details);
 }
 
 pub(super) fn panel_bg(app: &App) -> Style {
-    if app.shell_focus == ShellFocus::Details {
-        app.theme.panel_focused.to_style()
-    } else {
-        app.theme.panel.to_style()
-    }
+    app.theme.panel.to_style()
 }

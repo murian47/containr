@@ -1,6 +1,6 @@
 use crate::ui::render::scroll::draw_shell_scrollbar_v;
 use crate::ui::render::text::truncate_end;
-use crate::ui::render::utils::shell_row_highlight;
+use crate::ui::render::utils::{draw_focus_accent, shell_row_highlight};
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::ShellFocus;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
@@ -8,11 +8,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState};
 
 pub(super) fn draw_theme_selector_sidebar(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
-    let bg = if app.shell_focus == ShellFocus::Sidebar {
-        app.theme.panel_focused.to_style()
-    } else {
-        app.theme.panel.to_style()
-    };
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
 
     let inner = area.inner(Margin {
@@ -79,4 +75,5 @@ pub(super) fn draw_theme_selector_sidebar(f: &mut ratatui::Frame, app: &mut App,
         app.ascii_only,
         &app.theme,
     );
+    draw_focus_accent(f, app, area, app.shell_focus == ShellFocus::Sidebar);
 }

@@ -1,6 +1,6 @@
 use crate::ui::core::view::shell_module_shortcut;
 use crate::ui::render::text::truncate_end;
-use crate::ui::render::utils::shell_row_highlight;
+use crate::ui::render::utils::{draw_focus_accent, shell_row_highlight};
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ShellAction, ShellFocus, ShellSidebarItem, ShellView};
 use crate::ui::theme;
@@ -125,11 +125,7 @@ pub(in crate::ui) fn shell_sidebar_select_item(app: &mut App, target: ShellSideb
 }
 
 pub(in crate::ui) fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
-    let bg = if app.shell_focus == ShellFocus::Sidebar {
-        app.theme.panel_focused.to_style()
-    } else {
-        app.theme.panel.to_style()
-    };
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let inner_area = area.inner(ratatui::layout::Margin {
         vertical: 1,
@@ -149,11 +145,7 @@ pub(in crate::ui) fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, a
 
         match *it {
             ShellSidebarItem::Separator => {
-                let base_bg = if app.shell_focus == ShellFocus::Sidebar {
-                    theme::parse_color(&app.theme.panel_focused.bg)
-                } else {
-                    theme::parse_color(&app.theme.panel.bg)
-                };
+                let base_bg = theme::parse_color(&app.theme.panel.bg);
                 let divider_style = app.theme.divider.to_style().bg(base_bg);
                 rendered.push(ListItem::new(Line::from(Span::styled(
                     "─".repeat(inner_w),
@@ -276,4 +268,5 @@ pub(in crate::ui) fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, a
     ));
     let list = List::new(rendered).highlight_symbol("").style(bg);
     f.render_stateful_widget(list, inner_area, &mut state);
+    draw_focus_accent(f, app, area, app.shell_focus == ShellFocus::Sidebar);
 }

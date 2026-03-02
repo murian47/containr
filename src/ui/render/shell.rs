@@ -10,7 +10,7 @@ use crate::ui::render::badges::header_logo_spans;
 use crate::ui::render::breadcrumbs::shell_breadcrumbs;
 use crate::ui::render::format::{dot_spinner, spinner_char, split_at_chars, truncate_start};
 use crate::ui::render::header::draw_rate_limit_banner;
-use crate::ui::render::utils::truncate_end;
+use crate::ui::render::utils::{draw_focus_accent, focus_marker_style, truncate_end};
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{
     ShellFocus, ShellView, TemplatesKind, input_window_with_cursor,
@@ -200,12 +200,8 @@ pub(in crate::ui) fn draw_shell_title(
     count: usize,
     area: Rect,
 ) {
-    // Subtle focus indication: highlight the list title when list has focus.
-    let bg = if app.shell_focus == ShellFocus::List {
-        app.theme.panel_focused.to_style()
-    } else {
-        app.theme.panel.to_style()
-    };
+    // Focus is indicated through title styling, not by changing the whole panel background.
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     let left = if count == usize::MAX {
         format!(" {title}")
@@ -213,14 +209,14 @@ pub(in crate::ui) fn draw_shell_title(
         format!(" {title} ({count})")
     };
     let shown = truncate_end(&left, area.width.max(1) as usize);
-    let fg = if app.shell_focus == ShellFocus::List {
-        theme::parse_color(&app.theme.panel_focused.fg)
+    let title_style = if app.shell_focus == ShellFocus::List {
+        focus_marker_style(app)
     } else {
-        theme::parse_color(&app.theme.syntax_text.fg)
+        bg.fg(theme::parse_color(&app.theme.syntax_text.fg))
     };
     f.render_widget(
         Paragraph::new(shown)
-            .style(bg.fg(fg))
+            .style(title_style)
             .wrap(Wrap { trim: false }),
         area,
     );
@@ -357,6 +353,7 @@ pub(in crate::ui) fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App,
             draw_shell_title(f, app, "Themes", 0, title_area);
         }
     }
+    draw_focus_accent(f, app, area, app.shell_focus == ShellFocus::List);
 }
 
 pub(in crate::ui) fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area: Rect) {

@@ -1,8 +1,8 @@
 use crate::ui::render::scroll::draw_shell_scrollbar_v;
 use crate::ui::render::text::window_hscroll;
-use crate::ui::render::utils::shell_row_highlight;
+use crate::ui::render::utils::{draw_focus_accent, shell_row_highlight};
 use crate::ui::state::app::App;
-use crate::ui::state::shell_types::{MsgLevel, ShellFocus};
+use crate::ui::state::shell_types::MsgLevel;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -26,13 +26,15 @@ pub(in crate::ui) fn draw_shell_messages_view(f: &mut ratatui::Frame, app: &mut 
 }
 
 pub(in crate::ui) fn draw_shell_messages_dock(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
-    let bg = if app.shell_focus == ShellFocus::Dock {
-        app.theme.panel_focused.to_style()
-    } else {
-        app.theme.panel.to_style()
-    };
+    let bg = app.theme.panel.to_style();
     f.render_widget(Block::default().style(bg), area);
     draw_shell_messages_list(f, app, area, bg);
+    draw_focus_accent(
+        f,
+        app,
+        area,
+        app.shell_focus == crate::ui::state::shell_types::ShellFocus::Dock,
+    );
 }
 
 fn draw_shell_messages_list(f: &mut ratatui::Frame, app: &mut App, area: Rect, bg: Style) {
