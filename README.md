@@ -28,6 +28,7 @@ Other platforms may work on a best-effort basis, but are not currently validated
 
 - Local Linux/macOS machine with `ssh` in `PATH`
 - Remote host with Docker or Podman installed
+- SSH user must use a passwordless SSH key or agent-based key login
 - SSH user must be able to run `docker` / `podman` commands used by containr
 - Optional:
   - `git` for template versioning
@@ -136,8 +137,6 @@ Config path:
 - `$XDG_CONFIG_HOME/containr/config.json`
 - fallback: `$HOME/.config/containr/config.json`
 
-Legacy configs such as older `servers.json` / `serverlist.json` files are migrated on read when possible.
-
 Minimal example:
 
 ```json
@@ -233,8 +232,8 @@ For the full current command and keybinding reference, use the built-in help vie
 
 ## Documentation
 
-- release checklist: [docs/testing-checklist.md](/Users/mag/codex/linux/containr/docs/testing-checklist.md)
-- roadmap: [docs/roadmap-priorities.md](/Users/mag/codex/linux/containr/docs/roadmap-priorities.md)
-- release prep: [docs/release-prep.md](/Users/mag/codex/linux/containr/docs/release-prep.md)
-- user guide (DE): [docs/user_guide_de.md](/Users/mag/codex/linux/containr/docs/user_guide_de.md)
-- code map: [docs/code-map-ui.md](/Users/mag/codex/linux/containr/docs/code-map-ui.md)
+- release checklist: `docs/testing-checklist.md`
+- roadmap: `docs/roadmap-priorities.md`
+- release prep: `docs/release-prep.md`
+- user guide (DE): `docs/user_guide_de.md`
+- code map: `docs/code-map-ui.md`
