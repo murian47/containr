@@ -5,7 +5,7 @@ use crate::ui::core::key_types::{
     KeyCodeNorm, KeyScope, KeySpec, build_default_keymap, parse_key_spec,
 };
 use crate::ui::core::requests::ActionRequest;
-use crate::ui::core::types::LogsMode;
+use crate::ui::core::types::{ImageUpdateEntry, ImageUpdateKind, LogsMode};
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ActiveView, ShellFocus, ShellView};
 use crate::ui::theme;
@@ -255,6 +255,59 @@ fn render_logs_shows_query_and_matches() {
     assert!(screen.contains("Matches:"));
     assert!(screen.contains("Query:"));
     assert!(screen.contains("error"));
+}
+
+#[test]
+fn render_logs_marks_selected_range() {
+    let mut app = mk_test_app();
+    app.loading = false;
+    app.shell_view = ShellView::Logs;
+    app.logs.loading = false;
+    app.logs.error = None;
+    app.logs.text = Some("first line\nsecond line\nthird line\n".to_string());
+    app.logs.cursor = 1;
+    app.logs.select_anchor = Some(0);
+
+    let buf = render_buffer(&mut app, 120, 20);
+    let marked_fg = theme::parse_color(&app.theme.marked.fg);
+    let mut found_marked = false;
+    for y in 0..buf.area.height {
+        for x in 0..buf.area.width {
+            let cell = &buf[(x, y)];
+            if cell.symbol() == "f" && cell.style().fg == Some(marked_fg) {
+                found_marked = true;
+                break;
+            }
+        }
+        if found_marked {
+            break;
+        }
+    }
+    assert!(found_marked, "no marked log selection glyph found");
+}
+
+#[test]
+fn check_image_updates_skips_fresh_cached_entries() {
+    let mut app = mk_test_app();
+    app.loading = false;
+    let image = "docker.io/library/redis:7-alpine".to_string();
+    app.image_updates.insert(
+        image.clone(),
+        ImageUpdateEntry {
+            checked_at: crate::ui::core::clock::now_unix(),
+            status: ImageUpdateKind::UpToDate,
+            local_digest: Some("sha256:local".to_string()),
+            remote_digest: Some("sha256:remote".to_string()),
+            note: None,
+            error: None,
+        },
+    );
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ActionRequest>();
+    crate::ui::ui_actions::check_image_updates(&mut app, vec![image], &tx);
+
+    assert!(rx.try_recv().is_err(), "cached image check should not queue request");
+    assert!(app.image_updates_inflight.is_empty());
 }
 
 #[test]

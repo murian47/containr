@@ -12,6 +12,7 @@ use crate::ui::render::utils::{is_container_stopped, shell_escape_sh_arg};
 use crate::ui::shell_utils::{ensure_template_id, shell_single_quote};
 use crate::ui::state::actions as state_actions;
 use crate::ui::state::app::App;
+use crate::ui::state::image_updates::resolve_image_ref_for_updates;
 use crate::ui::state::shell_types::{
     MsgLevel, ShellAction, ShellInteractive, ShellView, TemplatesKind, shell_begin_confirm,
 };
@@ -113,10 +114,9 @@ pub(in crate::ui) fn check_image_updates(
     action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
 ) {
     let mut queued = 0usize;
+    let mut skipped_cached = 0usize;
     for image in images {
-        let Some(normalized) =
-            crate::ui::state::image_updates::resolve_image_ref_for_updates(app, &image)
-        else {
+        let Some(normalized) = resolve_image_ref_for_updates(app, &image) else {
             app.log_msg(
                 MsgLevel::Warn,
                 format!("image update skipped (unresolved ref): {image}"),
@@ -124,6 +124,10 @@ pub(in crate::ui) fn check_image_updates(
             continue;
         };
         let key = normalized.reference.clone();
+        if app.image_update_entry(&key).is_some() {
+            skipped_cached = skipped_cached.saturating_add(1);
+            continue;
+        }
         if app.image_updates_inflight.contains(&key) {
             continue;
         }
@@ -136,10 +140,18 @@ pub(in crate::ui) fn check_image_updates(
         app.log_msg(MsgLevel::Info, format!("image update queued: {key}"));
         queued += 1;
     }
-    if queued == 0 {
+    if queued == 0 && skipped_cached > 0 {
+        app.set_info(format!(
+            "using cached image status for {skipped_cached} image(s)"
+        ));
+    } else if queued == 0 {
         app.set_warn("no images to check");
     } else {
-        app.set_info(format!("checking {queued} image(s)"));
+        let mut msg = format!("checking {queued} image(s)");
+        if skipped_cached > 0 {
+            msg.push_str(&format!(", skipped {skipped_cached} cached"));
+        }
+        app.set_info(msg);
     }
     app.save_local_state();
 }

@@ -31,6 +31,7 @@ struct ImageUpdateEntryPayload {
     status: ImageUpdateKindPayload,
     local_digest: Option<String>,
     remote_digest: Option<String>,
+    note: Option<String>,
     error: Option<String>,
 }
 
@@ -88,11 +89,20 @@ impl<'a> ImageUpdateService<'a> {
             .as_deref()
             .and_then(|list| local_repo_digest(list, &repo));
 
-        let (status, remote_digest, error, debug_remote, debug_remote_digests, debug_local_index) =
+        let (
+            status,
+            remote_digest,
+            note,
+            error,
+            debug_remote,
+            debug_remote_digests,
+            debug_local_index,
+        ) =
             if let Some(digest) = normalized.digest.clone() {
                 (
                     ImageUpdateKindPayload::UpToDate,
                     Some(digest),
+                    None::<String>,
                     None::<String>,
                     None::<String>,
                     None::<String>,
@@ -142,6 +152,7 @@ impl<'a> ImageUpdateService<'a> {
             status,
             local_digest: local_digest.clone(),
             remote_digest: remote_digest.clone(),
+            note,
             error: error.clone(),
         };
         let result = ImageUpdateResultPayload {
@@ -168,6 +179,7 @@ impl<'a> ImageUpdateService<'a> {
         Option<String>,
         Option<String>,
         Option<String>,
+        Option<String>,
     )> {
         let remote_fetch =
             docker::fetch_manifest_inspect(self.runner, self.docker, &normalized.reference).await;
@@ -189,6 +201,7 @@ impl<'a> ImageUpdateService<'a> {
                 let err = truncate_msg(&format!("{:#}", e), 200);
                 return Ok((
                     ImageUpdateKindPayload::Error,
+                    None,
                     None,
                     Some(err),
                     None,
@@ -224,6 +237,7 @@ impl<'a> ImageUpdateService<'a> {
                         ImageUpdateKindPayload::UpToDate,
                         Some(remote_digest),
                         None,
+                        None,
                         debug_remote,
                         debug_remote_digests,
                         None,
@@ -248,6 +262,9 @@ impl<'a> ImageUpdateService<'a> {
                                     Ok((
                                         ImageUpdateKindPayload::UpToDate,
                                         Some(remote_digest),
+                                        Some(
+                                            "matched via platform/index digest".to_string(),
+                                        ),
                                         None,
                                         debug_remote,
                                         debug_remote_digests,
@@ -257,6 +274,7 @@ impl<'a> ImageUpdateService<'a> {
                                     Ok((
                                         ImageUpdateKindPayload::UpdateAvailable,
                                         Some(remote_digest),
+                                        None,
                                         None,
                                         debug_remote,
                                         debug_remote_digests,
@@ -268,6 +286,7 @@ impl<'a> ImageUpdateService<'a> {
                                     ImageUpdateKindPayload::UpdateAvailable,
                                     Some(remote_digest),
                                     None,
+                                    None,
                                     debug_remote,
                                     debug_remote_digests,
                                     idx_debug,
@@ -277,6 +296,7 @@ impl<'a> ImageUpdateService<'a> {
                         Err(_) => Ok((
                             ImageUpdateKindPayload::UpdateAvailable,
                             Some(remote_digest),
+                            None,
                             None,
                             debug_remote,
                             debug_remote_digests,
@@ -288,6 +308,7 @@ impl<'a> ImageUpdateService<'a> {
             (None, _) => Ok((
                 ImageUpdateKindPayload::Error,
                 None,
+                None,
                 Some(format!(
                     "missing local digest (repo={repo}, repo_digests={repo_digests_len} {repo_digests_preview})"
                 )),
@@ -297,6 +318,7 @@ impl<'a> ImageUpdateService<'a> {
             )),
             (_, None) => Ok((
                 ImageUpdateKindPayload::Error,
+                None,
                 None,
                 Some(format!("missing remote digest (platforms={summary})")),
                 debug_remote,

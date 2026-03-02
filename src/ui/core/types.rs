@@ -156,6 +156,8 @@ pub(in crate::ui) struct ImageUpdateEntry {
     pub(in crate::ui) status: ImageUpdateKind,
     pub(in crate::ui) local_digest: Option<String>,
     pub(in crate::ui) remote_digest: Option<String>,
+    #[serde(default)]
+    pub(in crate::ui) note: Option<String>,
     pub(in crate::ui) error: Option<String>,
 }
 

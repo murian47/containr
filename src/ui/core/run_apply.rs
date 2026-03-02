@@ -505,6 +505,9 @@ pub(in crate::ui) fn process_background_updates(
                                     "image update result: {} status={} local={} remote={}",
                                     result.image, status, local, remote
                                 );
+                                if let Some(note) = result.entry.note.as_deref() {
+                                    msg.push_str(&format!(" note={note}"));
+                                }
                                 if let Some(err) = result.entry.error.as_deref() {
                                     msg.push_str(&format!(" error={err}"));
                                     if is_rate_limit_error(Some(err)) {
@@ -666,6 +669,7 @@ pub(in crate::ui) fn process_background_updates(
                             status: ImageUpdateKind::Error,
                             local_digest: None,
                             remote_digest: None,
+                            note: None,
                             error: Some(truncate_msg(&format!("{:#}", e), 240)),
                         };
                         if is_rate_limit_error(entry.error.as_deref()) {
