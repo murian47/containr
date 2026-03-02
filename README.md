@@ -53,6 +53,15 @@ cd linux/containr
 ./packaging/macos/install.sh
 ```
 
+Eine systemweite Installation unter `/usr/local` benoetigt je nach Setup `sudo`.
+Fuer eine reine User-Installation ohne `sudo`:
+
+```bash
+cd linux/containr
+./packaging/macos/install.sh --prefix "$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 Default-Installationspfade:
 
 - Binary-Payload: `/usr/local/libexec/containr/containr`
@@ -81,6 +90,15 @@ Fuer eine lokale Linux-Installation aus dem aktuellen Source-Tree:
 ```bash
 cd linux/containr
 ./packaging/linux/install.sh
+```
+
+Eine systemweite Installation unter `/usr/local` benoetigt typischerweise `sudo`.
+Fuer eine reine User-Installation ohne `sudo`:
+
+```bash
+cd linux/containr
+./packaging/linux/install.sh --prefix "$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Default-Installationspfade:
