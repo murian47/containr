@@ -9,6 +9,13 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState};
 use time::OffsetDateTime;
 
+fn patch_line_style(mut line: Line<'static>, style: Style) -> Line<'static> {
+    for span in &mut line.spans {
+        span.style = span.style.patch(style);
+    }
+    line
+}
+
 pub(in crate::ui) fn format_session_ts(at: OffsetDateTime) -> String {
     use std::sync::OnceLock;
     static FMT: OnceLock<Vec<time::format_description::FormatItem<'static>>> = OnceLock::new();
@@ -54,23 +61,31 @@ fn draw_shell_messages_list(f: &mut ratatui::Frame, app: &mut App, area: Rect, b
     let view_h = list_area.height.max(1) as usize;
     let max_scroll = total.saturating_sub(view_h);
     let w = list_area.width.max(1) as usize;
-    let cursor = if total_msgs == 0 {
-        0usize
-    } else if app.shell_msgs.scroll == usize::MAX {
-        total_msgs.saturating_sub(1)
-    } else {
-        app.shell_msgs.scroll.min(total_msgs.saturating_sub(1))
-    };
+    let cursor = app.messages_cursor();
     if total_msgs > 0 {
         app.shell_msgs.scroll = cursor;
     }
-    let top = cursor.saturating_sub(view_h / 2).min(max_scroll);
+    let mut top = if app.shell_msgs.scroll_top == usize::MAX {
+        max_scroll
+    } else {
+        app.shell_msgs.scroll_top.min(max_scroll)
+    };
+    if cursor < top {
+        top = cursor;
+    } else if cursor >= top.saturating_add(view_h) {
+        top = cursor
+            .saturating_add(1)
+            .saturating_sub(view_h)
+            .min(max_scroll);
+    }
+    app.shell_msgs.scroll_top = top;
 
     let lnw = if app.logs.show_line_numbers {
         total_msgs.max(1).to_string().len()
     } else {
         0
     };
+    let sel = app.messages_selection_range();
 
     // Clamp horizontal scroll to the selected message width.
     if let Some(m) = app.session_msgs.get(cursor) {
@@ -123,14 +138,28 @@ fn draw_shell_messages_list(f: &mut ratatui::Frame, app: &mut App, area: Rect, b
         let msg_w = w.saturating_sub(fixed_len).max(1);
         let msg = window_hscroll(&m.text, app.shell_msgs.hscroll, msg_w);
         spans.push(Span::styled(msg, bg));
-        items.push(ListItem::new(Line::from(spans)));
+        let mut line = Line::from(spans);
+        let selected = sel.map(|(a, b)| idx >= a && idx <= b).unwrap_or(false);
+        if selected {
+            line = patch_line_style(line, app.theme.marked.to_style());
+        }
+        items.push(ListItem::new(line));
     }
     if items.is_empty() {
         items.push(ListItem::new(Line::from("")));
     }
+    let mut highlight_style = shell_row_highlight(app);
+    if app.shell_msgs.select_anchor.is_some() {
+        let marked = app.theme.marked.to_style();
+        highlight_style = highlight_style
+            .fg(marked
+                .fg
+                .unwrap_or_else(|| highlight_style.fg.unwrap_or_default()))
+            .add_modifier(marked.add_modifier);
+    }
     let list = List::new(items)
         .style(bg)
-        .highlight_style(shell_row_highlight(app))
+        .highlight_style(highlight_style)
         .highlight_symbol("");
     let mut state = ListState::default();
     state.select(Some(cursor.saturating_sub(top)));

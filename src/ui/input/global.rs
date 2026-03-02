@@ -43,10 +43,15 @@ pub(super) fn handle_dock_navigation(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
     match (key.modifiers, key.code) {
+        (_, KeyCode::Up) => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(1),
+        (_, KeyCode::Down) => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(1),
         (_, KeyCode::PageUp) => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_sub(10),
         (_, KeyCode::PageDown) => app.shell_msgs.scroll = app.shell_msgs.scroll.saturating_add(10),
         (_, KeyCode::Home) => app.shell_msgs.scroll = 0,
         (_, KeyCode::End) => app.shell_msgs.scroll = usize::MAX,
+        (_, KeyCode::Char(' ')) => app.messages_toggle_selection(),
+        (_, KeyCode::Esc) => app.messages_clear_selection(),
+        (KeyModifiers::CONTROL, KeyCode::Char('c')) => app.messages_copy_selected(),
         (KeyModifiers::ALT, KeyCode::Left) => {
             app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_sub(4)
         }

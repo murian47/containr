@@ -5,7 +5,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::widgets::{Paragraph, Wrap};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::ui::state::app::App;
 use crate::ui::theme;
@@ -35,7 +35,7 @@ pub(in crate::ui) fn write_text_file(
     let path = path.trim();
     anyhow::ensure!(!path.is_empty(), "missing file path");
 
-    let path = expand_user_path(path);
+    let path = resolve_output_path(path)?;
     if path.exists() && !force {
         anyhow::bail!("file exists (use save! to overwrite)");
     }
@@ -46,6 +46,20 @@ pub(in crate::ui) fn write_text_file(
     }
     fs::write(&path, text).context("failed to write file")?;
     Ok(path)
+}
+
+fn has_explicit_parent(path: &Path) -> bool {
+    path.parent()
+        .is_some_and(|parent| !parent.as_os_str().is_empty() && parent != Path::new("."))
+}
+
+pub(in crate::ui) fn resolve_output_path(path: &str) -> anyhow::Result<PathBuf> {
+    let path = expand_user_path(path);
+    if path.is_absolute() || has_explicit_parent(&path) {
+        return Ok(path);
+    }
+    let home = std::env::var_os("HOME").ok_or_else(|| anyhow::anyhow!("HOME is not set"))?;
+    Ok(PathBuf::from(home).join(path))
 }
 
 pub(in crate::ui) fn expand_user_path(path: &str) -> PathBuf {

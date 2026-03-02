@@ -2,12 +2,20 @@ use crate::ui::core::types::LogsMode;
 use crate::ui::state::app::App;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::Style;
+use ratatui::text::Line;
 use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Wrap};
 
 use super::highlight::{highlight_log_line_literal, highlight_log_line_regex};
 use super::scroll::{draw_shell_scrollbar_h, draw_shell_scrollbar_v};
 use super::text::slice_window;
 use super::utils::shell_row_highlight;
+
+fn patch_line_style(mut line: Line<'static>, style: Style) -> Line<'static> {
+    for span in &mut line.spans {
+        span.style = span.style.patch(style);
+    }
+    line
+}
 
 pub(in crate::ui) fn draw_shell_logs_view(
     f: &mut ratatui::Frame,
@@ -117,19 +125,26 @@ pub(in crate::ui) fn draw_shell_logs_view(
             );
         }
         let selected = sel.map(|(a, b)| idx >= a && idx <= b).unwrap_or(false);
-        let item_style = if selected {
-            app.theme.marked.to_style()
-        } else {
-            Style::default()
-        };
-        items.push(ListItem::new(l).style(item_style));
+        if selected {
+            l = patch_line_style(l, app.theme.marked.to_style());
+        }
+        items.push(ListItem::new(l));
     }
     if items.is_empty() {
         items.push(ListItem::new(ratatui::text::Line::from("")));
     }
+    let mut highlight_style = shell_row_highlight(app);
+    if app.logs.select_anchor.is_some() {
+        let marked = app.theme.marked.to_style();
+        highlight_style = highlight_style
+            .fg(marked
+                .fg
+                .unwrap_or_else(|| highlight_style.fg.unwrap_or_default()))
+            .add_modifier(marked.add_modifier);
+    }
     let list = List::new(items)
         .style(bg)
-        .highlight_style(shell_row_highlight(app))
+        .highlight_style(highlight_style)
         .highlight_symbol("");
     let mut state = ListState::default();
     state.select(Some(cursor.saturating_sub(start)));

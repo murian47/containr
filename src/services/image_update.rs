@@ -97,28 +97,27 @@ impl<'a> ImageUpdateService<'a> {
             debug_remote,
             debug_remote_digests,
             debug_local_index,
-        ) =
-            if let Some(digest) = normalized.digest.clone() {
-                (
-                    ImageUpdateKindPayload::UpToDate,
-                    Some(digest),
-                    None::<String>,
-                    None::<String>,
-                    None::<String>,
-                    None::<String>,
-                    None::<String>,
-                )
-            } else {
-                self.compare_remote(
-                    &normalized,
-                    &repo,
-                    &inspect,
-                    local_digest.clone(),
-                    repo_digests_len,
-                    &repo_digests_preview,
-                )
-                .await?
-            };
+        ) = if let Some(digest) = normalized.digest.clone() {
+            (
+                ImageUpdateKindPayload::UpToDate,
+                Some(digest),
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+            )
+        } else {
+            self.compare_remote(
+                &normalized,
+                &repo,
+                &inspect,
+                local_digest.clone(),
+                repo_digests_len,
+                &repo_digests_preview,
+            )
+            .await?
+        };
 
         let debug_info = if self.debug {
             let arch = inspect.architecture.as_deref().unwrap_or("-");
@@ -262,9 +261,7 @@ impl<'a> ImageUpdateService<'a> {
                                     Ok((
                                         ImageUpdateKindPayload::UpToDate,
                                         Some(remote_digest),
-                                        Some(
-                                            "matched via platform/index digest".to_string(),
-                                        ),
+                                        Some("matched via platform/index digest".to_string()),
                                         None,
                                         debug_remote,
                                         debug_remote_digests,
@@ -376,7 +373,11 @@ fn get_ci<'a>(map: &'a serde_json::Map<String, Value>, key: &str) -> Option<&'a 
     map.get(key)
         .or_else(|| map.get(&key.to_ascii_lowercase()))
         .or_else(|| map.get(&key.to_ascii_uppercase()))
-        .or_else(|| map.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v))
+        .or_else(|| {
+            map.iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, v)| v)
+        })
 }
 
 fn entry_descriptor_digest(obj: &Value) -> Option<String> {
@@ -495,6 +496,13 @@ fn truncate_msg(msg: &str, max: usize) -> String {
     }
 }
 
+fn now_unix() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -579,11 +587,4 @@ mod tests {
             Some("sha256:wrapped")
         );
     }
-}
-
-fn now_unix() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
 }

@@ -95,6 +95,20 @@ fn render_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buf
 }
 
 #[test]
+fn resolve_output_path_puts_bare_filename_into_home() {
+    let home = std::env::var_os("HOME").expect("HOME");
+    let resolved = crate::ui::render::utils::resolve_output_path("containr.log").expect("path");
+    assert_eq!(resolved, PathBuf::from(home).join("containr.log"));
+}
+
+#[test]
+fn resolve_output_path_keeps_explicit_subpath() {
+    let resolved =
+        crate::ui::render::utils::resolve_output_path("logs/containr.log").expect("path");
+    assert_eq!(resolved, PathBuf::from("logs").join("containr.log"));
+}
+
+#[test]
 fn parse_key_spec_allows_ctrl_shift_char_chord() {
     let ks = parse_key_spec("C-S-C").expect("parse C-S-C");
     assert_eq!(ks.mods, 1 | 2);
@@ -274,7 +288,10 @@ fn render_logs_marks_selected_range() {
     for y in 0..buf.area.height {
         for x in 0..buf.area.width {
             let cell = &buf[(x, y)];
-            if cell.symbol() == "f" && cell.style().fg == Some(marked_fg) {
+            if cell.symbol().trim().is_empty() {
+                continue;
+            }
+            if cell.style().fg == Some(marked_fg) {
                 found_marked = true;
                 break;
             }
@@ -284,6 +301,44 @@ fn render_logs_marks_selected_range() {
         }
     }
     assert!(found_marked, "no marked log selection glyph found");
+}
+
+#[test]
+fn render_messages_marks_selected_range() {
+    let mut app = mk_test_app();
+    app.loading = false;
+    app.shell_view = ShellView::Messages;
+    app.session_msgs
+        .push(crate::ui::state::shell_types::SessionMsg {
+            at: crate::ui::core::clock::now_local(),
+            level: crate::ui::state::shell_types::MsgLevel::Info,
+            text: "first message".to_string(),
+        });
+    app.session_msgs
+        .push(crate::ui::state::shell_types::SessionMsg {
+            at: crate::ui::core::clock::now_local(),
+            level: crate::ui::state::shell_types::MsgLevel::Warn,
+            text: "second message".to_string(),
+        });
+    app.shell_msgs.scroll = 1;
+    app.shell_msgs.select_anchor = Some(0);
+
+    let buf = render_buffer(&mut app, 120, 20);
+    let marked_fg = theme::parse_color(&app.theme.marked.fg);
+    let mut found_marked = false;
+    for y in 0..buf.area.height {
+        for x in 0..buf.area.width {
+            let cell = &buf[(x, y)];
+            if cell.symbol() == "f" && cell.style().fg == Some(marked_fg) {
+                found_marked = true;
+                break;
+            }
+        }
+        if found_marked {
+            break;
+        }
+    }
+    assert!(found_marked, "no marked message selection glyph found");
 }
 
 #[test]
@@ -306,7 +361,10 @@ fn check_image_updates_skips_fresh_cached_entries() {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ActionRequest>();
     crate::ui::ui_actions::check_image_updates(&mut app, vec![image], &tx);
 
-    assert!(rx.try_recv().is_err(), "cached image check should not queue request");
+    assert!(
+        rx.try_recv().is_err(),
+        "cached image check should not queue request"
+    );
     assert!(app.image_updates_inflight.is_empty());
 }
 

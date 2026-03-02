@@ -276,6 +276,8 @@ impl App {
             messages_seen_len: 0,
             shell_msgs: ShellMessagesState {
                 scroll: 0,
+                scroll_top: 0,
+                select_anchor: None,
                 hscroll: 0,
                 return_view: ShellView::Dashboard,
             },

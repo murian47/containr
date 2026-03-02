@@ -92,6 +92,8 @@ pub(super) fn handle_overlay_navigation(app: &mut App, key: KeyEvent) {
             KeyCode::Right => app.shell_msgs.hscroll = app.shell_msgs.hscroll.saturating_add(4),
             KeyCode::Home => app.shell_msgs.scroll = 0,
             KeyCode::End => app.shell_msgs.scroll = usize::MAX,
+            KeyCode::Esc => app.messages_clear_selection(),
+            KeyCode::Char(' ') => app.messages_toggle_selection(),
             _ => {}
         },
         _ => {}

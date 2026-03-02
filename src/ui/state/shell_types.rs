@@ -28,6 +28,8 @@ pub(in crate::ui) struct ShellCmdlineState {
 #[derive(Debug, Clone)]
 pub(in crate::ui) struct ShellMessagesState {
     pub(in crate::ui) scroll: usize, // absolute cursor; usize::MAX means "follow newest"
+    pub(in crate::ui) scroll_top: usize,
+    pub(in crate::ui) select_anchor: Option<usize>,
     pub(in crate::ui) hscroll: usize, // horizontal scroll offset for long log/message lines
     pub(in crate::ui) return_view: ShellView,
 }
