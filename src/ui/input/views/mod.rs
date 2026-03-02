@@ -51,8 +51,12 @@ pub(super) fn handle_view_navigation(app: &mut App, key: KeyEvent, ctx: &InputCt
                 ShellView::Registries,
             ] {
                 if ch_lc == shell_module_shortcut(v) {
+                    let keep_sidebar_focus = app.shell_focus == ShellFocus::Sidebar;
                     app.set_main_view(v);
                     shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
+                    if keep_sidebar_focus {
+                        app.shell_focus = ShellFocus::Sidebar;
+                    }
                     return;
                 }
             }

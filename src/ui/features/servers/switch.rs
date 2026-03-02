@@ -8,7 +8,7 @@ use crate::ui::core::requests::Connection;
 use crate::ui::core::types::DashboardHostState;
 use crate::ui::render::sidebar::shell_sidebar_select_item;
 use crate::ui::state::app::App;
-use crate::ui::state::shell_types::{ShellSidebarItem, ShellView};
+use crate::ui::state::shell_types::{ShellFocus, ShellSidebarItem, ShellView};
 
 impl App {
     pub(in crate::ui) fn switch_server(
@@ -22,6 +22,7 @@ impl App {
         let Some(s) = self.servers.get(idx).cloned() else {
             return;
         };
+        let keep_sidebar_focus = self.shell_focus == ShellFocus::Sidebar;
         self.server_selected = idx;
         self.server_all_selected = false;
         self.active_server = Some(s.name.clone());
@@ -71,6 +72,9 @@ impl App {
 
         self.set_main_view(ShellView::Dashboard);
         shell_sidebar_select_item(self, ShellSidebarItem::Server(idx));
+        if keep_sidebar_focus {
+            self.shell_focus = ShellFocus::Sidebar;
+        }
     }
 
     pub(in crate::ui) fn switch_server_all(

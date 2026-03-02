@@ -3,7 +3,7 @@ use crate::ui::render::sidebar::{
     shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
 };
 use crate::ui::state::app::App;
-use crate::ui::state::shell_types::{ShellSidebarItem, ShellView};
+use crate::ui::state::shell_types::{ShellFocus, ShellSidebarItem, ShellView};
 use crate::ui::ui_actions;
 use crossterm::event::{KeyCode, KeyEvent};
 
@@ -30,6 +30,7 @@ pub(super) fn handle_sidebar_navigation(app: &mut App, key: KeyEvent, ctx: &Inpu
                     _ => {
                         app.set_main_view(v);
                         shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
+                        app.shell_focus = ShellFocus::Sidebar;
                     }
                 },
                 ShellSidebarItem::Action(a) => ui_actions::execute_action(

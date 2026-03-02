@@ -19,10 +19,10 @@ Release signoff requires:
 
 ## P0 Core startup and navigation
 
-- [ ] App starts without configured servers and shows the no-server screen.
-- [ ] App starts with configured servers and lands in a valid initial view.
-- [ ] Switching between main views works (`dashboard`, `containers`, `images`, `networks`, `stacks`, `templates`).
-- [ ] Sidebar focus and selection highlight remain correct while switching views.
+- [X] App starts without configured servers and shows the no-server screen.
+- [X] App starts with configured servers and lands in a valid initial view.
+- [X] Switching between main views works (`dashboard`, `containers`, `images`, `networks`, `stacks`, `templates`).
+- [ ] When switching views from the sidebar, the active view highlight updates and focus remains in the sidebar.
 - [ ] Messages view opens and closes correctly (`C-g`, `q`).
 
 ## P0 Server handling

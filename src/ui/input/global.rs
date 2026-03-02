@@ -4,7 +4,7 @@ use crate::ui::core::key_types::{
 };
 use crate::ui::core::keymap::is_single_letter_without_modifiers;
 use crate::ui::core::types::LogsMode;
-use crate::ui::core::view::shell_cycle_focus;
+use crate::ui::core::view::{shell_cycle_focus, shell_cycle_focus_reverse};
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ShellFocus, ShellView};
 use crossterm::event::{KeyCode, KeyEvent};
@@ -65,6 +65,10 @@ pub(super) fn handle_global_keys(app: &mut App, key: KeyEvent) -> bool {
     match key.code {
         KeyCode::Tab => {
             shell_cycle_focus(app);
+            true
+        }
+        KeyCode::BackTab => {
+            shell_cycle_focus_reverse(app);
             true
         }
         KeyCode::Char(':') if key.modifiers.is_empty() => {

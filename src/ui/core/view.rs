@@ -29,6 +29,14 @@ pub(in crate::ui) fn shell_module_shortcut(view: ShellView) -> char {
 }
 
 pub(in crate::ui) fn shell_cycle_focus(app: &mut App) {
+    shell_cycle_focus_by(app, 1);
+}
+
+pub(in crate::ui) fn shell_cycle_focus_reverse(app: &mut App) {
+    shell_cycle_focus_by(app, -1);
+}
+
+fn shell_cycle_focus_by(app: &mut App, step: isize) {
     let mut order: Vec<ShellFocus> = Vec::new();
     if !app.shell_sidebar_hidden {
         order.push(ShellFocus::Sidebar);
@@ -67,7 +75,8 @@ pub(in crate::ui) fn shell_cycle_focus(app: &mut App) {
         .iter()
         .position(|f| *f == app.shell_focus)
         .unwrap_or(0);
-    let next = (idx + 1) % order.len();
+    let len = order.len() as isize;
+    let next = (idx as isize + step).rem_euclid(len) as usize;
     app.shell_focus = order[next];
 }
 
