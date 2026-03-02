@@ -25,6 +25,11 @@ type OverviewResult = anyhow::Result<(
     Vec<NetworkRow>,
 )>;
 
+fn is_transient_missing_object_error(err: &anyhow::Error) -> bool {
+    let msg = format!("{err:#}").to_ascii_lowercase();
+    msg.contains("no such object:")
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(in crate::ui) fn process_background_updates(
     app: &mut App,
@@ -112,7 +117,9 @@ pub(in crate::ui) fn process_background_updates(
                 }
             }
             Err(e) => {
-                app.set_warn(format!("ip lookup failed: {:#}", e));
+                if !is_transient_missing_object_error(&e) {
+                    app.set_warn(format!("ip lookup failed: {:#}", e));
+                }
             }
         }
     }
@@ -251,7 +258,9 @@ pub(in crate::ui) fn process_background_updates(
                 app.usage_refresh_needed = false;
             }
             Err(e) => {
-                app.set_warn(format!("usage lookup failed: {:#}", e));
+                if !is_transient_missing_object_error(&e) {
+                    app.set_warn(format!("usage lookup failed: {:#}", e));
+                }
             }
         }
     }
