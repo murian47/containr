@@ -60,6 +60,10 @@ Not required for `1.0.0`:
 ## Deprioritized / Out of scope for current release
 
 - Command placeholders (`${server.*}`, `${selection.*}`, `${marks.*}`, `${view}`)
+- Config option for server-switch behavior:
+  - keep current view on server change
+  - or force switch to dashboard
+  - target: post-`0.5.0`, not a release blocker
 
 ## Recently completed (for context)
 
