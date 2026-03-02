@@ -33,6 +33,7 @@ pub(in crate::ui) fn set_theme(app: &mut App, name: &str) -> anyhow::Result<()> 
     let spec = theme::load_theme(&app.config_path, &name)?;
     app.theme_name = name.clone();
     app.theme = spec;
+    app.reset_dashboard_image();
     app.persist_config();
     app.set_info(format!("theme: {name}"));
     Ok(())
@@ -107,6 +108,7 @@ pub(in crate::ui) fn reload_active_theme_after_edit(app: &mut App, name: &str) {
         Ok(spec) => {
             if app.theme_name == name {
                 app.theme = spec;
+                app.reset_dashboard_image();
             }
         }
         Err(e) => {
