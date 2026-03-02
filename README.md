@@ -1,33 +1,55 @@
 # containr
 
-Lokales TUI-Dashboard im Midnight-Commander-Stil fuer Docker-Container auf Remote-Hosts via `ssh` (oder lokal).
+`containr` is a terminal UI for managing Docker and Podman workloads locally or on remote hosts via `ssh`.
 
-## Offiziell unterstuetzte Plattformen
+The current `0.5.0` target platforms are:
 
-- Linux: Hauptzielplattform fuer lokale und entfernte Docker/Podman-Workflows
-- macOS: unterstuetzte Entwicklungs- und Client-Plattform, inklusive lokalem Docker-Setup
+- Linux: primary platform for local and remote Docker/Podman workflows
+- macOS: supported development and client platform, including local Docker setups
 
-Nicht Teil des `0.5.0`-Supports:
+Not part of the `0.5.0` support matrix:
 
 - `*BSD`
 - Windows
 
-Andere Plattformen koennen im Einzelfall funktionieren, gelten derzeit aber nur als best effort.
+Other platforms may work on a best-effort basis, but are not currently validated.
 
-## Voraussetzungen
+## Highlights
 
-- macOS/Linux lokal: `ssh` im PATH (Keys/Agent/`~/.ssh/config` wie ueblich)
-- Remote: Docker installiert; dein SSH-User darf `docker ps` und `docker stats` ausfuehren
-  - falls noetig: `--docker-cmd "sudo docker"` (und sudo ohne Passwort)
+- Single-shell TUI with sidebar, dashboard, lists, details, overlays, and docked messages
+- Remote execution through system `ssh`
+- Local Docker/Podman support through `target = "local"`
+- Containers, stacks, images, volumes, networks, templates, registries, themes, and messages
+- Template-based deploy/redeploy workflows with Git integration
+- Inspect and logs views with search, scrolling, and clipboard copy
+- Theme selector with preview plus built-in and user override themes
 
-## Start
+## Requirements
+
+- Local Linux/macOS machine with `ssh` in `PATH`
+- Remote host with Docker or Podman installed
+- SSH user must be able to run `docker` / `podman` commands used by containr
+- Optional:
+  - `git` for template versioning
+  - configured editor via `editor_cmd` or `$EDITOR`
+
+## Quick start
+
+Run directly against a target:
 
 ```bash
 cd linux/containr
 cargo run -- --target user@server
 ```
 
-Optional:
+Run against a named server from the config:
+
+```bash
+cd linux/containr
+cargo run -- --server rpi5
+```
+
+Useful options:
 
 ```bash
 cargo run -- --target user@server --refresh-secs 2
@@ -37,24 +59,25 @@ cargo run -- --target user@server --mouse
 cargo run -- --target user@server --ascii-only
 ```
 
-## Release Build
+Release build:
 
 ```bash
 cd linux/containr
 cargo build --release
 ```
 
-## macOS Installation Script
+## Installation
 
-Fuer eine lokale macOS-Installation aus dem aktuellen Source-Tree:
+### macOS
+
+System-wide install:
 
 ```bash
 cd linux/containr
 ./packaging/macos/install.sh
 ```
 
-Eine systemweite Installation unter `/usr/local` benoetigt je nach Setup `sudo`.
-Fuer eine reine User-Installation ohne `sudo`:
+User-local install without `sudo`:
 
 ```bash
 cd linux/containr
@@ -62,20 +85,13 @@ cd linux/containr
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Default-Installationspfade:
+Default paths:
 
-- Binary-Payload: `/usr/local/libexec/containr/containr`
-- Wrapper: `/usr/local/bin/containr`
-- Themes: `/usr/local/share/containr/themes`
+- binary payload: `/usr/local/libexec/containr/containr`
+- wrapper: `/usr/local/bin/containr`
+- themes: `/usr/local/share/containr/themes`
 
-Optional:
-
-```bash
-./packaging/macos/install.sh --prefix "$HOME/.local"
-./packaging/macos/install.sh --skip-build --source-binary target/release/containr
-```
-
-Deinstallation:
+Uninstall:
 
 ```bash
 ./packaging/macos/uninstall.sh
@@ -83,17 +99,16 @@ Deinstallation:
 ./packaging/macos/uninstall.sh --keep-themes
 ```
 
-## Linux Installation Script
+### Linux
 
-Fuer eine lokale Linux-Installation aus dem aktuellen Source-Tree:
+System-wide install:
 
 ```bash
 cd linux/containr
 ./packaging/linux/install.sh
 ```
 
-Eine systemweite Installation unter `/usr/local` benoetigt typischerweise `sudo`.
-Fuer eine reine User-Installation ohne `sudo`:
+User-local install without `sudo`:
 
 ```bash
 cd linux/containr
@@ -101,19 +116,12 @@ cd linux/containr
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Default-Installationspfade:
+Default paths:
 
-- Binary: `/usr/local/bin/containr`
-- Themes: `/usr/local/share/containr/themes`
+- binary: `/usr/local/bin/containr`
+- themes: `/usr/local/share/containr/themes`
 
-Optional:
-
-```bash
-./packaging/linux/install.sh --prefix "$HOME/.local"
-./packaging/linux/install.sh --skip-build --source-binary target/release/containr
-```
-
-Deinstallation:
+Uninstall:
 
 ```bash
 ./packaging/linux/uninstall.sh
@@ -121,16 +129,16 @@ Deinstallation:
 ./packaging/linux/uninstall.sh --keep-themes
 ```
 
-## Serverliste (lokal)
+## Configuration
 
-Containr kann eine lokale Konfiguration laden/speichern:
+Config path:
 
-- Pfad: `$XDG_CONFIG_HOME/containr/config.json`
-- Fallback: `$HOME/.config/containr/config.json`
+- `$XDG_CONFIG_HOME/containr/config.json`
+- fallback: `$HOME/.config/containr/config.json`
 
-Legacy: falls die neue Datei nicht existiert, werden auch `servers.json`/`serverlist.json` (containr/mcdoc/dockdash) eingelesen.
+Legacy configs such as older `servers.json` / `serverlist.json` files are migrated on read when possible.
 
-Beispiel:
+Minimal example:
 
 ```json
 {
@@ -148,17 +156,9 @@ Beispiel:
 }
 ```
 
-Wichtig: Es werden keine Passwoerter/Secrets gespeichert (nur SSH-Ziel/Port/Identity-Pfad und optional `docker_cmd` wie `"sudo docker"`).
+No passwords or registry secrets are stored in the server config.
 
-Verwendung:
-
-- `cargo run -- --server rpi5` nutzt einen Eintrag aus der Serverliste.
-- `--target ...` verbindet direkt; das Target wird (wenn noetig) in die Liste geschrieben/aktualisiert.
-- In der TUI: `F1` oeffnet die Serverauswahl. Die Auswahl wird als `last_server` gespeichert.
-
-### Local Docker (ohne SSH)
-
-Als Target kann auch `"local"` verwendet werden (dann wird lokal `docker ...` ausgefuehrt):
+Local Docker/Podman is configured as:
 
 ```json
 {
@@ -168,122 +168,73 @@ Als Target kann auch `"local"` verwendet werden (dann wird lokal `docker ...` au
 }
 ```
 
-## Features
+## Themes
 
-- MC-UI: Function-Key-Leiste (`F1..F10`), Dialoge mit OK/Cancel, Maus optional
-- Remote-Ausfuehrung ueber System-`ssh` (keine SSH-Library)
-- Containerliste inkl. `docker stats` (CPU/Mem) + Ports
-- IP-Anzeige fuer laufende Container (aus `docker inspect`, batched, gecached)
-- Health-Highlighting aus `STATUS` (healthy/unhealthy/starting)
-- Action-Status: Start/Stop/Restart zeigt einen Spinner am Container, bis sich der Status konsistent aktualisiert
-- Dual-Pane: links Liste, rechts Details (Toggle via `Ctrl-D`)
-- Inspect-Viewer (JSON Tree) mit Folding, Suche, Copy/Path
-- Logs-Viewer mit Suche + Highlight, Home/End, Scrollbar
-- Server-Shell als echte interaktive Shell ausserhalb der TUI (Container-Console ist vorbereitet, wird spaeter ins Menu integriert)
-- Multi-Select/Bulk Actions (Markierungen ueber Refresh hinweg)
-- Stack/Tree-View: Compose/Swarm Stacks als Header + Expand/Collapse
+Theme lookup order:
 
-## UI-Modi
+1. user overrides in the config directory
+2. bundled `themes/` near the workspace / installation
+3. system themes in `/usr/local/share/containr/themes` and `/usr/share/containr/themes`
 
-### Flat vs Tree (Stacks)
+Useful commands:
 
-Tree-View gruppiert Container nach Stack-Namen aus Labels:
+- `:theme list`
+- `:theme use <name>`
+- `:theme edit [name]`
+- `:theme new <name>`
+- `:theme rm <name>`
 
-- Compose: `com.docker.compose.project`
-- Swarm: `com.docker.stack.namespace`
+## Common commands
 
-In Tree-View erscheinen Stacks als uebergeordnete Zeilen (Header) und Container darunter eingerueckt.
+Help and messages:
 
-### Split Details (angedockt)
+- `F1` or `:help`
+- `:messages`
+- `:messages save <file>`
+- `:log dock [3..12]`
 
-`Ctrl-D` schaltet zwischen:
+Servers:
 
-- Dialog-Details (per Enter auf Container) und
-- angedockten Details (rechts neben der Liste) um.
+- `:server add <name> ssh <target> [-p <port>] [-i <identity>] [--cmd <docker|podman>]`
+- `:server add <name> local [--cmd <docker|podman>]`
+- `:server select <name>`
 
-In Split-Mode werden in der Liste einige Spalten ausgeblendet (um Platz fuer Details zu schaffen).
+Templates:
 
-### Markierungen (Bulk Select)
+- `:template add <name>`
+- `:template edit [name]`
+- `:template deploy [--pull] [--recreate] [name]`
+- `:template rm [name]`
+- `:templates toggle`
 
-- Markierte Container bleiben ueber Refresh-Zyklen erhalten.
-- Serverwechsel verwirft alle Markierungen.
+Git in templates:
 
-## Keybindings
+- `:git status`
+- `:git diff`
+- `:git log`
+- `:git commit -m "..."`
 
-### Global / Main Screen
+## Key defaults
 
-Menu:
+The exact keymap is configurable. The important defaults are:
 
-- `F9` Menu (wie Midnight Commander), Navigation mit `Left/Right/Up/Down`, `Enter` waehlt, `Esc` schliesst
-- `Left`/`Right` im Menu waehlt das Ziel-Pane, `Down` oeffnet das Submenu; dort: `Details/Containers/Images/Volumes/Networks`
-- `Tab` wechselt den aktiven Pane (Fokus)
-- `Ctrl-W` swaps Left/Right panes (Fallback: `Ctrl-,` / `Ctrl-<` je nach Terminal)
+- `F1`: help
+- `Tab` / `Shift-Tab`: cycle focus
+- `:`: command line
+- `^b`: toggle sidebar
+- `^g`: open messages
+- `^p`: toggle split layout where supported
+- `^u`: stack update
+- `^U`: stack update `--all`
+- `^y`: template deploy
+- `^Y`: template deploy with recreate and pull
 
-- `F1` Servers
-- `F2` Inspect (auf Container)
-- `F3` Logs (auf Container)
-- `F4` Actions (auf Auswahl / Marks / Stack)
-- `F5` Refresh
-- `F7` Console (Container exec)
-- `F8` SSH (Server Shell)
-- `F10` Exit (funktioniert immer, auch in Overlays)
+For the full current command and keybinding reference, use the built-in help view and `:map list`.
 
-Fallback fuer Terminals ohne F-Tasten:
+## Documentation
 
-- `Esc-1..Esc-9` => `F1..F9` (nur Hauptscreen)
-- `Esc-0` => `F10` (immer)
-
-Falls `Alt+<Buchstabe>` vom Terminal nicht als Modifier gesendet wird, funktionieren die Menue-Mnemonics auch als `Esc` dann Buchstabe (innerhalb ~2s): `Esc-v`, `Esc-c`, `Esc-i`, `Esc-o`, `Esc-n`.
-
-Navigation:
-
-- `Up/Down` oder `j/k` Auswahl
-- `PageUp/PageDown` scrollt
-- `Home/End` (wo unterstuetzt) springt
-
-### Split/Tree/Marking
-
-- `Ctrl-D` Toggle Dual-Pane (Details rechts)
-- `Ctrl-T` oder `Ctrl-S` Toggle Tree/Stack-View
-- `Ctrl-E` Expand/Collapse all Stacks (synchron)
-- `Space`
-  - auf Stack-Header: expand/collapse
-  - auf Container: mark/unmark
-- `Ctrl-A` Mark all containers
-- `Ctrl-N` Clear all marks
-
-### Actions Dialog
-
-- `Up/Down` Aktion waehlen
-- `Left/Right` OK/Cancel waehlen
-- `Enter` OK fuehrt aus, Cancel schliesst
-- `Esc` schliesst
-
-Actions Scope:
-
-- Wenn ein Stack-Header selektiert ist: Action geht auf alle Container des Stacks.
-- Sonst, wenn Markierungen existieren: Action geht auf alle markierten Container.
-- Sonst: Action geht auf den selektierten Container.
-
-### Servers Dialog
-
-- `Up/Down` Server waehlen
-- `Left/Right` OK/Cancel waehlen
-- `Enter` OK aktiviert Server, Cancel schliesst
-- `Esc` Cancel
-
-### Inspect Dialog (JSON Tree)
-
-- Navigation: `Up/Down` (oder `j/k`), `PageUp/PageDown`
-- Folding: `Enter`/`Space` toggle, `Left/Right` fold/unfold
-- Search: `/` (Enter to commit), Treffer: `n` / `N`
-- Commands: `:` (Enter to run)
-- Copy: `y` (pretty), `c` (compact), `p` (path)
-- `Esc` schliesst
-
-### Logs Dialog
-
-- Scroll: `Up/Down`, `PageUp/PageDown`, `Home/End`
-- Search: `/` (Enter to commit), Treffer: `n` / `N`
-- Reload: `r`
-- `Esc` schliesst
+- release checklist: [docs/testing-checklist.md](/Users/mag/codex/linux/containr/docs/testing-checklist.md)
+- roadmap: [docs/roadmap-priorities.md](/Users/mag/codex/linux/containr/docs/roadmap-priorities.md)
+- release prep: [docs/release-prep.md](/Users/mag/codex/linux/containr/docs/release-prep.md)
+- user guide (DE): [docs/user_guide_de.md](/Users/mag/codex/linux/containr/docs/user_guide_de.md)
+- code map: [docs/code-map-ui.md](/Users/mag/codex/linux/containr/docs/code-map-ui.md)

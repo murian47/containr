@@ -11,7 +11,7 @@
   - `cargo fmt --check`
   - `cargo clippy --all-targets --all-features -- -D warnings`
   - `cargo test`
-- Manual smoke test of core flows:
+- Manual smoke test of core flows complete:
   - Stacks: start/stop/restart/update, update-all.
   - Containers: logs/inspect/console, start/stop/restart/remove.
   - Templates: add/edit/deploy/redeploy/remove, git status/commit/push.
@@ -26,7 +26,8 @@
 - Supported platform statement for `v0.5.0`: Linux + macOS only.
 
 Current gap before public release:
-- Manual smoke checklist in `docs/testing-checklist.md` still needs an explicit pass and sign-off.
+- final version bump and tag for `v0.5.0`
+- publish release artefacts / packaging metadata
 
 ## Polish / Edge Cases
 - Reduce log noise and confusing warnings.
