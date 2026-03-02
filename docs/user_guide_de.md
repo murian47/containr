@@ -112,6 +112,5 @@ Wichtige Felder:
 - AGE-verschlüsselte Secrets werden unterstützt, aber nachrangig.
 
 ## 20. Roadmap
-- `docs/release_plan_security.md`
 - `docs/roadmap-priorities.md`
-- `docs/readability-refactor-pr-plan.md`
+- `docs/release-prep.md`

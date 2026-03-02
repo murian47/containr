@@ -11,32 +11,23 @@ Purpose: quick relevance map for all files in `docs/`.
 - `features-status.md`
 - `roadmap-priorities.md`
 - `release-prep.md`
-- `release_plan_security.md`
 - `registry_auth.md`
 - `testing-approach.md`
 - `testing-checklist.md`
 - `code-map-ui.md`
-- `readability-refactor-pr-plan.md`
 
 ## Active (feature concepts / implementation guidance)
 
 - `concept-ai-templates.md`
 - `concept-stack-update.md`
 - `concept-stacks-templates.md`
-- `plan-stack-update-mvp.md`
 
 ## Deprioritized concepts
 
 - `concept-command-placeholders.md` (currently out of scope)
 
-## Historical / superseded planning context
-
-- `ui_refactor_plan.md` (legacy plan around `render.inc.rs`, kept for traceability)
-- `ui-logic-separation-plan.md` (high-level long-term architecture notes)
-- `ui_mod_refactor_plan.md` (historical plan; completed and kept for traceability)
-
 ## Open TODO Summary
 
 1. Extend deployment history/rollback UX.
 2. Improve registry auth UX (keyring/ENV/age setup guidance and error clarity).
-3. Execute release hardening checklist and CI baseline.
+3. Publish `v0.5.0` release artefacts and packaging metadata.
