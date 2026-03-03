@@ -228,5 +228,6 @@ For the full current command and keybinding reference, use the built-in help vie
 - release checklist: `docs/testing-checklist.md`
 - roadmap: `docs/roadmap-priorities.md`
 - release prep: `docs/release-prep.md`
+- AI agents in project work: `docs/ai-agents.md`
 - user guide (DE): `docs/user_guide_de.md`
 - code map: `docs/code-map-ui.md`

@@ -6,6 +6,7 @@ Purpose: quick relevance map for all files in `docs/`.
 
 ## Active (current operational docs)
 
+- `ai-agents.md`
 - `user_guide_de.md`
 - `user_guide_en.de`
 - `features-status.md`
