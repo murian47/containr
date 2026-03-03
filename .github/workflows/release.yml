@@ -51,4 +51,5 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: .github/release-notes/v0.5.0.md
           files: dist/**/*
