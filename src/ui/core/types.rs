@@ -311,6 +311,8 @@ pub(in crate::ui) struct DashboardHostState {
 #[derive(Clone, Debug, Default)]
 pub(in crate::ui) struct DashboardAllState {
     pub(in crate::ui) hosts: Vec<DashboardHostState>,
+    pub(in crate::ui) scroll_top: usize,
+    pub(in crate::ui) page_rows: usize,
 }
 
 pub(in crate::ui) struct DashboardImageState {

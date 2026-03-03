@@ -8,6 +8,7 @@ use ratatui_image::{Resize, StatefulImage};
 use crate::ui::core::runtime::current_server_label;
 use crate::ui::render::format::{bar_spans_gradient, bar_spans_threshold, format_bytes_short};
 use crate::ui::render::messages::format_session_ts;
+use crate::ui::render::scroll::draw_shell_scrollbar_v;
 use crate::ui::render::utils::{theme_color, truncate_end};
 use crate::ui::state::app::App;
 use crate::ui::theme;
@@ -520,7 +521,28 @@ fn render_dashboard_all(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let card_h = 8u16.min(inner.height);
     let gap_x = 2u16;
     let gap_y = 1u16;
-    let cols = ((inner.width + gap_x) / (card_w + gap_x)).max(1) as usize;
+    let show_scrollbar = inner.width > card_w;
+    let layout = if show_scrollbar {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(inner)
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(1), Constraint::Length(0)])
+            .split(inner)
+    };
+    let content = layout[0];
+    let scrollbar = layout[1];
+    let cols = ((content.width + gap_x) / (card_w + gap_x)).max(1) as usize;
+    let total_rows = app.dashboard_all.hosts.len().div_ceil(cols);
+    let row_span = card_h.saturating_add(gap_y).max(1);
+    let visible_rows = ((content.height + gap_y) / row_span).max(1) as usize;
+    let max_scroll = total_rows.saturating_sub(visible_rows);
+    let top_row = app.dashboard_all.scroll_top.min(max_scroll);
+    app.dashboard_all.scroll_top = top_row;
+    app.dashboard_all.page_rows = visible_rows.max(1);
 
     let ok = card.patch(app.theme.text_ok.to_style());
     let warn = card.patch(app.theme.text_warn.to_style());
@@ -529,18 +551,23 @@ fn render_dashboard_all(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let faint = card.patch(app.theme.text_faint.to_style());
 
     for (idx, host) in app.dashboard_all.hosts.iter().enumerate() {
-        let col = (idx % cols) as u16;
-        let row = (idx / cols) as u16;
-        let x = inner.x.saturating_add(col * (card_w + gap_x));
-        let y = inner.y.saturating_add(row * (card_h + gap_y));
-        if x >= inner.x + inner.width || y >= inner.y + inner.height {
+        let col = idx % cols;
+        let row = idx / cols;
+        if row < top_row || row >= top_row.saturating_add(visible_rows) {
+            continue;
+        }
+        let col = col as u16;
+        let row = (row - top_row) as u16;
+        let x = content.x.saturating_add(col * (card_w + gap_x));
+        let y = content.y.saturating_add(row * (card_h + gap_y));
+        if x >= content.x + content.width || y >= content.y + content.height {
             continue;
         }
         let rect = Rect {
             x,
             y,
-            width: card_w.min(inner.x + inner.width - x),
-            height: card_h.min(inner.y + inner.height - y),
+            width: card_w.min(content.x + content.width - x),
+            height: card_h.min(content.y + content.height - y),
         };
 
         f.render_widget(Block::default().style(card), rect);
@@ -666,6 +693,19 @@ fn render_dashboard_all(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             height: rect.height,
         };
         f.render_widget(para, text_rect);
+    }
+
+    if show_scrollbar {
+        draw_shell_scrollbar_v(
+            f,
+            scrollbar,
+            top_row,
+            max_scroll,
+            total_rows,
+            visible_rows,
+            app.ascii_only,
+            &app.theme,
+        );
     }
 }
 

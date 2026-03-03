@@ -108,6 +108,8 @@ impl App {
             }
         }
         self.dashboard_all.hosts = hosts;
+        self.dashboard_all.scroll_top = 0;
+        self.dashboard_all.page_rows = 1;
         let _ = dash_all_enabled_tx.send(true);
         let _ = dash_all_refresh_tx.send(());
         self.set_main_view(ShellView::Dashboard);

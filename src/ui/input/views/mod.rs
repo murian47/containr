@@ -69,7 +69,7 @@ pub(super) fn handle_view_navigation(app: &mut App, key: KeyEvent, ctx: &InputCt
     }
 
     match app.shell_view {
-        ShellView::Dashboard => {}
+        ShellView::Dashboard => handle_dashboard_navigation(app, key),
         ShellView::Stacks
         | ShellView::Containers
         | ShellView::Images
@@ -81,5 +81,42 @@ pub(super) fn handle_view_navigation(app: &mut App, key: KeyEvent, ctx: &InputCt
             overlays::handle_overlay_navigation(app, key)
         }
         ShellView::ThemeSelector => {}
+    }
+}
+
+fn handle_dashboard_navigation(app: &mut App, key: KeyEvent) {
+    if !app.server_all_selected {
+        return;
+    }
+
+    let page = app.dashboard_all.page_rows.max(1);
+    let total = app.dashboard_all.hosts.len();
+
+    match key.code {
+        KeyCode::Up => {
+            app.dashboard_all.scroll_top = app.dashboard_all.scroll_top.saturating_sub(1);
+        }
+        KeyCode::Down => {
+            app.dashboard_all.scroll_top = app.dashboard_all.scroll_top.saturating_add(1);
+        }
+        KeyCode::PageUp => {
+            app.dashboard_all.scroll_top = app.dashboard_all.scroll_top.saturating_sub(page);
+        }
+        KeyCode::PageDown => {
+            app.dashboard_all.scroll_top = app.dashboard_all.scroll_top.saturating_add(page);
+        }
+        KeyCode::Home => {
+            app.dashboard_all.scroll_top = 0;
+        }
+        KeyCode::End => {
+            app.dashboard_all.scroll_top = total;
+        }
+        KeyCode::Char('k') if key.modifiers.is_empty() => {
+            app.dashboard_all.scroll_top = app.dashboard_all.scroll_top.saturating_sub(1);
+        }
+        KeyCode::Char('j') if key.modifiers.is_empty() => {
+            app.dashboard_all.scroll_top = app.dashboard_all.scroll_top.saturating_add(1);
+        }
+        _ => {}
     }
 }

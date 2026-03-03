@@ -88,6 +88,8 @@ impl App {
                     latency_ms: None,
                 })
                 .collect(),
+            scroll_top: 0,
+            page_rows: 1,
         };
         let mut app = Self {
             containers: Vec::new(),
