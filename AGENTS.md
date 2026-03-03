@@ -2,7 +2,7 @@
 
 ## Project Scope
 - TUI‑basierter Docker/Stack/Template Manager in Rust.
-- Hauptpfad: `linux/containr`.
+- Hauptpfad: Repo-Wurzel `.`.
 - Netzwerkzugriff: laut Vorgaben der CLI (hier: restricted).
 
 ## Build & Test

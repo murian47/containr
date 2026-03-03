@@ -39,14 +39,12 @@ Other platforms may work on a best-effort basis, but are not currently validated
 Run directly against a target:
 
 ```bash
-cd linux/containr
 cargo run -- --target user@server
 ```
 
 Run against a named server from the config:
 
 ```bash
-cd linux/containr
 cargo run -- --server rpi5
 ```
 
@@ -63,7 +61,6 @@ cargo run -- --target user@server --ascii-only
 Release build:
 
 ```bash
-cd linux/containr
 cargo build --release
 ```
 
@@ -74,14 +71,12 @@ cargo build --release
 System-wide install:
 
 ```bash
-cd linux/containr
 ./packaging/macos/install.sh
 ```
 
 User-local install without `sudo`:
 
 ```bash
-cd linux/containr
 ./packaging/macos/install.sh --prefix "$HOME/.local"
 export PATH="$HOME/.local/bin:$PATH"
 ```
@@ -105,14 +100,12 @@ Uninstall:
 System-wide install:
 
 ```bash
-cd linux/containr
 ./packaging/linux/install.sh
 ```
 
 User-local install without `sudo`:
 
 ```bash
-cd linux/containr
 ./packaging/linux/install.sh --prefix "$HOME/.local"
 export PATH="$HOME/.local/bin:$PATH"
 ```
