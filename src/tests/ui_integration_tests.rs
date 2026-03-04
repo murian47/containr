@@ -203,8 +203,10 @@ async fn integration_stack_deploy_and_lifecycle() -> anyhow::Result<()> {
     let ctx = it_context()?;
     let mut app = mk_integration_app(ctx.templates_dir.clone());
     let stack_name = mk_unique(&format!("{}-it-stack", app_meta::PRODUCT_NAME), ctx.stamp);
-    let container_name =
-        mk_unique(&format!("{}-it-container", app_meta::PRODUCT_NAME), ctx.stamp);
+    let container_name = mk_unique(
+        &format!("{}-it-container", app_meta::PRODUCT_NAME),
+        ctx.stamp,
+    );
 
     let stacks_dir = app.stack_templates_dir();
     fs::create_dir_all(&stacks_dir)?;
