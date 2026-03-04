@@ -31,15 +31,22 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
-      - name: Prepare artifact
+      - name: Prepare release bundle
         run: |
-          mkdir -p dist
-          cp target/${{ matrix.target }}/release/containr dist/${{ matrix.artifact_name }}
+          bundle_dir="dist/${{ matrix.artifact_name }}"
+          archive_path="dist/${{ matrix.artifact_name }}.tar.gz"
+          mkdir -p "${bundle_dir}"
+          cp target/${{ matrix.target }}/release/containr "${bundle_dir}/containr"
+          cp README.md CHANGELOG.md LICENSE "${bundle_dir}/"
+          cp -R themes "${bundle_dir}/themes"
+          cp -R docs "${bundle_dir}/docs"
+          cp -R packaging "${bundle_dir}/packaging"
+          tar -C dist -czf "${archive_path}" "${{ matrix.artifact_name }}"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: dist/${{ matrix.artifact_name }}
+          path: dist/${{ matrix.artifact_name }}.tar.gz
 
   release:
     needs: build

@@ -199,12 +199,16 @@ Templates:
 - `:template rm [name]`
 - `:templates toggle`
 
-Git in templates:
+Git in file-backed workspaces:
 
-- `:git status`
-- `:git diff`
-- `:git log`
-- `:git commit -m "..."`
+- `:git templates status`
+- `:git templates diff`
+- `:git templates log`
+- `:git templates commit -m "..."`
+- `:git themes status`
+- `:git themes diff`
+- `:git themes log`
+- `:git themes commit -m "..."`
 
 ## Key defaults
 
