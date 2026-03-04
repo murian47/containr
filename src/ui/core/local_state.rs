@@ -1,3 +1,4 @@
+use crate::app_meta;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -7,14 +8,10 @@ use super::types::{ImageUpdateEntry, RateLimitEntry, RegistryTestEntry, Template
 pub(in crate::ui) fn image_updates_path() -> PathBuf {
     if let Ok(root) = std::env::var("XDG_STATE_HOME") {
         let root = PathBuf::from(root);
-        return root.join("containr").join("state.json");
+        return app_meta::state_root_from_xdg(&root).join("state.json");
     }
     if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home)
-            .join(".local")
-            .join("state")
-            .join("containr")
-            .join("state.json");
+        return app_meta::state_root_from_home(&PathBuf::from(home)).join("state.json");
     }
     PathBuf::from("state.json")
 }

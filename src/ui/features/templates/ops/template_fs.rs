@@ -86,7 +86,7 @@ services:
       timeout: 5s
       retries: 3
 
-    # Optional: labels (containr can add its own labels during deploy later)
+    # Optional: labels (the app can add its own labels during deploy later)
     labels:
       com.example.stack: "REPLACE_STACK_NAME"
 

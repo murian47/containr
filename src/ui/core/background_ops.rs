@@ -4,9 +4,10 @@
 //! deploy, update, push, and export flows. They should stay free of UI rendering concerns and
 //! return structured text/results that the UI can surface.
 
+use crate::app_meta;
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Context as _;
 
@@ -32,12 +33,12 @@ pub(in crate::ui) async fn perform_template_deploy(
     if docker.docker_cmd.is_empty() {
         anyhow::bail!("no server configured");
     }
-    // Deploys always target a per-template application directory under the remote/local containr
-    // config tree. That avoids requiring privileged paths and keeps redeploy/update predictable.
+    // Deploys always target a per-template application directory under the app config tree. That
+    // avoids requiring privileged paths and keeps redeploy/update predictable.
     let remote_dir = match runner {
         Runner::Local => {
             let home = std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME is not set"))?;
-            format!("{home}/.config/containr/apps/{name}")
+            app_meta::apps_dir_under_home(&home, name)
         }
         Runner::Ssh(_) => deploy_remote_dir_for(name),
     };
@@ -86,7 +87,7 @@ pub(in crate::ui) async fn run_with_local_compose_fallback(
 
             let home = std::env::var("HOME")
                 .map_err(|_| anyhow::anyhow!("HOME is not set for local compose fallback"))?;
-            let cfg_dir = PathBuf::from(home).join(".config/containr/docker-no-creds");
+            let cfg_dir = app_meta::docker_no_creds_dir(&home);
             fs::create_dir_all(&cfg_dir).map_err(|err| {
                 anyhow::anyhow!("failed to create local docker fallback dir: {err}")
             })?;
@@ -364,7 +365,7 @@ pub(in crate::ui) async fn perform_net_template_deploy(
     let remote_dir = match runner {
         Runner::Local => {
             let home = std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME is not set"))?;
-            format!("{home}/.config/containr/networks/{name}")
+            app_meta::networks_dir_under_home(&home, name)
         }
         Runner::Ssh(_) => deploy_remote_net_dir_for(name),
     };

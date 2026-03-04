@@ -5,6 +5,7 @@
 //! - Allow multiple theme files and switching between them.
 //! - Keep runtime code using semantic roles instead of hard-coded RGB values.
 
+use crate::app_meta;
 use anyhow::Context as _;
 use ratatui::style::{Color, Modifier, Style};
 use serde::{Deserialize, Serialize};
@@ -436,12 +437,18 @@ fn executable_theme_dirs() -> Vec<PathBuf> {
         push_unique_dir(
             &mut dirs,
             &mut seen,
-            exe_dir.join("../share/containr/themes"),
+            exe_dir
+                .join("../share")
+                .join(app_meta::CONFIG_NAMESPACE)
+                .join("themes"),
         );
         push_unique_dir(
             &mut dirs,
             &mut seen,
-            exe_dir.join("../../share/containr/themes"),
+            exe_dir
+                .join("../../share")
+                .join(app_meta::CONFIG_NAMESPACE)
+                .join("themes"),
         );
         push_unique_dir(&mut dirs, &mut seen, exe_dir.join("../Resources/themes"));
     }
@@ -450,10 +457,7 @@ fn executable_theme_dirs() -> Vec<PathBuf> {
 }
 
 fn system_theme_dirs() -> Vec<PathBuf> {
-    vec![
-        PathBuf::from("/usr/local/share/containr/themes"),
-        PathBuf::from("/usr/share/containr/themes"),
-    ]
+    app_meta::system_theme_dirs()
 }
 
 pub fn theme_search_dirs(config_path: &Path) -> Vec<PathBuf> {

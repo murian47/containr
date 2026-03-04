@@ -1,5 +1,6 @@
 //! Small UI helpers shared across commands/actions.
 
+use crate::app_meta;
 use crate::config::ServerEntry;
 use serde_json::Value;
 use std::fs;
@@ -22,8 +23,9 @@ pub(in crate::ui) fn shell_single_quote(s: &str) -> String {
 }
 
 pub(in crate::ui) fn extract_template_id(path: &PathBuf) -> Option<String> {
-    // Heuristic: find a "# containr_template_id: ..." line near the top of compose.yaml.
+    // Heuristic: find a generated template-id marker near the top of compose.yaml.
     let data = fs::read_to_string(path).ok()?;
+    let marker = format!("{}:", app_meta::TEMPLATE_ID_MARKER);
     for line in data.lines().take(40) {
         let l = line.trim_start();
         if !l.starts_with('#') {
@@ -34,10 +36,10 @@ pub(in crate::ui) fn extract_template_id(path: &PathBuf) -> Option<String> {
         }
         let body = l.trim_start_matches('#').trim_start();
         let low = body.to_ascii_lowercase();
-        if !low.starts_with("containr_template_id:") {
+        if !low.starts_with(&marker) {
             continue;
         }
-        let value = body["containr_template_id:".len()..].trim();
+        let value = body[marker.len()..].trim();
         if !value.is_empty() {
             return Some(value.to_string());
         }
@@ -52,18 +54,18 @@ pub(in crate::ui) fn ensure_template_id(path: &PathBuf) -> anyhow::Result<String
     let id = uuid::Uuid::new_v4().to_string();
     let data = fs::read_to_string(path).unwrap_or_default();
     let mut out = String::new();
-    out.push_str(&format!("# containr_template_id: {id}\n"));
+    out.push_str(&format!("# {}: {id}\n", app_meta::TEMPLATE_ID_MARKER));
     out.push_str(&data);
     fs::write(path, out)?;
     Ok(id)
 }
 
 pub(in crate::ui) fn deploy_remote_dir_for(name: &str) -> String {
-    format!(".config/containr/apps/{name}")
+    app_meta::apps_rel_dir(name)
 }
 
 pub(in crate::ui) fn deploy_remote_net_dir_for(name: &str) -> String {
-    format!(".config/containr/networks/{name}")
+    app_meta::networks_rel_dir(name)
 }
 
 pub(in crate::ui) fn shell_quote_with_home(s: &str) -> String {

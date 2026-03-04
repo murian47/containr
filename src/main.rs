@@ -1,3 +1,4 @@
+mod app_meta;
 mod config;
 mod docker;
 mod domain;
@@ -13,7 +14,7 @@ use std::time::Duration;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "containr",
+    name = env!("CARGO_PKG_NAME"),
     about = "Local TUI dashboard for remote Docker via SSH"
 )]
 struct Args {
@@ -25,7 +26,7 @@ struct Args {
 
     #[arg(
         long,
-        help = "Server name from ~/.config/containr/config.json (or $XDG_CONFIG_HOME)"
+        help = "Server name from the application config.json (or $XDG_CONFIG_HOME)"
     )]
     server: Option<String>,
 

@@ -1,3 +1,4 @@
+use crate::app_meta;
 use crate::config::{DockerCmd, RegistriesConfig, ServerEntry};
 use crate::docker::{self, ContainerAction, DockerCfg};
 use crate::runner::Runner;
@@ -35,7 +36,11 @@ fn mk_temp_path(prefix: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_else(|_| Duration::from_secs(0))
         .as_nanos();
-    dir.push(format!("containr-it-{prefix}-{now}-{}", std::process::id()));
+    dir.push(format!(
+        "{}-it-{prefix}-{now}-{}",
+        app_meta::PRODUCT_NAME,
+        std::process::id()
+    ));
     dir
 }
 
@@ -135,7 +140,7 @@ async fn integration_network_template_deploy_and_delete() -> anyhow::Result<()> 
     }
     let ctx = it_context()?;
     let mut app = mk_integration_app(ctx.templates_dir.clone());
-    let net_name = mk_unique("containr-it-net", ctx.stamp);
+    let net_name = mk_unique(&format!("{}-it-net", app_meta::PRODUCT_NAME), ctx.stamp);
 
     let net_dir = app.net_templates_dir().join(&net_name);
     fs::create_dir_all(&net_dir)?;
@@ -197,8 +202,9 @@ async fn integration_stack_deploy_and_lifecycle() -> anyhow::Result<()> {
     }
     let ctx = it_context()?;
     let mut app = mk_integration_app(ctx.templates_dir.clone());
-    let stack_name = mk_unique("containr-it-stack", ctx.stamp);
-    let container_name = mk_unique("containr-it-container", ctx.stamp);
+    let stack_name = mk_unique(&format!("{}-it-stack", app_meta::PRODUCT_NAME), ctx.stamp);
+    let container_name =
+        mk_unique(&format!("{}-it-container", app_meta::PRODUCT_NAME), ctx.stamp);
 
     let stacks_dir = app.stack_templates_dir();
     fs::create_dir_all(&stacks_dir)?;

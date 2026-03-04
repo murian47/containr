@@ -1,5 +1,6 @@
 //! Registry commands (`:registry ...`, `:registries ...`).
 
+use crate::app_meta;
 use crate::config::{RegistryAuth, RegistryEntry};
 use crate::ui::core::requests::ActionRequest;
 use crate::ui::core::secrets::{encrypt_age_secret, ensure_age_identity};
@@ -58,7 +59,7 @@ fn normalize_test_repo(raw: &str) -> String {
 
 fn ensure_default_identity_path(app: &mut App) -> String {
     if app.registries_cfg.age_identity.trim().is_empty() {
-        app.registries_cfg.age_identity = "~/.config/containr/age.key".to_string();
+        app.registries_cfg.age_identity = app_meta::default_age_identity_path();
     }
     app.registries_cfg.age_identity.clone()
 }

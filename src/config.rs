@@ -1,9 +1,10 @@
 //! On-disk configuration handling.
 //!
-//! The config file is JSON and stored under `$XDG_CONFIG_HOME/containr/config.json`
-//! (fallback: `$HOME/.config/containr/config.json`).
+//! The config file is JSON and stored under the application's config namespace in
+//! `$XDG_CONFIG_HOME` (fallback: `$HOME/.config`).
 //! No secrets are stored; only non-sensitive connection metadata and UI preferences.
 
+use crate::app_meta;
 use crate::shell_parse::parse_shell_tokens;
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
@@ -320,16 +321,13 @@ fn default_cmd_history_max() -> usize {
 
 fn default_templates_dir() -> String {
     if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
-        return Path::new(&dir)
-            .join("containr")
+        return app_meta::config_root_from_xdg(Path::new(&dir))
             .join("templates")
             .to_string_lossy()
             .to_string();
     }
     if let Ok(home) = std::env::var("HOME") {
-        return Path::new(&home)
-            .join(".config")
-            .join("containr")
+        return app_meta::config_root_from_home(Path::new(&home))
             .join("templates")
             .to_string_lossy()
             .to_string();
@@ -383,13 +381,10 @@ impl Default for ContainrConfig {
 pub fn config_path() -> anyhow::Result<PathBuf> {
     // Prefer XDG base dir spec, fall back to ~/.config.
     if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
-        return Ok(Path::new(&dir).join("containr").join("config.json"));
+        return Ok(app_meta::config_root_from_xdg(Path::new(&dir)).join("config.json"));
     }
     let home = std::env::var("HOME").context("HOME is not set (and XDG_CONFIG_HOME not set)")?;
-    Ok(Path::new(&home)
-        .join(".config")
-        .join("containr")
-        .join("config.json"))
+    Ok(app_meta::config_root_from_home(Path::new(&home)).join("config.json"))
 }
 
 pub fn registries_path(config_path: &Path) -> PathBuf {
@@ -403,7 +398,7 @@ pub fn load_registries(config_path: &Path) -> anyhow::Result<RegistriesConfig> {
     let path = registries_path(config_path);
     if !path.exists() {
         let cfg = RegistriesConfig {
-            age_identity: "~/.config/containr/age.key".to_string(),
+            age_identity: app_meta::default_age_identity_path(),
             registries: vec![RegistryEntry {
                 host: "docker.io".to_string(),
                 auth: RegistryAuth::Anonymous,
@@ -438,26 +433,16 @@ pub fn save_registries(path: &Path, cfg: &RegistriesConfig) -> anyhow::Result<()
 fn legacy_config_paths() -> anyhow::Result<Vec<PathBuf>> {
     let mut out: Vec<PathBuf> = Vec::new();
     if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
-        out.push(Path::new(&dir).join("containr").join("servers.json"));
-        out.push(Path::new(&dir).join("containr").join("serverlist.json"));
+        out.push(app_meta::config_root_from_xdg(Path::new(&dir)).join("servers.json"));
+        out.push(app_meta::config_root_from_xdg(Path::new(&dir)).join("serverlist.json"));
         out.push(Path::new(&dir).join("mcdoc").join("servers.json"));
         out.push(Path::new(&dir).join("mcdoc").join("serverlist.json"));
         out.push(Path::new(&dir).join("dockdash").join("serverlist.json"));
         return Ok(out);
     }
     let home = std::env::var("HOME").context("HOME is not set (and XDG_CONFIG_HOME not set)")?;
-    out.push(
-        Path::new(&home)
-            .join(".config")
-            .join("containr")
-            .join("servers.json"),
-    );
-    out.push(
-        Path::new(&home)
-            .join(".config")
-            .join("containr")
-            .join("serverlist.json"),
-    );
+    out.push(app_meta::config_root_from_home(Path::new(&home)).join("servers.json"));
+    out.push(app_meta::config_root_from_home(Path::new(&home)).join("serverlist.json"));
     out.push(
         Path::new(&home)
             .join(".config")

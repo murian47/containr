@@ -1,3 +1,4 @@
+use crate::app_meta;
 use std::collections::HashMap;
 
 use crate::config;
@@ -18,7 +19,7 @@ impl App {
     }
 
     pub(in crate::ui) fn registry_keyring_secret(&self, key: &str) -> anyhow::Result<String> {
-        let entry = keyring::Entry::new("containr", key)
+        let entry = keyring::Entry::new(app_meta::KEYRING_SERVICE, key)
             .map_err(|e| anyhow::anyhow!("keyring init failed: {e}"))?;
         entry
             .get_password()

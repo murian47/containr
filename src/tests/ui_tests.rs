@@ -1,3 +1,4 @@
+use crate::app_meta;
 use crate::config::{DockerCmd, RegistriesConfig, ServerEntry};
 use crate::docker::NetworkRow;
 use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
@@ -23,7 +24,8 @@ fn mk_temp_path(prefix: &str) -> PathBuf {
         .unwrap_or_else(|_| Duration::from_secs(0))
         .as_nanos();
     dir.push(format!(
-        "containr-tests-{prefix}-{now}-{}",
+        "{}-tests-{prefix}-{now}-{}",
+        app_meta::PRODUCT_NAME,
         std::process::id()
     ));
     dir
@@ -97,15 +99,19 @@ fn render_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buf
 #[test]
 fn resolve_output_path_puts_bare_filename_into_home() {
     let home = std::env::var_os("HOME").expect("HOME");
-    let resolved = crate::ui::render::utils::resolve_output_path("containr.log").expect("path");
-    assert_eq!(resolved, PathBuf::from(home).join("containr.log"));
+    let file = format!("{}.log", app_meta::PRODUCT_NAME);
+    let resolved = crate::ui::render::utils::resolve_output_path(&file).expect("path");
+    assert_eq!(resolved, PathBuf::from(home).join(file));
 }
 
 #[test]
 fn resolve_output_path_keeps_explicit_subpath() {
-    let resolved =
-        crate::ui::render::utils::resolve_output_path("logs/containr.log").expect("path");
-    assert_eq!(resolved, PathBuf::from("logs").join("containr.log"));
+    let file = format!("logs/{}.log", app_meta::PRODUCT_NAME);
+    let resolved = crate::ui::render::utils::resolve_output_path(&file).expect("path");
+    assert_eq!(
+        resolved,
+        PathBuf::from("logs").join(format!("{}.log", app_meta::PRODUCT_NAME))
+    );
 }
 
 #[test]

@@ -1,10 +1,8 @@
 //! Theme command implementation (`:theme ...`).
 //!
 //! Theme files are loaded from multiple sources:
-//! - user overrides: `$XDG_CONFIG_HOME/containr/themes/<name>.json`
-//! - fallback user dir: `$HOME/.config/containr/themes/<name>.json`
-//! - development/package dirs like `themes/` next to the workspace or binary
-//! - system install dirs like `/usr/local/share/containr/themes` and `/usr/share/containr/themes`
+//! user overrides, development/package dirs next to the workspace or binary,
+//! and system install locations.
 //!
 //! The active theme name is persisted in the main config file.
 

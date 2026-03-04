@@ -1,5 +1,6 @@
 //! Imperative UI actions invoked by shortcuts and menus.
 
+use crate::app_meta;
 use crate::docker::{ContainerAction, DockerCfg};
 use crate::ui::core::requests::ActionRequest;
 use crate::ui::core::runtime::{
@@ -565,9 +566,9 @@ pub(in crate::ui) fn stack_compose_dirs(
         let path = match runner {
             crate::runner::Runner::Local => {
                 let home = std::env::var("HOME").unwrap_or_default();
-                format!("{home}/.config/containr/apps/{name}")
+                app_meta::apps_dir_under_home(&home, &name)
             }
-            crate::runner::Runner::Ssh(_) => format!("$HOME/.config/containr/apps/{name}"),
+            crate::runner::Runner::Ssh(_) => format!("$HOME/{}", app_meta::apps_rel_dir(&name)),
         };
         out.push(path);
     }

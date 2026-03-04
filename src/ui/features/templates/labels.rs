@@ -1,3 +1,4 @@
+use crate::app_meta;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -9,7 +10,7 @@ pub(in crate::ui) fn template_id_from_labels(labels: &str) -> Option<String> {
         let Some((k, v)) = part.split_once('=') else {
             continue;
         };
-        if k.trim() == "app.containr.template_id" {
+        if k.trim() == app_meta::TEMPLATE_LABEL_ID {
             let value = v.trim();
             if !value.is_empty() {
                 return Some(value.to_string());
@@ -24,7 +25,7 @@ pub(in crate::ui) fn template_commit_from_labels(labels: &str) -> Option<String>
         let Some((k, v)) = part.split_once('=') else {
             continue;
         };
-        if k.trim() == "app.containr.commit" {
+        if k.trim() == app_meta::TEMPLATE_LABEL_COMMIT {
             let value = v.trim();
             if !value.is_empty() {
                 return Some(value.to_string());
@@ -74,31 +75,31 @@ fn inject_template_labels(
             if let Some(labels) = item_map.get_mut(&label_key) {
                 match labels {
                     YamlValue::Mapping(m) => {
-                        add_label_mapping(m, "app.containr.template_id", template_id);
+                        add_label_mapping(m, app_meta::TEMPLATE_LABEL_ID, template_id);
                         if let Some(commit) = template_commit {
-                            add_label_mapping(m, "app.containr.commit", commit);
+                            add_label_mapping(m, app_meta::TEMPLATE_LABEL_COMMIT, commit);
                         }
                     }
                     YamlValue::Sequence(seq) => {
-                        add_label_sequence(seq, "app.containr.template_id", template_id);
+                        add_label_sequence(seq, app_meta::TEMPLATE_LABEL_ID, template_id);
                         if let Some(commit) = template_commit {
-                            add_label_sequence(seq, "app.containr.commit", commit);
+                            add_label_sequence(seq, app_meta::TEMPLATE_LABEL_COMMIT, commit);
                         }
                     }
                     _ => {
                         let mut m = YamlMapping::new();
-                        add_label_mapping(&mut m, "app.containr.template_id", template_id);
+                        add_label_mapping(&mut m, app_meta::TEMPLATE_LABEL_ID, template_id);
                         if let Some(commit) = template_commit {
-                            add_label_mapping(&mut m, "app.containr.commit", commit);
+                            add_label_mapping(&mut m, app_meta::TEMPLATE_LABEL_COMMIT, commit);
                         }
                         *labels = YamlValue::Mapping(m);
                     }
                 }
             } else {
                 let mut m = YamlMapping::new();
-                add_label_mapping(&mut m, "app.containr.template_id", template_id);
+                add_label_mapping(&mut m, app_meta::TEMPLATE_LABEL_ID, template_id);
                 if let Some(commit) = template_commit {
-                    add_label_mapping(&mut m, "app.containr.commit", commit);
+                    add_label_mapping(&mut m, app_meta::TEMPLATE_LABEL_COMMIT, commit);
                 }
                 item_map.insert(label_key, YamlValue::Mapping(m));
             }
@@ -119,7 +120,7 @@ pub(in crate::ui) fn render_compose_with_template_id(
     let rendered = serde_yaml::to_string(&yaml)
         .map_err(|e| anyhow::anyhow!("compose render failed: {}", e))?;
     let mut tmp = tempfile::Builder::new()
-        .prefix("containr-compose-")
+        .prefix(app_meta::COMPOSE_TEMPFILE_PREFIX)
         .suffix(".yaml")
         .tempfile()?;
     tmp.write_all(rendered.as_bytes())?;

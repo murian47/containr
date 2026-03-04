@@ -1,3 +1,4 @@
+use crate::app_meta;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -55,7 +56,11 @@ pub(in crate::ui) fn ensure_age_identity(path: &Path) -> anyhow::Result<x25519::
     }
     let id = x25519::Identity::generate();
     let id_line = id.to_string();
-    let content = format!("# containr age identity\n{}\n", id_line.expose_secret());
+    let content = format!(
+        "# {} age identity\n{}\n",
+        app_meta::PRODUCT_NAME,
+        id_line.expose_secret()
+    );
     fs::write(path, content)
         .with_context(|| format!("failed to write age identity: {}", path.display()))?;
     Ok(id)
