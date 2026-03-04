@@ -162,6 +162,8 @@ Local Docker/Podman is configured as:
 
 ## Themes
 
+Bundled themes are based on [Ghostty](https://ghostty.org) themes and adapted for containr.
+
 Theme lookup order:
 
 1. user overrides in the config directory
