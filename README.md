@@ -22,6 +22,7 @@ Other platforms may work on a best-effort basis, but are not currently validated
 - Containers, stacks, images, volumes, networks, templates, registries, themes, and messages
 - Template-based deploy/redeploy workflows with Git integration
 - Inspect and logs views with search, scrolling, and clipboard copy
+- Dedicated deploy history view for stacks/templates
 - Theme selector with preview plus built-in and user override themes
 
 ## Requirements
@@ -200,6 +201,7 @@ Templates:
 - `:template deploy [--pull] [--recreate] [name]`
 - `:template rm [name]`
 - `:templates toggle`
+- `:history` (from Stacks/Templates opens deploy history view)
 
 Git in file-backed workspaces:
 
@@ -224,6 +226,7 @@ The exact keymap is configurable. The important defaults are:
 - `^p`: toggle split layout where supported
 - `^u`: stack update
 - `^U`: stack update `--all`
+- `^h`: open deploy history in Stacks/Templates
 - `^y`: template deploy
 - `^Y`: template deploy with recreate and pull
 

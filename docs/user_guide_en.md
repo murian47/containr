@@ -33,6 +33,7 @@
 - Actions: start, stop, restart, delete.
 - Recreate: `:stack recreate [--pull]`
 - Update: `:stack update`
+- Deploy history: `:history` or `C-h` opens a dedicated history view for the selected stack.
 
 ## 6. Containers
 - List in `Containers` view.
@@ -52,6 +53,7 @@
 - Paths: `~/.config/containr/templates/stacks` and `.../networks`.
 - Identity marker: `# containr_template_id=<uuid>` for deploy tracking.
 - Deploy: `:template deploy [--recreate] [--pull]`
+- Deploy history: `:history` or `C-h` opens a dedicated history view for the selected template.
 - Edit: Enter opens editor (`editor_cmd` -> `$EDITOR` -> `vi`).
 - Git: template directory supports optional git autocommit.
 
@@ -75,6 +77,12 @@
 - Save: `:messages save <path>`
 - Docked log panel: `log_dock_enabled` in config
 
+## 12a. Deploy History View
+- Open from `Stacks` or `Templates` via `:history` or `C-h`.
+- The view shows full deploy history entries (`timestamp`, `server`, `commit`).
+- Navigation: `Up/Down`, `PageUp/PageDown`, `Home/End`.
+- Return to previous view: `q`.
+
 ## 13. Image Updates
 - Check: `:image check`
 - Markers: green=ok, yellow=update, red=error, blue=rate-limit
@@ -97,7 +105,8 @@ Key fields:
 - Global: `F1` help, `C-g` messages, `C-b` sidebar toggle
 - Containers: `C-s`, `C-o`, `C-r`, `C-d`, `C-l`, `C-i`
 - Stacks: `C-s`, `C-o`, `C-r`, `C-d`, `C-u`
-- Templates: `C-e`, `C-n`, `C-y`, `C-S-Y`
+- Stacks: `C-h` (deploy history)
+- Templates: `C-e`, `C-n`, `C-y`, `C-S-Y`, `C-h` (deploy history)
 
 ## 16a. Keymap Customization
 - Scopes: `always`, `global`, `view:<name>`.

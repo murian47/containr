@@ -33,6 +33,7 @@
 - Aktionen: Start, Stop, Restart, Delete.
 - Recreate: `:stack recreate [--pull]`
 - Update: `:stack update`
+- Deploy-Historie: `:history` oder `C-h` öffnet einen eigenen History-View für den ausgewählten Stack.
 
 ## 6. Container
 - Liste: View `Containers`.
@@ -52,6 +53,7 @@
 - Pfad: `~/.config/containr/templates/stacks` und `.../networks`.
 - Identifikation: `# containr_template_id=<uuid>` für Deploy-Tracking.
 - Deploy: `:template deploy [--recreate] [--pull]`
+- Deploy-Historie: `:history` oder `C-h` öffnet einen eigenen History-View für das ausgewählte Template.
 - Editieren: Enter öffnet im Editor (`editor_cmd` -> `$EDITOR` -> `vi`).
 - Git: Templates-Verzeichnis kann Git-Autocommit nutzen.
 
@@ -75,6 +77,12 @@
 - Speichern: `:messages save <pfad>`
 - Log-Dock: `log_dock_enabled` in Config
 
+## 12a. Deploy-Historie
+- Aus `Stacks` oder `Templates` per `:history` oder `C-h` öffnen.
+- Der View zeigt die vollständigen Deploy-Einträge (`Zeitstempel`, `Server`, `Commit`).
+- Navigation: `Up/Down`, `PageUp/PageDown`, `Home/End`.
+- Zurück zur vorherigen Ansicht: `q`.
+
 ## 13. Image-Updates
 - Check: `:image check`
 - Marker: Grün=OK, Gelb=Update, Rot=Fehler, Blau=Rate-Limit
@@ -97,7 +105,16 @@ Wichtige Felder:
 - Global: `F1` Help, `C-g` Messages, `C-b` Sidebar toggle
 - Containers: `C-s`, `C-o`, `C-r`, `C-d`, `C-l`, `C-i`
 - Stacks: `C-s`, `C-o`, `C-r`, `C-d`, `C-u`
-- Templates: `C-e`, `C-n`, `C-y`, `C-S-Y`
+- Stacks: `C-h` (Deploy-Historie)
+- Templates: `C-e`, `C-n`, `C-y`, `C-S-Y`, `C-h` (Deploy-Historie)
+
+## 16a. Keymap-Anpassung
+- Scopes: `always`, `global`, `view:<name>`.
+- `:map` überschreibt eine bestehende Belegung für dieselbe Kombination aus `scope + key`; ein vorheriges `:unmap` ist nicht nötig.
+- `:unmap` deaktiviert die aktuell wirksame Belegung für `scope + key` und kann Standardverhalten wiederherstellen.
+- Änderungen über `:map` / `:unmap` werden sofort in der Config gespeichert.
+- Sidebar-Action-Zeilen bleiben immer Action-Zeilen; ihr Key-Hinweis zeigt den effektiv gemappten Shortcut.
+- Zusätzliche benutzerdefinierte Sidebar-Shortcut-Zeilen sind opt-in über `--sidebar` bei `:map`.
 
 ## 17. Troubleshooting
 - Verbindung: `:messages` prüfen; `docker_cmd`/SSH-Identity kontrollieren.
