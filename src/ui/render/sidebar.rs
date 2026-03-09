@@ -1,4 +1,6 @@
-use crate::ui::core::key_types::{KeyScope, parse_scope};
+use crate::ui::core::key_types::{
+    BindingHit, KeyScope, lookup_scoped_binding, parse_key_spec, parse_scope,
+};
 use crate::ui::core::view::shell_module_shortcut;
 use crate::ui::render::text::truncate_end;
 use crate::ui::render::utils::{draw_focus_accent, shell_row_highlight};
@@ -9,21 +11,44 @@ use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub(in crate::ui) struct SidebarShortcut {
     pub(in crate::ui) key: String,
+    pub(in crate::ui) key_hint: String,
     pub(in crate::ui) cmd: String,
     pub(in crate::ui) label: String,
 }
 
+fn sidebar_key_hint(key: &str) -> String {
+    let Ok(spec) = parse_key_spec(key) else {
+        return key.to_string();
+    };
+    match (spec.mods, spec.code) {
+        (1, crate::ui::core::key_types::KeyCodeNorm::Char(c)) => format!("^{c}"),
+        (3, crate::ui::core::key_types::KeyCodeNorm::Char(c)) => {
+            format!("^{}", c.to_ascii_uppercase())
+        }
+        _ => key.to_string(),
+    }
+}
+
 pub(in crate::ui) fn shell_sidebar_shortcuts(app: &App) -> Vec<SidebarShortcut> {
-    let mut out: Vec<SidebarShortcut> = app
+    #[derive(Clone)]
+    struct MarkedShortcut {
+        scope: KeyScope,
+        key: String,
+        label: Option<String>,
+    }
+
+    let marked: Vec<MarkedShortcut> = app
         .keymap
         .iter()
         .filter(|kb| kb.show_in_sidebar)
         .filter_map(|kb| {
             let scope = parse_scope(&kb.scope)?;
+            let _spec = parse_key_spec(&kb.key).ok()?;
             let scope_active = match scope {
                 KeyScope::Always | KeyScope::Global => true,
                 KeyScope::View(v) => v == app.shell_view,
@@ -35,18 +60,80 @@ pub(in crate::ui) fn shell_sidebar_shortcuts(app: &App) -> Vec<SidebarShortcut> 
             if cmd.is_empty() {
                 return None;
             }
-            Some(SidebarShortcut {
+            Some(MarkedShortcut {
+                scope,
                 key: kb.key.trim().to_string(),
-                cmd: format!(":{}", cmd.trim_start_matches(':')),
                 label: kb
                     .sidebar_label
                     .as_deref()
                     .filter(|s| !s.trim().is_empty())
-                    .unwrap_or(cmd)
-                    .to_string(),
+                    .map(ToString::to_string),
             })
         })
         .collect();
+
+    let mut key_scopes: HashMap<_, Vec<KeyScope>> = HashMap::new();
+    for m in &marked {
+        if let Ok(spec) = parse_key_spec(&m.key) {
+            key_scopes.entry(spec).or_default().push(m.scope);
+        }
+    }
+
+    let mut out: Vec<SidebarShortcut> = Vec::new();
+    for (spec, scopes) in key_scopes {
+        let collision = scopes.len() > 1;
+        let scope_tag = match [
+            KeyScope::Always,
+            KeyScope::View(app.shell_view),
+            KeyScope::Global,
+        ]
+        .into_iter()
+        .find_map(|scope| {
+            if scopes.contains(&scope) {
+                Some(match scope {
+                    KeyScope::Always => "A",
+                    KeyScope::View(_) => "V",
+                    KeyScope::Global => "G",
+                })
+            } else {
+                None
+            }
+        }) {
+            Some(tag) => tag,
+            None => continue,
+        };
+        let hit = lookup_scoped_binding(app, spec);
+        let Some(maybe_cmd) = (match hit {
+            Some(BindingHit::Disabled) => Some(None),
+            Some(BindingHit::Cmd(cmd)) => Some(Some(cmd)),
+            None => None,
+        }) else {
+            continue;
+        };
+        let Some(cmd) = maybe_cmd else {
+            continue;
+        };
+        let Some(marked_for_key) = marked
+            .iter()
+            .find(|m| parse_key_spec(&m.key).ok() == Some(spec))
+        else {
+            continue;
+        };
+        let mut label = marked_for_key
+            .label
+            .clone()
+            .unwrap_or_else(|| cmd.trim_start_matches(':').to_string());
+        if collision {
+            label.push_str(&format!(" [{scope_tag}]"));
+        }
+        out.push(SidebarShortcut {
+            key: marked_for_key.key.clone(),
+            key_hint: sidebar_key_hint(&marked_for_key.key),
+            cmd: format!(":{}", cmd.trim_start_matches(':')),
+            label,
+        });
+    }
+
     out.sort_by(|a, b| a.key.cmp(&b.key));
     out.dedup_by(|a, b| a.key == b.key && a.cmd == b.cmd && a.label == b.label);
     out
@@ -307,7 +394,7 @@ pub(in crate::ui) fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, a
                 if app.shell_sidebar_collapsed {
                     rendered.push(ListItem::new(Line::from(Span::styled(base, base_style))));
                 } else {
-                    let hint = format!("[{}]", sc.key);
+                    let hint = format!("[{}]", sc.key_hint);
                     let hint_len = hint.chars().count();
                     let left_max = inner_w.saturating_sub(hint_len.saturating_add(1)).max(1);
                     let base_shown = truncate_end(&base, left_max);
