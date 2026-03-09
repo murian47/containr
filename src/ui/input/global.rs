@@ -2,7 +2,6 @@ use super::context::InputCtx;
 use crate::ui::core::key_types::{
     BindingHit, KeyScope, key_spec_from_event, lookup_binding, lookup_scoped_binding,
 };
-use crate::ui::core::keymap::is_single_letter_without_modifiers;
 use crate::ui::core::types::LogsMode;
 use crate::ui::core::view::{shell_cycle_focus, shell_cycle_focus_reverse};
 use crate::ui::state::app::App;
@@ -13,9 +12,6 @@ pub(super) fn handle_scoped_bindings(app: &mut App, key: KeyEvent, ctx: &InputCt
     let Some(spec) = key_spec_from_event(key) else {
         return false;
     };
-    if app.shell_focus == ShellFocus::Sidebar && is_single_letter_without_modifiers(spec) {
-        return false;
-    }
     let Some(hit) = lookup_scoped_binding(app, spec) else {
         return false;
     };
