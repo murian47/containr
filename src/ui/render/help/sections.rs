@@ -180,7 +180,7 @@ fn push_keymap(
     ));
     out.push(item(
         "Global",
-        ":map [scope] <KEY> <CMD...>",
+        ":map [scope] <KEY> <CMD...> [--sidebar] [--label <text>]",
         "Bind (e.g. :map always F1 :help, :map view:logs ^l :logs reload)",
     ));
     out.push(item(
@@ -191,7 +191,7 @@ fn push_keymap(
     out.push(item(
         "Global",
         ":map list",
-        "List effective bindings (* = configured/overridden)",
+        "List effective bindings (* = override, S = shown in sidebar)",
     ));
     out.push(item(
         "Keymap",

@@ -268,6 +268,10 @@ pub struct KeyBinding {
     pub scope: String,
     // Command to execute, like ":q!" or ":messages".
     pub cmd: String,
+    #[serde(default)]
+    pub show_in_sidebar: bool,
+    #[serde(default)]
+    pub sidebar_label: Option<String>,
 }
 
 fn default_key_scope() -> String {

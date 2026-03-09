@@ -1,3 +1,4 @@
+use crate::ui::core::key_types::{KeyScope, parse_scope};
 use crate::ui::core::view::shell_module_shortcut;
 use crate::ui::render::text::truncate_end;
 use crate::ui::render::utils::{draw_focus_accent, shell_row_highlight};
@@ -8,6 +9,48 @@ use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState};
+
+#[derive(Clone, Debug)]
+pub(in crate::ui) struct SidebarShortcut {
+    pub(in crate::ui) key: String,
+    pub(in crate::ui) cmd: String,
+    pub(in crate::ui) label: String,
+}
+
+pub(in crate::ui) fn shell_sidebar_shortcuts(app: &App) -> Vec<SidebarShortcut> {
+    let mut out: Vec<SidebarShortcut> = app
+        .keymap
+        .iter()
+        .filter(|kb| kb.show_in_sidebar)
+        .filter_map(|kb| {
+            let scope = parse_scope(&kb.scope)?;
+            let scope_active = match scope {
+                KeyScope::Always | KeyScope::Global => true,
+                KeyScope::View(v) => v == app.shell_view,
+            };
+            if !scope_active {
+                return None;
+            }
+            let cmd = kb.cmd.trim();
+            if cmd.is_empty() {
+                return None;
+            }
+            Some(SidebarShortcut {
+                key: kb.key.trim().to_string(),
+                cmd: format!(":{}", cmd.trim_start_matches(':')),
+                label: kb
+                    .sidebar_label
+                    .as_deref()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or(cmd)
+                    .to_string(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.key.cmp(&b.key));
+    out.dedup_by(|a, b| a.key == b.key && a.cmd == b.cmd && a.label == b.label);
+    out
+}
 
 pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
     let mut items: Vec<ShellSidebarItem> = Vec::new();
@@ -69,6 +112,13 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
             items.push(ShellSidebarItem::Action(a));
         }
     }
+    let shortcuts = shell_sidebar_shortcuts(app);
+    if !shortcuts.is_empty() {
+        items.push(ShellSidebarItem::Separator);
+        for (idx, _) in shortcuts.iter().enumerate() {
+            items.push(ShellSidebarItem::Shortcut(idx));
+        }
+    }
     items
 }
 
@@ -121,6 +171,7 @@ pub(in crate::ui) fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, a
     let inner_w = inner_area.width.max(1) as usize;
 
     let items = shell_sidebar_items(app);
+    let shortcuts = shell_sidebar_shortcuts(app);
     let mut rendered: Vec<ListItem> = Vec::new();
     for (idx, it) in items.iter().enumerate() {
         let selected = app.shell_focus == ShellFocus::Sidebar && idx == app.shell_sidebar_selected;
@@ -226,6 +277,37 @@ pub(in crate::ui) fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, a
                     rendered.push(ListItem::new(Line::from(Span::styled(base, base_style))));
                 } else {
                     let hint = format!("[{}]", a.ctrl_hint());
+                    let hint_len = hint.chars().count();
+                    let left_max = inner_w.saturating_sub(hint_len.saturating_add(1)).max(1);
+                    let base_shown = truncate_end(&base, left_max);
+                    let base_len = base_shown.chars().count();
+                    let gap = inner_w.saturating_sub(base_len.saturating_add(hint_len));
+                    let hint_style = if selected {
+                        shell_row_highlight(app).fg(theme::parse_color(&app.theme.panel.fg))
+                    } else {
+                        bg.patch(app.theme.text_dim.to_style())
+                    };
+                    rendered.push(ListItem::new(Line::from(vec![
+                        Span::styled(base_shown, base_style),
+                        Span::styled(" ".repeat(gap), base_style),
+                        Span::styled(hint, hint_style),
+                    ])));
+                }
+            }
+            ShellSidebarItem::Shortcut(i) => {
+                let Some(sc) = shortcuts.get(i) else {
+                    continue;
+                };
+                let base = format!(" {}", sc.label);
+                let base_style = if selected {
+                    shell_row_highlight(app)
+                } else {
+                    bg.patch(app.theme.text.to_style())
+                };
+                if app.shell_sidebar_collapsed {
+                    rendered.push(ListItem::new(Line::from(Span::styled(base, base_style))));
+                } else {
+                    let hint = format!("[{}]", sc.key);
                     let hint_len = hint.chars().count();
                     let left_max = inner_w.saturating_sub(hint_len.saturating_add(1)).max(1);
                     let base_shown = truncate_end(&base, left_max);

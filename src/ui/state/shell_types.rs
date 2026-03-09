@@ -312,6 +312,7 @@ pub(in crate::ui) enum ShellSidebarItem {
     Server(usize),
     Module(ShellView),
     Action(ShellAction),
+    Shortcut(usize),
 }
 
 #[derive(Clone, Debug)]

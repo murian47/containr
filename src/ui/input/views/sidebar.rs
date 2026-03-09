@@ -1,6 +1,6 @@
 use super::super::context::InputCtx;
 use crate::ui::render::sidebar::{
-    shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item,
+    shell_move_sidebar, shell_sidebar_items, shell_sidebar_select_item, shell_sidebar_shortcuts,
 };
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{ShellFocus, ShellSidebarItem, ShellView};
@@ -40,6 +40,12 @@ pub(super) fn handle_sidebar_navigation(app: &mut App, key: KeyEvent, ctx: &Inpu
                     ctx.logs_req_tx,
                     ctx.action_req_tx,
                 ),
+                ShellSidebarItem::Shortcut(i) => {
+                    let shortcuts = shell_sidebar_shortcuts(app);
+                    if let Some(sc) = shortcuts.get(i) {
+                        ctx.execute_cmdline(app, &sc.cmd);
+                    }
+                }
                 ShellSidebarItem::Separator | ShellSidebarItem::Gap => {}
             }
         }

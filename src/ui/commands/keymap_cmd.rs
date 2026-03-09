@@ -50,14 +50,15 @@ pub(in crate::ui) fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bo
     let sub = first;
     if sub.is_empty() {
         app.set_warn(
-            "usage: :map [scope] <KEY> <COMMAND...>  |  :map list  |  :unmap [scope] <KEY>",
+            "usage: :map [scope] <KEY> <COMMAND...> [--sidebar] [--label <text>]  |  :map list  |  :unmap [scope] <KEY>",
         );
         return true;
     }
 
     if sub == "list" {
         // Show effective bindings (defaults + overrides). Mark explicit entries with '*'.
-        let mut explicit: HashMap<(KeyScope, KeySpec), String> = HashMap::new();
+        let mut explicit: HashMap<(KeyScope, KeySpec), (String, bool, Option<String>)> =
+            HashMap::new();
         let mut unsafe_entries: Vec<(String, String, String)> = Vec::new();
         for kb in &app.keymap {
             let Some(scope) = parse_scope(&kb.scope) else {
@@ -78,39 +79,68 @@ pub(in crate::ui) fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bo
                 ));
                 continue;
             }
-            explicit.insert((scope, spec), cmd);
+            explicit.insert(
+                (scope, spec),
+                (cmd, kb.show_in_sidebar, kb.sidebar_label.clone()),
+            );
         }
 
         let mut keys: HashSet<(KeyScope, KeySpec)> = HashSet::new();
         keys.extend(app.keymap_defaults.keys().copied());
         keys.extend(explicit.keys().copied());
 
-        let mut entries: Vec<(String, String, String, bool)> = Vec::new();
+        let mut entries: Vec<(String, String, String, bool, bool, Option<String>)> = Vec::new();
         for (scope, spec) in keys {
             let scope_str = scope_to_string(scope).to_string();
             let key_str = format_key_spec(spec);
-            let (cmd, is_explicit) = if let Some(cmd) = explicit.get(&(scope, spec)) {
-                if cmd.is_empty() {
-                    ("<disabled>".to_string(), true)
+            let (cmd, is_explicit, show_in_sidebar, sidebar_label) =
+                if let Some((cmd, show_in_sidebar, sidebar_label)) = explicit.get(&(scope, spec)) {
+                    if cmd.is_empty() {
+                        (
+                            "<disabled>".to_string(),
+                            true,
+                            *show_in_sidebar,
+                            sidebar_label.clone(),
+                        )
+                    } else {
+                        (
+                            format!(":{}", cmd),
+                            true,
+                            *show_in_sidebar,
+                            sidebar_label.clone(),
+                        )
+                    }
+                } else if let Some(cmd) = app.keymap_defaults.get(&(scope, spec)) {
+                    (format!(":{}", cmd), false, false, None)
                 } else {
-                    (format!(":{}", cmd), true)
-                }
-            } else if let Some(cmd) = app.keymap_defaults.get(&(scope, spec)) {
-                (format!(":{}", cmd), false)
-            } else {
-                ("<disabled>".to_string(), false)
-            };
-            entries.push((scope_str, key_str, cmd, is_explicit));
+                    ("<disabled>".to_string(), false, false, None)
+                };
+            entries.push((
+                scope_str,
+                key_str,
+                cmd,
+                is_explicit,
+                show_in_sidebar,
+                sidebar_label,
+            ));
         }
         entries.sort_by(|a, b| (a.0.as_str(), a.1.as_str()).cmp(&(b.0.as_str(), b.1.as_str())));
 
         if entries.is_empty() {
             app.set_info("no key bindings configured");
         } else {
-            app.set_info("Key bindings (* = configured/overridden):");
-            for (scope, key, cmd, explicit) in entries {
+            app.set_info("Key bindings (* = configured/overridden, S = shown in sidebar):");
+            for (scope, key, cmd, explicit, show_in_sidebar, sidebar_label) in entries {
                 let star = if explicit { "*" } else { " " };
-                app.set_info(format!("{star} {scope:<13} {key:<12} -> {cmd}"));
+                let side = if show_in_sidebar { "S" } else { " " };
+                let label_hint = sidebar_label
+                    .as_deref()
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| format!(" label={s}"))
+                    .unwrap_or_default();
+                app.set_info(format!(
+                    "{star}{side} {scope:<13} {key:<12} -> {cmd}{label_hint}"
+                ));
             }
             for (scope, key, cmd) in unsafe_entries {
                 app.set_info(format!(
@@ -126,22 +156,42 @@ pub(in crate::ui) fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bo
     }
 
     // Syntax: :map [scope] <KEY> <CMD...>
-    let (scope, key_str, cmd_rest) = if let Some(scope) = parse_scope(sub) {
+    let (scope, key_str, cmd_tokens) = if let Some(scope) = parse_scope(sub) {
         let Some(key_str) = rest.first().copied() else {
             app.set_warn("usage: :map [scope] <KEY> <COMMAND...>");
             return true;
         };
-        let cmd_rest = rest
-            .iter()
-            .skip(1)
-            .copied()
-            .collect::<Vec<&str>>()
-            .join(" ");
-        (scope, key_str, cmd_rest)
+        let cmd_tokens = rest.iter().skip(1).copied().collect::<Vec<&str>>();
+        (scope, key_str, cmd_tokens)
     } else {
-        let cmd_rest = rest.to_vec().join(" ");
-        (KeyScope::Global, sub, cmd_rest)
+        let cmd_tokens = rest.to_vec();
+        (KeyScope::Global, sub, cmd_tokens)
     };
+    let mut show_in_sidebar: Option<bool> = None;
+    let mut sidebar_label: Option<String> = None;
+    let mut cmd_parts: Vec<&str> = Vec::new();
+    let mut idx = 0usize;
+    while idx < cmd_tokens.len() {
+        let part = cmd_tokens[idx];
+        match part {
+            "--sidebar" => show_in_sidebar = Some(true),
+            "--label" | "--sidebar-label" => {
+                let Some(value) = cmd_tokens.get(idx + 1).copied() else {
+                    app.set_warn("usage: :map ... --label <text>");
+                    return true;
+                };
+                sidebar_label = if value.trim().is_empty() {
+                    None
+                } else {
+                    Some(value.to_string())
+                };
+                idx = idx.saturating_add(1);
+            }
+            _ => cmd_parts.push(part),
+        }
+        idx = idx.saturating_add(1);
+    }
+    let cmd_rest = cmd_parts.join(" ");
     if cmd_rest.trim().is_empty() {
         app.set_warn("usage: :map [scope] <KEY> <COMMAND...>");
         return true;
@@ -167,16 +217,31 @@ pub(in crate::ui) fn handle_map(app: &mut App, first: &str, rest: &[&str]) -> bo
         parse_scope(&kb.scope) == Some(scope) && parse_key_spec(&kb.key).ok() == Some(spec)
     }) {
         kb.cmd = cmd_store;
+        if let Some(v) = show_in_sidebar {
+            kb.show_in_sidebar = v;
+        }
+        if sidebar_label.is_some() {
+            kb.sidebar_label = sidebar_label.clone();
+        }
     } else {
         app.keymap.push(KeyBinding {
             key: key_canon.clone(),
             scope: scope_str.clone(),
             cmd: cmd_store,
+            show_in_sidebar: show_in_sidebar.unwrap_or(false),
+            sidebar_label,
         });
     }
     app.rebuild_keymap();
     app.persist_config();
-    app.set_info(format!("mapped {scope_str} {key_canon}"));
+    app.set_info(format!(
+        "mapped {scope_str} {key_canon}{}",
+        if show_in_sidebar == Some(true) {
+            " (sidebar)"
+        } else {
+            ""
+        }
+    ));
     true
 }
 
@@ -222,6 +287,8 @@ pub(in crate::ui) fn handle_unmap(app: &mut App, first: &str, rest: &[&str]) -> 
             key: key_canon.clone(),
             scope: scope_str.clone(),
             cmd: String::new(),
+            show_in_sidebar: false,
+            sidebar_label: None,
         });
     }
     app.rebuild_keymap();
