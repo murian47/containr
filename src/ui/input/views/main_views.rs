@@ -83,7 +83,8 @@ fn handle_main_view_details_navigation(app: &mut App, key: KeyEvent) {
             None
         };
     if let Some((_, networks)) = stack_counts
-        && networks == 0 && app.stack_details_focus == StackDetailsFocus::Networks
+        && networks == 0
+        && app.stack_details_focus == StackDetailsFocus::Networks
     {
         app.stack_details_focus = StackDetailsFocus::Containers;
     }
