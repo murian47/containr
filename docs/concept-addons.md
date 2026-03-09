@@ -16,6 +16,8 @@ This document defines a practical addon model for containr where addons are regi
 - No in-process dynamic library loading.
 - No mandatory addon execution for core operations.
 - No hidden command execution without explicit registration and consent.
+- No direct Docker/SSH/container control from addons.
+- No host-side RPC layer for addon-triggered container operations.
 
 ## Architecture Overview
 
@@ -23,6 +25,14 @@ This document defines a practical addon model for containr where addons are regi
 - Addons are external executables launched by containr as separate processes.
 - Communication is JSON-over-`stdin`/`stdout` for one request and one response.
 - `stderr` is captured for diagnostics and surfaced in messages.
+- Addons are compute/transform extensions only; operational container actions stay in core.
+
+### Core ownership boundary
+
+- Core owns all Docker/SSH execution and container lifecycle operations.
+- Addons may consume provided context (selection, view, template paths) and return results/suggestions.
+- Addons must not directly control containers, stacks, images, volumes, or networks.
+- If an addon needs operational side effects, it should return structured intent that the core may map to existing built-in commands.
 
 ## Addon Registration
 
