@@ -374,6 +374,16 @@ fn push_templates(
     ));
     out.push(item(
         "Templates",
+        ":history",
+        "Open full deploy history view for selected template",
+    ));
+    out.push(item(
+        "Templates",
+        "^h",
+        "Open deploy history view (default binding)",
+    ));
+    out.push(item(
+        "Templates",
         "^Y",
         "Redeploy selected template (pull + force recreate)",
     ));
@@ -480,6 +490,16 @@ fn push_stacks(
         "Stacks",
         ":stacks running|all",
         "Filter stacks list (running only or show all)",
+    ));
+    out.push(item(
+        "Stacks",
+        ":history",
+        "Open full deploy history view for selected stack",
+    ));
+    out.push(item(
+        "Stacks",
+        "^h",
+        "Open deploy history view (default binding)",
     ));
     out.push(Line::from(""));
 }
