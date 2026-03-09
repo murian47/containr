@@ -28,6 +28,8 @@ pub struct AddonCommandSpec {
     pub capability: Option<String>,
     #[serde(default)]
     pub shortcut_allowed: bool,
+    #[serde(default)]
+    pub interactive: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

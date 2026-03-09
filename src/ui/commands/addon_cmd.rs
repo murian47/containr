@@ -6,8 +6,9 @@
 
 use crate::config::{AddonCommandSpec, AddonEntry, ContainrConfig};
 use crate::ui::core::requests::ActionRequest;
+use crate::ui::render::utils::shell_escape_sh_arg;
 use crate::ui::state::app::App;
-use crate::ui::state::shell_types::{ShellView, TemplatesKind};
+use crate::ui::state::shell_types::{ShellInteractive, ShellView, TemplatesKind};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -367,6 +368,20 @@ fn handle_addon_command_with_lookup(
             app.set_warn("addon payload too large");
             return true;
         }
+        if lookup.command.interactive {
+            let cmd = build_interactive_addon_command(&entry, &payload_json);
+            app.shell_pending_interactive = Some(ShellInteractive::RunLocalCommand { cmd });
+            let addon_name = if lookup.addon.name.trim().is_empty() {
+                &lookup.addon.id
+            } else {
+                lookup.addon.name.as_str()
+            };
+            app.set_info(format!(
+                "starting interactive addon command '{}' for {addon_name}",
+                lookup.command.name
+            ));
+            return true;
+        }
         let request = ActionRequest::AddonRun {
             addon_id: payload.addon_id,
             command: payload.command,
@@ -392,6 +407,17 @@ fn handle_addon_command_with_lookup(
         app.set_warn("addon command metadata incomplete");
         true
     }
+}
+
+fn build_interactive_addon_command(entry: &[String], payload_json: &str) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    parts.push("printf %s".to_string());
+    parts.push(shell_escape_sh_arg(payload_json));
+    parts.push("|".to_string());
+    for token in entry {
+        parts.push(shell_escape_sh_arg(token));
+    }
+    parts.join(" ")
 }
 
 fn capture_template_edit_snapshot_for_addon(

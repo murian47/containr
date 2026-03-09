@@ -315,6 +315,18 @@ Addons are added as a dedicated config section:
 
 Per-entry `enabled` is authoritative for runtime state and is toggled by `:addon enable` / `:addon disable`.
 
+## Example Addon
+
+A concrete Codex-based example addon is provided at:
+
+- `addons/examples/codex-template-edit/`
+
+It includes:
+
+- `addon.json`: metadata to copy into config
+- `run.sh`: stdin-json addon runner
+- `README.md`: setup and usage notes
+
 
 ## Incremental Rollout (Recommended)
 

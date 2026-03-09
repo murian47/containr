@@ -1,0 +1,29 @@
+{
+  "id": "dev.example.codex-template-edit",
+  "name": "Codex Template Edit (Example)",
+  "version": "0.1.0",
+  "description": "Example addon that shows how to delegate template edits to Codex.",
+  "entry": [
+    "/ABSOLUTE/PATH/TO/containr/addons/examples/codex-template-edit/run.py"
+  ],
+  "commands": [
+    {
+      "name": "codex-template-edit",
+      "description": "Edit selected template via Codex",
+      "action": "template-edit",
+      "capability": "template-edit",
+      "shortcut-allowed": true,
+      "interactive": true
+    }
+  ],
+  "enabled": false,
+  "capabilities": [
+    "template-edit"
+  ],
+  "scope": [
+    "templates"
+  ],
+  "timeout-secs": 120,
+  "working-dir-policy": "auto",
+  "max-payload-bytes": 262144
+}
