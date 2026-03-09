@@ -1,4 +1,3 @@
-use crate::ui::commands::addon_cmd;
 use crate::ui::core::view::shell_module_shortcut;
 use crate::ui::render::text::truncate_end;
 use crate::ui::render::utils::{draw_focus_accent, shell_row_highlight};
@@ -9,10 +8,6 @@ use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState};
-
-fn ai_cmd_configured(app: &App) -> bool {
-    addon_cmd::has_template_addon_shortcut(app)
-}
 
 pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
     let mut items: Vec<ShellSidebarItem> = Vec::new();
@@ -57,20 +52,13 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
         ],
         ShellView::Volumes => vec![ShellAction::Inspect, ShellAction::VolumeRemove],
         ShellView::Networks => vec![ShellAction::Inspect, ShellAction::NetworkRemove],
-        ShellView::Templates => {
-            let mut out = Vec::new();
-            if ai_cmd_configured(app) {
-                out.push(ShellAction::TemplateAi);
-            }
-            out.extend([
-                ShellAction::TemplateEdit,
-                ShellAction::TemplateNew,
-                ShellAction::TemplateDelete,
-                ShellAction::TemplateDeploy,
-                ShellAction::TemplateRedeploy,
-            ]);
-            out
-        }
+        ShellView::Templates => vec![
+            ShellAction::TemplateEdit,
+            ShellAction::TemplateNew,
+            ShellAction::TemplateDelete,
+            ShellAction::TemplateDeploy,
+            ShellAction::TemplateRedeploy,
+        ],
         ShellView::Registries => vec![ShellAction::RegistryTest],
         ShellView::Inspect | ShellView::Logs | ShellView::Help => vec![],
         ShellView::Messages | ShellView::ThemeSelector => vec![],

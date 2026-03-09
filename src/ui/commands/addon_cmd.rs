@@ -7,7 +7,7 @@
 use crate::config::{AddonCommandSpec, AddonEntry, ContainrConfig};
 use crate::ui::core::requests::ActionRequest;
 use crate::ui::state::app::App;
-use crate::ui::state::shell_types::ShellView;
+use crate::ui::state::shell_types::{ShellView, TemplatesKind};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -86,10 +86,6 @@ pub(in crate::ui) fn handle_addon(
     }
 }
 
-pub(in crate::ui) fn template_ai_command_name() -> &'static str {
-    "template-edit-assist"
-}
-
 fn find_addon_command(app: &App, token: &str) -> Option<AddonLookup> {
     let target = token.to_ascii_lowercase();
     let mut candidates: Vec<AddonLookup> = Vec::new();
@@ -122,15 +118,6 @@ fn find_addon_command(app: &App, token: &str) -> Option<AddonLookup> {
 
 pub(in crate::ui) fn has_addon_command(app: &App, token: &str) -> bool {
     find_addon_command(app, token).is_some()
-}
-
-pub(in crate::ui) fn has_template_addon_shortcut(app: &App) -> bool {
-    addon_supports_shortcut(app, template_ai_command_name())
-}
-
-fn addon_supports_shortcut(app: &App, token: &str) -> bool {
-    find_addon_command(app, token)
-        .is_some_and(|c| c.command.shortcut_allowed || c.command.capability.is_some())
 }
 
 fn handle_addon_list(app: &mut App) {
@@ -368,6 +355,7 @@ fn handle_addon_command_with_lookup(
     if let Some((entry, payload)) =
         build_addon_invocation(app, &lookup.addon, &lookup.command, &cmd_args)
     {
+        let template_edit_kind = capture_template_edit_snapshot_for_addon(app, &lookup.command);
         let payload_json = match serde_json::to_string(&payload) {
             Ok(s) => s,
             Err(e) => {
@@ -387,6 +375,7 @@ fn handle_addon_command_with_lookup(
             timeout_secs: lookup.addon.timeout_secs,
             env_allowlist: lookup.addon.env_allowlist.clone(),
             working_dir: resolve_working_dir(&lookup.addon.working_dir_policy, app),
+            template_edit_kind,
         };
         let _ = action_req_tx.send(request);
         let addon_name = if lookup.addon.name.trim().is_empty() {
@@ -402,6 +391,46 @@ fn handle_addon_command_with_lookup(
     } else {
         app.set_warn("addon command metadata incomplete");
         true
+    }
+}
+
+fn capture_template_edit_snapshot_for_addon(
+    app: &mut App,
+    cmd: &AddonCommandSpec,
+) -> Option<TemplatesKind> {
+    if cmd.capability.as_deref() != Some("template-edit") || app.shell_view != ShellView::Templates
+    {
+        return None;
+    }
+    match app.templates_state.kind {
+        TemplatesKind::Stacks => {
+            let tpl = app.selected_template()?;
+            if !tpl.has_compose {
+                return None;
+            }
+            let name = tpl.name.clone();
+            app.capture_template_edit_snapshot(
+                TemplatesKind::Stacks,
+                name.clone(),
+                tpl.compose_path.clone(),
+            );
+            app.templates_state.templates_refresh_after_edit = Some(name);
+            Some(TemplatesKind::Stacks)
+        }
+        TemplatesKind::Networks => {
+            let tpl = app.selected_net_template()?;
+            if !tpl.has_cfg {
+                return None;
+            }
+            let name = tpl.name.clone();
+            app.capture_template_edit_snapshot(
+                TemplatesKind::Networks,
+                name.clone(),
+                tpl.cfg_path.clone(),
+            );
+            app.templates_state.net_templates_refresh_after_edit = Some(name);
+            Some(TemplatesKind::Networks)
+        }
     }
 }
 

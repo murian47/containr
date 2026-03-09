@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use crate::docker::{ContainerAction, DockerCfg};
 use crate::runner::Runner;
+use crate::ui::state::shell_types::TemplatesKind;
 
 use super::types::{RegistryAuthResolved, StackUpdateService};
 
@@ -20,6 +21,7 @@ pub(in crate::ui) enum ActionRequest {
         timeout_secs: u64,
         env_allowlist: Vec<String>,
         working_dir: Option<PathBuf>,
+        template_edit_kind: Option<TemplatesKind>,
     },
     Container {
         action: ContainerAction,

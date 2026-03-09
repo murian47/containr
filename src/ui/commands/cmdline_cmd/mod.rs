@@ -151,15 +151,6 @@ pub(in crate::ui) fn execute_cmdline(
         return;
     }
 
-    if cmd == "ai" {
-        if it.next().is_some() {
-            app.set_warn("usage: :ai");
-            return;
-        }
-        let _ = templates_cmd::handle_template_ai(app, action_req_tx);
-        return;
-    }
-
     if cmd == "addon" {
         let args: Vec<&str> = it.collect();
         let _ = addon_cmd::handle_addon(app, &args, action_req_tx);

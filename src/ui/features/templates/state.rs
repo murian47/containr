@@ -339,14 +339,14 @@ impl App {
             .get(self.templates_state.net_templates_selected)
     }
 
-    pub(in crate::ui) fn capture_template_ai_snapshot(
+    pub(in crate::ui) fn capture_template_edit_snapshot(
         &mut self,
         kind: TemplatesKind,
         name: String,
         path: PathBuf,
     ) {
         let hash = file_content_hash(&path);
-        self.templates_state.ai_edit_snapshot = Some(TemplateEditSnapshot {
+        self.templates_state.edit_snapshot = Some(TemplateEditSnapshot {
             kind,
             name,
             path,
@@ -354,14 +354,14 @@ impl App {
         });
     }
 
-    pub(in crate::ui) fn apply_template_ai_snapshot_if_kind(&mut self, kind: TemplatesKind) {
-        let Some(snapshot) = self.templates_state.ai_edit_snapshot.as_ref() else {
+    pub(in crate::ui) fn apply_template_edit_snapshot_if_kind(&mut self, kind: TemplatesKind) {
+        let Some(snapshot) = self.templates_state.edit_snapshot.as_ref() else {
             return;
         };
         if snapshot.kind != kind {
             return;
         }
-        let snapshot = self.templates_state.ai_edit_snapshot.take().unwrap();
+        let snapshot = self.templates_state.edit_snapshot.take().unwrap();
         if commands::git_cmd::is_git_repo(&self.templates_state.dir) {
             return;
         }

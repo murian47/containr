@@ -11,7 +11,6 @@ use crate::ui::state::shell_types::{
     ActiveView, ShellSidebarItem, ShellView, TemplatesKind, shell_begin_confirm,
 };
 use crate::ui::text_edit::set_text_and_cursor;
-use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 fn begin_new_prompt(app: &mut App) {
@@ -521,51 +520,4 @@ pub(in crate::ui) fn handle_nettemplate(
             true
         }
     }
-}
-
-pub(in crate::ui) fn handle_template_ai(
-    app: &mut App,
-    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
-) -> bool {
-    if app.shell_view != ShellView::Templates {
-        app.set_warn("AI is only available in Templates");
-        return true;
-    }
-    let (name, has_file, template_path) = match app.templates_state.kind {
-        TemplatesKind::Stacks => app
-            .selected_template()
-            .map(|t| (t.name.clone(), t.has_compose, t.compose_path.clone()))
-            .unwrap_or((String::new(), false, PathBuf::new())),
-        TemplatesKind::Networks => app
-            .selected_net_template()
-            .map(|t| (t.name.clone(), t.has_cfg, t.cfg_path.clone()))
-            .unwrap_or((String::new(), false, PathBuf::new())),
-    };
-    if name.trim().is_empty() {
-        app.set_warn("no template selected");
-        return true;
-    }
-    if !has_file {
-        app.set_warn("template has no config file");
-        return true;
-    }
-    app.capture_template_ai_snapshot(
-        app.templates_state.kind,
-        name.clone(),
-        template_path.clone(),
-    );
-    match app.templates_state.kind {
-        TemplatesKind::Stacks => {
-            app.templates_state.templates_refresh_after_edit = Some(name);
-        }
-        TemplatesKind::Networks => {
-            app.templates_state.net_templates_refresh_after_edit = Some(name);
-        }
-    }
-    let _ = crate::ui::commands::addon_cmd::handle_addon_command(
-        app,
-        &[crate::ui::commands::addon_cmd::template_ai_command_name()],
-        action_req_tx,
-    );
-    true
 }

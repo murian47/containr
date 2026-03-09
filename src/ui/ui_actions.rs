@@ -339,9 +339,6 @@ pub(in crate::ui) fn execute_action(
                 app.set_warn("redeploy is only available for stack templates");
             }
         },
-        ShellAction::TemplateAi => {
-            let _ = crate::ui::commands::templates_cmd::handle_template_ai(app, action_req_tx);
-        }
         ShellAction::RegistryTest => {
             registry_test_selected(app, action_req_tx);
         }

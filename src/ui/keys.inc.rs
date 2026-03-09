@@ -330,7 +330,6 @@ pub(in crate::ui) fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), Stri
     add(t, "C-S-Y", ":template deploy --recreate --pull");
     add(t, "C-d", ":template rm");
     add(t, "C-t", ":templates toggle");
-    add(t, "C-a", ":ai");
 
     // Registries.
     let r = KeyScope::View(ShellView::Registries);

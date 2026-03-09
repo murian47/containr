@@ -306,7 +306,7 @@ pub async fn run_tui(
                         terminal = setup_terminal()?;
                         if let Some(name) = app.templates_state.templates_refresh_after_edit.take()
                         {
-                            // Editors and external AI tools mutate files outside the TUI. Reload,
+                            // Editors and external tools mutate files outside the TUI. Reload,
                             // reselect the edited template, then update derived Git/deploy state.
                             app.refresh_templates();
                             if let Some(idx) = app
@@ -317,7 +317,7 @@ pub async fn run_tui(
                             {
                                 app.templates_state.templates_selected = idx;
                             }
-                            app.apply_template_ai_snapshot_if_kind(TemplatesKind::Stacks);
+                            app.apply_template_edit_snapshot_if_kind(TemplatesKind::Stacks);
                             maybe_autocommit_templates(
                                 &mut app,
                                 TemplatesKind::Stacks,
@@ -337,7 +337,7 @@ pub async fn run_tui(
                             {
                                 app.templates_state.net_templates_selected = idx;
                             }
-                            app.apply_template_ai_snapshot_if_kind(TemplatesKind::Networks);
+                            app.apply_template_edit_snapshot_if_kind(TemplatesKind::Networks);
                             maybe_autocommit_templates(
                                 &mut app,
                                 TemplatesKind::Networks,

@@ -134,12 +134,12 @@ pub(in crate::ui) struct TemplatesState {
     pub(in crate::ui) dirty_net_templates: HashSet<String>,
     pub(in crate::ui) untracked_net_templates: HashSet<String>,
     pub(in crate::ui) git_remote_net_templates: HashMap<String, GitRemoteStatus>,
-    pub(in crate::ui) ai_edit_snapshot: Option<TemplateEditSnapshot>,
+    pub(in crate::ui) edit_snapshot: Option<TemplateEditSnapshot>,
 }
 
 #[derive(Clone, Debug)]
 pub(in crate::ui) struct TemplateEditSnapshot {
-    // Snapshot used to detect whether an external editor/AI tool actually changed the file.
+    // Snapshot used to detect whether an external editor/addon actually changed the file.
     pub(in crate::ui) kind: TemplatesKind,
     pub(in crate::ui) name: String,
     pub(in crate::ui) path: PathBuf,
@@ -350,7 +350,6 @@ pub(in crate::ui) enum ShellAction {
     VolumeRemove,
     NetworkRemove,
     RegistryTest,
-    TemplateAi,
     TemplateEdit,
     TemplateNew,
     TemplateDelete,
@@ -375,7 +374,6 @@ impl ShellAction {
             ShellAction::VolumeRemove => "Remove",
             ShellAction::NetworkRemove => "Remove",
             ShellAction::RegistryTest => "Test",
-            ShellAction::TemplateAi => "AI",
             ShellAction::TemplateEdit => "Edit",
             ShellAction::TemplateNew => "New",
             ShellAction::TemplateDelete => "Delete",
@@ -400,7 +398,6 @@ impl ShellAction {
             ShellAction::VolumeRemove => "^d",
             ShellAction::NetworkRemove => "^d",
             ShellAction::RegistryTest => "^y",
-            ShellAction::TemplateAi => "^a",
             ShellAction::TemplateEdit => "^e",
             ShellAction::TemplateNew => "^n",
             ShellAction::TemplateDelete => "^d",

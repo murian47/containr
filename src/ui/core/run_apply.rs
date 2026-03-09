@@ -334,11 +334,14 @@ pub(in crate::ui) fn process_background_updates(
                 app.clear_last_error();
                 match &req {
                     ActionRequest::AddonRun {
-                        addon_id, command, ..
+                        addon_id,
+                        command,
+                        template_edit_kind,
+                        ..
                     } => {
                         app.set_info(format!("addon '{addon_id}' command '{command}' finished"));
-                        if command == crate::ui::commands::addon_cmd::template_ai_command_name() {
-                            app.apply_template_ai_snapshot_if_kind(app.templates_state.kind);
+                        if let Some(kind) = template_edit_kind {
+                            app.apply_template_edit_snapshot_if_kind(*kind);
                         }
                     }
                     ActionRequest::Container { id, .. } => {
@@ -582,14 +585,17 @@ pub(in crate::ui) fn process_background_updates(
             Err(e) => {
                 match &req {
                     ActionRequest::AddonRun {
-                        addon_id, command, ..
+                        addon_id,
+                        command,
+                        template_edit_kind,
+                        ..
                     } => {
                         app.set_error(format!(
                             "addon '{addon_id}' command '{command}' failed: {:#}",
                             e
                         ));
-                        if command == crate::ui::commands::addon_cmd::template_ai_command_name() {
-                            app.apply_template_ai_snapshot_if_kind(app.templates_state.kind);
+                        if let Some(kind) = template_edit_kind {
+                            app.apply_template_edit_snapshot_if_kind(*kind);
                         }
                     }
                     ActionRequest::Container { id, action } => {

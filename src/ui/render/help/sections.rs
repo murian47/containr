@@ -339,11 +339,6 @@ fn push_templates(
     ));
     out.push(item(
         "Templates",
-        "^a",
-        "Run template AI addon (default binding)",
-    ));
-    out.push(item(
-        "Templates",
         ":template/:tpl add <name>",
         "Create a new template",
     ));
@@ -381,11 +376,6 @@ fn push_templates(
         "Templates",
         "^Y",
         "Redeploy selected template (pull + force recreate)",
-    ));
-    out.push(item(
-        "Templates",
-        ":ai",
-        "Run the template AI addon for the selected template",
     ));
     out.push(Line::from(""));
     out.push(item(

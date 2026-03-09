@@ -314,7 +314,7 @@ impl App {
                 net_template_deploy_inflight: HashMap::new(),
                 dirty_net_templates: HashSet::new(),
                 untracked_net_templates: HashSet::new(),
-                ai_edit_snapshot: None,
+                edit_snapshot: None,
             },
             theme_refresh_after_edit: None,
 
