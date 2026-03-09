@@ -229,6 +229,14 @@ The exact keymap is configurable. The important defaults are:
 
 For the full current command and keybinding reference, use the built-in help view and `:map list`.
 
+## Keymap behavior
+
+- `:map` updates or creates a binding for the same `scope + key` directly. You do not need `:unmap` first.
+- `:unmap` is used to disable an effective binding or to fall back to defaults.
+- `:map` and `:unmap` are persisted immediately to config.
+- Sidebar action rows keep their action role and show the effective key hint after remapping.
+- Custom shortcut rows in the sidebar are opt-in via `--sidebar`.
+
 ## Documentation
 
 - release checklist: `docs/testing-checklist.md`

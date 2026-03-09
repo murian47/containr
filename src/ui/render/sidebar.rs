@@ -1,5 +1,6 @@
 use crate::ui::core::key_types::{
-    BindingHit, KeyScope, lookup_scoped_binding, parse_key_spec, parse_scope,
+    BindingHit, KeyCodeNorm, KeyScope, KeySpec, lookup_binding, lookup_scoped_binding,
+    parse_key_spec, parse_scope,
 };
 use crate::ui::core::view::shell_module_shortcut;
 use crate::ui::render::text::truncate_end;
@@ -11,7 +12,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug)]
 pub(in crate::ui) struct SidebarShortcut {
@@ -25,13 +26,135 @@ fn sidebar_key_hint(key: &str) -> String {
     let Ok(spec) = parse_key_spec(key) else {
         return key.to_string();
     };
+    format_key_spec_hint(spec)
+}
+
+fn format_key_spec_hint(spec: KeySpec) -> String {
     match (spec.mods, spec.code) {
-        (1, crate::ui::core::key_types::KeyCodeNorm::Char(c)) => format!("^{c}"),
-        (3, crate::ui::core::key_types::KeyCodeNorm::Char(c)) => {
-            format!("^{}", c.to_ascii_uppercase())
+        (1, KeyCodeNorm::Char(c)) => format!("^{c}"),
+        (3, KeyCodeNorm::Char(c)) => format!("^{}", c.to_ascii_uppercase()),
+        _ => {
+            let mut parts: Vec<&'static str> = Vec::new();
+            if (spec.mods & 1) != 0 {
+                parts.push("C");
+            }
+            if (spec.mods & 2) != 0 {
+                parts.push("S");
+            }
+            if (spec.mods & 4) != 0 {
+                parts.push("A");
+            }
+            let key = match spec.code {
+                KeyCodeNorm::Char(' ') => "Space".to_string(),
+                KeyCodeNorm::Char(',') => ",".to_string(),
+                KeyCodeNorm::Char(c) => c.to_string(),
+                KeyCodeNorm::F(n) => format!("F{n}"),
+                KeyCodeNorm::Enter => "Enter".to_string(),
+                KeyCodeNorm::Esc => "Esc".to_string(),
+                KeyCodeNorm::Tab => "Tab".to_string(),
+                KeyCodeNorm::Backspace => "Backspace".to_string(),
+                KeyCodeNorm::Delete => "Delete".to_string(),
+                KeyCodeNorm::Home => "Home".to_string(),
+                KeyCodeNorm::End => "End".to_string(),
+                KeyCodeNorm::PageUp => "PageUp".to_string(),
+                KeyCodeNorm::PageDown => "PageDown".to_string(),
+                KeyCodeNorm::Up => "Up".to_string(),
+                KeyCodeNorm::Down => "Down".to_string(),
+                KeyCodeNorm::Left => "Left".to_string(),
+                KeyCodeNorm::Right => "Right".to_string(),
+            };
+            if parts.is_empty() {
+                key
+            } else {
+                format!("{}-{key}", parts.join("-"))
+            }
         }
-        _ => key.to_string(),
     }
+}
+
+fn shell_action_cmd(view: ShellView, action: ShellAction) -> Option<&'static str> {
+    match (view, action) {
+        (ShellView::Stacks, ShellAction::Start) => Some("stack start"),
+        (ShellView::Stacks, ShellAction::Stop) => Some("stack stop"),
+        (ShellView::Stacks, ShellAction::Restart) => Some("stack restart"),
+        (ShellView::Stacks, ShellAction::Delete) => Some("stack rm"),
+        (ShellView::Stacks, ShellAction::StackUpdate) => Some("stack update"),
+        (ShellView::Stacks, ShellAction::StackUpdateAll) => Some("stack update --all"),
+        (ShellView::Containers, ShellAction::Inspect) => Some("inspect"),
+        (ShellView::Containers, ShellAction::Logs) => Some("logs"),
+        (ShellView::Containers, ShellAction::Start) => Some("container start"),
+        (ShellView::Containers, ShellAction::Stop) => Some("container stop"),
+        (ShellView::Containers, ShellAction::Restart) => Some("container restart"),
+        (ShellView::Containers, ShellAction::Delete) => Some("container rm"),
+        (ShellView::Containers, ShellAction::Console) => Some("container console bash"),
+        (ShellView::Images, ShellAction::Inspect) => Some("inspect"),
+        (ShellView::Images, ShellAction::ImageUntag) => Some("image untag"),
+        (ShellView::Images, ShellAction::ImageForceRemove) => Some("image rm"),
+        (ShellView::Volumes, ShellAction::Inspect) => Some("inspect"),
+        (ShellView::Volumes, ShellAction::VolumeRemove) => Some("volume rm"),
+        (ShellView::Networks, ShellAction::Inspect) => Some("inspect"),
+        (ShellView::Networks, ShellAction::NetworkRemove) => Some("network rm"),
+        (ShellView::Templates, ShellAction::TemplateEdit) => Some("template edit"),
+        (ShellView::Templates, ShellAction::TemplateNew) => Some("template new"),
+        (ShellView::Templates, ShellAction::TemplateDelete) => Some("template rm"),
+        (ShellView::Templates, ShellAction::TemplateDeploy) => Some("template deploy"),
+        (ShellView::Templates, ShellAction::TemplateRedeploy) => {
+            Some("template deploy --recreate --pull")
+        }
+        (ShellView::Registries, ShellAction::RegistryTest) => Some("registry test"),
+        _ => None,
+    }
+}
+
+fn shell_action_hint(app: &App, action: ShellAction) -> String {
+    let Some(target_cmd) = shell_action_cmd(app.shell_view, action) else {
+        return action.ctrl_hint().to_string();
+    };
+    let target_cmd = target_cmd.trim();
+    let order = [
+        KeyScope::Always,
+        KeyScope::View(app.shell_view),
+        KeyScope::Global,
+    ];
+    let mut specs: HashSet<KeySpec> = HashSet::new();
+    for (scope, spec) in app.keymap_defaults.keys().map(|(s, k)| (*s, *k)) {
+        if order.contains(&scope) {
+            specs.insert(spec);
+        }
+    }
+    for (scope, spec) in app.keymap_parsed.keys().map(|(s, k)| (*s, *k)) {
+        if order.contains(&scope) {
+            specs.insert(spec);
+        }
+    }
+
+    let mut candidates: Vec<(u8, String)> = Vec::new();
+    for spec in specs {
+        let winning = order
+            .into_iter()
+            .find_map(|scope| match lookup_binding(app, scope, spec) {
+                Some(BindingHit::Disabled) => Some((scope, None)),
+                Some(BindingHit::Cmd(cmd)) => Some((scope, Some(cmd))),
+                None => None,
+            });
+        let Some((scope, maybe_cmd)) = winning else {
+            continue;
+        };
+        let Some(cmd) = maybe_cmd else {
+            continue;
+        };
+        if cmd.trim() != target_cmd {
+            continue;
+        }
+        let explicit = app.keymap_parsed.contains_key(&(scope, spec));
+        let prio = if explicit { 0 } else { 1 };
+        candidates.push((prio, format_key_spec_hint(spec)));
+    }
+    candidates.sort_by(|a, b| (a.0, a.1.as_str()).cmp(&(b.0, b.1.as_str())));
+    candidates
+        .first()
+        .map(|(_, hint)| hint.clone())
+        .unwrap_or_else(|| action.ctrl_hint().to_string())
 }
 
 pub(in crate::ui) fn shell_sidebar_shortcuts(app: &App) -> Vec<SidebarShortcut> {
@@ -363,7 +486,7 @@ pub(in crate::ui) fn draw_shell_sidebar(f: &mut ratatui::Frame, app: &mut App, a
                 if app.shell_sidebar_collapsed {
                     rendered.push(ListItem::new(Line::from(Span::styled(base, base_style))));
                 } else {
-                    let hint = format!("[{}]", a.ctrl_hint());
+                    let hint = format!("[{}]", shell_action_hint(app, a));
                     let hint_len = hint.chars().count();
                     let left_max = inner_w.saturating_sub(hint_len.saturating_add(1)).max(1);
                     let base_shown = truncate_end(&base, left_max);

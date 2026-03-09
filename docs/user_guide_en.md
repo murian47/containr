@@ -99,6 +99,14 @@ Key fields:
 - Stacks: `C-s`, `C-o`, `C-r`, `C-d`, `C-u`
 - Templates: `C-e`, `C-n`, `C-y`, `C-S-Y`
 
+## 16a. Keymap Customization
+- Scopes: `always`, `global`, `view:<name>`.
+- `:map` overwrites an existing binding for the same `scope + key`; no prior `:unmap` is required.
+- `:unmap` disables the effective binding for that `scope + key` and can restore default behavior.
+- `:map` / `:unmap` changes are persisted immediately in config.
+- Sidebar action rows always stay action rows; their key hint reflects the effective mapped shortcut.
+- Additional custom sidebar shortcut rows are opt-in with `--sidebar` on `:map`.
+
 ## 17. Troubleshooting
 - Connection issues: check `:messages`, `docker_cmd`, SSH identity.
 - Red/blue image update status: rate limits or missing digests; configure registry auth.

@@ -8,7 +8,7 @@ Purpose: quick relevance map for all files in `docs/`.
 
 - `ai-agents.md`
 - `user_guide_de.md`
-- `user_guide_en.de`
+- `user_guide_en.md`
 - `features-status.md`
 - `roadmap-priorities.md`
 - `release-prep.md`

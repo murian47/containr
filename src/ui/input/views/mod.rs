@@ -10,59 +10,11 @@ mod sidebar;
 mod templates;
 
 use super::context::InputCtx;
-use crate::ui::core::view::shell_module_shortcut;
-use crate::ui::render::sidebar::shell_sidebar_select_item;
 use crate::ui::state::app::App;
-use crate::ui::state::shell_types::{ShellFocus, ShellSidebarItem, ShellView};
+use crate::ui::state::shell_types::{ShellFocus, ShellView};
 use crossterm::event::{KeyCode, KeyEvent};
 
 pub(super) fn handle_view_navigation(app: &mut App, key: KeyEvent, ctx: &InputCtx<'_>) {
-    if key.modifiers.is_empty()
-        && let KeyCode::Char(mut ch) = key.code
-    {
-        for (i, hint) in app.shell_server_shortcuts.iter().copied().enumerate() {
-            if hint == '\0' {
-                continue;
-            }
-            if hint.is_ascii_alphabetic() {
-                ch = ch.to_ascii_uppercase();
-            }
-            if ch == hint {
-                app.switch_server(
-                    i,
-                    ctx.conn_tx,
-                    ctx.refresh_tx,
-                    ctx.dash_refresh_tx,
-                    ctx.dash_all_enabled_tx,
-                );
-                return;
-            }
-        }
-        if !matches!(app.shell_view, ShellView::Logs | ShellView::Inspect) {
-            let ch_lc = ch.to_ascii_lowercase();
-            for v in [
-                ShellView::Dashboard,
-                ShellView::Stacks,
-                ShellView::Containers,
-                ShellView::Images,
-                ShellView::Volumes,
-                ShellView::Networks,
-                ShellView::Templates,
-                ShellView::Registries,
-            ] {
-                if ch_lc == shell_module_shortcut(v) {
-                    let keep_sidebar_focus = app.shell_focus == ShellFocus::Sidebar;
-                    app.set_main_view(v);
-                    shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
-                    if keep_sidebar_focus {
-                        app.shell_focus = ShellFocus::Sidebar;
-                    }
-                    return;
-                }
-            }
-        }
-    }
-
     if app.shell_focus == ShellFocus::Sidebar {
         sidebar::handle_sidebar_navigation(app, key, ctx);
         return;

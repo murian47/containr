@@ -115,6 +115,32 @@ pub(in crate::ui) fn handle_server(
             );
             true
         }
+        "use-index" => {
+            let Some(raw) = args.get(1).copied() else {
+                app.set_warn("usage: :server use-index <1-based-index>");
+                return true;
+            };
+            let Ok(one_based) = raw.parse::<usize>() else {
+                app.set_warn("usage: :server use-index <1-based-index>");
+                return true;
+            };
+            let Some(idx) = one_based.checked_sub(1) else {
+                app.set_warn("server index must be >= 1");
+                return true;
+            };
+            if idx >= app.servers.len() {
+                app.set_warn(format!("unknown server index: {one_based}"));
+                return true;
+            }
+            app.switch_server(
+                idx,
+                conn_tx,
+                refresh_tx,
+                dash_refresh_tx,
+                dash_all_enabled_tx,
+            );
+            true
+        }
         "rm" => {
             let Some(name) = args.get(1).copied() else {
                 app.set_warn("usage: :server rm <name>");
@@ -131,6 +157,7 @@ pub(in crate::ui) fn handle_server(
             let removed_active = app.active_server.as_deref() == Some(name);
             app.servers.remove(idx);
             app.shell_server_shortcuts = build_server_shortcuts(&app.servers);
+            app.rebuild_keymap();
             if removed_active {
                 app.active_server = None;
                 app.server_selected = 0;
@@ -195,6 +222,7 @@ pub(in crate::ui) fn handle_server(
                 }
             }
             app.shell_server_shortcuts = build_server_shortcuts(&app.servers);
+            app.rebuild_keymap();
             app.persist_config();
             true
         }

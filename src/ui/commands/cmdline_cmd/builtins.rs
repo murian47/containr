@@ -1,7 +1,11 @@
 use super::CmdlineCtx;
 use super::{git_cmd, keymap_cmd, theme_cmd};
+use crate::ui::core::key_types::{KeyScope, parse_scope};
+use crate::ui::render::sidebar::shell_sidebar_select_item;
 use crate::ui::state::app::App;
-use crate::ui::state::shell_types::{ShellFocus, ShellView, TemplatesKind, shell_begin_confirm};
+use crate::ui::state::shell_types::{
+    ShellFocus, ShellSidebarItem, ShellView, TemplatesKind, shell_begin_confirm,
+};
 
 pub(super) fn handle_builtin_cmd<'a>(
     app: &mut App,
@@ -214,6 +218,27 @@ pub(super) fn handle_builtin_cmd<'a>(
                     ctx.dash_all_refresh_tx,
                     ctx.refresh_pause_tx,
                 );
+            }
+            true
+        }
+        "view" => {
+            let Some(raw) = it.next() else {
+                app.set_warn(
+                    "usage: :view <dashboard|stacks|containers|images|volumes|networks|templates|registries>",
+                );
+                return true;
+            };
+            let Some(KeyScope::View(v)) = parse_scope(raw) else {
+                app.set_warn(
+                    "usage: :view <dashboard|stacks|containers|images|volumes|networks|templates|registries>",
+                );
+                return true;
+            };
+            let keep_sidebar_focus = app.shell_focus == ShellFocus::Sidebar;
+            app.set_main_view(v);
+            shell_sidebar_select_item(app, ShellSidebarItem::Module(v));
+            if keep_sidebar_focus {
+                app.shell_focus = ShellFocus::Sidebar;
             }
             true
         }
