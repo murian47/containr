@@ -27,6 +27,7 @@ impl App {
     pub(in crate::ui) fn new(
         servers: Vec<ServerEntry>,
         keymap: Vec<KeyBinding>,
+        addons: Vec<crate::config::AddonEntry>,
         active_server: Option<String>,
         config_path: std::path::PathBuf,
         view_layout: HashMap<String, String>,
@@ -289,6 +290,7 @@ impl App {
             keymap,
             keymap_parsed: HashMap::new(),
             keymap_defaults: HashMap::new(),
+            addons,
 
             templates_state: TemplatesState {
                 dir: PathBuf::from("templates"),

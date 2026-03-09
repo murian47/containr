@@ -142,6 +142,9 @@ pub(in crate::ui) struct App {
     pub(in crate::ui) keymap_parsed: HashMap<(KeyScope, KeySpec), String>,
     pub(in crate::ui) keymap_defaults: HashMap<(KeyScope, KeySpec), String>,
 
+    // External addon definitions and metadata loaded from config.
+    pub(in crate::ui) addons: Vec<crate::config::AddonEntry>,
+
     // Template/Git/registry state is persisted separately and mirrored here for quick rendering.
     pub(in crate::ui) templates_state: TemplatesState,
     pub(in crate::ui) image_updates: HashMap<String, ImageUpdateEntry>,

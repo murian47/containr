@@ -4,7 +4,7 @@ mod builtins;
 mod stack;
 
 use super::{
-    container_cmd, dashboard_cmd, git_cmd, image_cmd, keymap_cmd, layout_cmd, logs_cmd,
+    addon_cmd, container_cmd, dashboard_cmd, git_cmd, image_cmd, keymap_cmd, layout_cmd, logs_cmd,
     network_cmd, registry_cmd, server_cmd, set_cmd, sidebar_cmd, templates_cmd, theme_cmd,
     volume_cmd,
 };
@@ -156,7 +156,21 @@ pub(in crate::ui) fn execute_cmdline(
             app.set_warn("usage: :ai");
             return;
         }
-        let _ = templates_cmd::handle_template_ai(app);
+        let _ = templates_cmd::handle_template_ai(app, action_req_tx);
+        return;
+    }
+
+    if cmd == "addon" {
+        let args: Vec<&str> = it.collect();
+        let _ = addon_cmd::handle_addon(app, &args, action_req_tx);
+        return;
+    }
+
+    if addon_cmd::has_addon_command(app, cmd) {
+        let mut args: Vec<&str> = Vec::new();
+        args.push(cmd);
+        args.extend(it);
+        let _ = addon_cmd::handle_addon_command(app, &args, action_req_tx);
         return;
     }
 

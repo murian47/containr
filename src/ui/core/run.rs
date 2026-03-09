@@ -44,6 +44,7 @@ pub async fn run_tui(
     logs_tail: usize,
     cmd_history_max: usize,
     cmd_history: Vec<String>,
+    addons: Vec<crate::config::AddonEntry>,
     templates_dir: String,
     view_layout: HashMap<String, String>,
     active_theme: String,
@@ -87,6 +88,7 @@ pub async fn run_tui(
     let mut app = App::new(
         servers,
         keymap,
+        addons,
         active_server,
         config_path,
         view_layout,

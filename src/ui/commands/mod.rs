@@ -4,6 +4,7 @@
 //! dispatcher lives in `ui/mod.rs` for now and calls into these helpers. Over time
 //! we can move more subcommands here to keep `ui/mod.rs` smaller.
 
+pub(in crate::ui) mod addon_cmd;
 pub(in crate::ui) mod cmdline_cmd;
 mod common;
 pub(in crate::ui) mod container_cmd;

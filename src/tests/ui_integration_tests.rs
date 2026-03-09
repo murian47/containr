@@ -1,4 +1,5 @@
 use crate::app_meta;
+use crate::config::AddonEntry;
 use crate::config::{DockerCmd, RegistriesConfig, ServerEntry};
 use crate::docker::{self, ContainerAction, DockerCfg};
 use crate::runner::Runner;
@@ -57,6 +58,7 @@ fn mk_integration_app(templates_dir: PathBuf) -> App {
             docker_cmd: DockerCmd::default(),
         }],
         Vec::new(),
+        Vec::<AddonEntry>::new(),
         None,
         config_path,
         HashMap::new(),

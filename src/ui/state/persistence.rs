@@ -24,7 +24,7 @@ use crate::ui::state::shell_types::{MsgLevel, ShellSplitMode};
 impl App {
     pub(in crate::ui) fn persist_config(&mut self) {
         let cfg = ContainrConfig {
-            version: 10,
+            version: 11,
             last_server: self.active_server.clone(),
             refresh_secs: self.refresh_secs.max(1),
             logs_tail: self.logs.tail.max(1),
@@ -33,6 +33,7 @@ impl App {
             active_theme: self.theme_name.clone(),
             templates_dir: self.templates_state.dir.to_string_lossy().to_string(),
             editor_cmd: self.editor_cmd.clone(),
+            addons: self.addons.clone(),
             view_layout: self
                 .shell_split_by_view
                 .iter()

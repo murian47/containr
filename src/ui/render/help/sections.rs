@@ -340,7 +340,7 @@ fn push_templates(
     out.push(item(
         "Templates",
         "^a",
-        "Run configured AI agent (default binding)",
+        "Run template AI addon (default binding)",
     ));
     out.push(item(
         "Templates",
@@ -385,7 +385,7 @@ fn push_templates(
     out.push(item(
         "Templates",
         ":ai",
-        "Run the configured AI agent for the selected template",
+        "Run the template AI addon for the selected template",
     ));
     out.push(Line::from(""));
     out.push(item(

@@ -1,4 +1,5 @@
 use crate::app_meta;
+use crate::config::AddonEntry;
 use crate::config::{DockerCmd, RegistriesConfig, ServerEntry};
 use crate::docker::NetworkRow;
 use crate::ui::commands::cmdline_cmd::parse_cmdline_tokens;
@@ -44,6 +45,7 @@ fn mk_test_app() -> App {
             docker_cmd: DockerCmd::default(),
         }],
         Vec::new(),
+        Vec::<AddonEntry>::new(),
         Some("local".to_string()),
         config_path,
         HashMap::new(),
@@ -195,6 +197,7 @@ fn dashboard_shows_no_server_message() {
     let mut app = App::new(
         Vec::new(),
         Vec::new(),
+        Vec::<AddonEntry>::new(),
         None,
         config_path,
         HashMap::new(),

@@ -6,10 +6,9 @@ use crate::ui::features::templates::{
     maybe_autocommit_templates,
 };
 use crate::ui::render::sidebar::shell_sidebar_select_item;
-use crate::ui::render::utils::shell_escape_sh_arg;
 use crate::ui::state::app::App;
 use crate::ui::state::shell_types::{
-    ActiveView, ShellInteractive, ShellSidebarItem, ShellView, TemplatesKind, shell_begin_confirm,
+    ActiveView, ShellSidebarItem, ShellView, TemplatesKind, shell_begin_confirm,
 };
 use crate::ui::text_edit::set_text_and_cursor;
 use std::path::PathBuf;
@@ -524,34 +523,23 @@ pub(in crate::ui) fn handle_nettemplate(
     }
 }
 
-pub(in crate::ui) fn handle_template_ai(app: &mut App) -> bool {
+pub(in crate::ui) fn handle_template_ai(
+    app: &mut App,
+    action_req_tx: &mpsc::UnboundedSender<ActionRequest>,
+) -> bool {
     if app.shell_view != ShellView::Templates {
         app.set_warn("AI is only available in Templates");
         return true;
     }
-    let cmd_raw = match std::env::var("CONTAINR_AI_CMD") {
-        Ok(v) if !v.trim().is_empty() => v,
-        _ => {
-            app.set_warn("AI command not configured (set CONTAINR_AI_CMD)");
-            return true;
-        }
-    };
-    let (kind, name, path, has_file) = match app.templates_state.kind {
+    let (name, has_file, template_path) = match app.templates_state.kind {
         TemplatesKind::Stacks => app
             .selected_template()
-            .map(|t| {
-                (
-                    "stack",
-                    t.name.clone(),
-                    t.compose_path.clone(),
-                    t.has_compose,
-                )
-            })
-            .unwrap_or(("stack", String::new(), PathBuf::new(), false)),
+            .map(|t| (t.name.clone(), t.has_compose, t.compose_path.clone()))
+            .unwrap_or((String::new(), false, PathBuf::new())),
         TemplatesKind::Networks => app
             .selected_net_template()
-            .map(|t| ("network", t.name.clone(), t.cfg_path.clone(), t.has_cfg))
-            .unwrap_or(("network", String::new(), PathBuf::new(), false)),
+            .map(|t| (t.name.clone(), t.has_cfg, t.cfg_path.clone()))
+            .unwrap_or((String::new(), false, PathBuf::new())),
     };
     if name.trim().is_empty() {
         app.set_warn("no template selected");
@@ -561,14 +549,10 @@ pub(in crate::ui) fn handle_template_ai(app: &mut App) -> bool {
         app.set_warn("template has no config file");
         return true;
     }
-    let file = path.to_string_lossy().to_string();
-    app.capture_template_ai_snapshot(app.templates_state.kind, name.clone(), path.clone());
-    let cmd = format!(
-        "CONTAINR_AI_FILE={} CONTAINR_AI_KIND={} CONTAINR_AI_NAME={} {}",
-        shell_escape_sh_arg(&file),
-        shell_escape_sh_arg(kind),
-        shell_escape_sh_arg(&name),
-        cmd_raw
+    app.capture_template_ai_snapshot(
+        app.templates_state.kind,
+        name.clone(),
+        template_path.clone(),
     );
     match app.templates_state.kind {
         TemplatesKind::Stacks => {
@@ -578,6 +562,10 @@ pub(in crate::ui) fn handle_template_ai(app: &mut App) -> bool {
             app.templates_state.net_templates_refresh_after_edit = Some(name);
         }
     }
-    app.shell_pending_interactive = Some(ShellInteractive::RunLocalCommand { cmd });
+    let _ = crate::ui::commands::addon_cmd::handle_addon_command(
+        app,
+        &[crate::ui::commands::addon_cmd::template_ai_command_name()],
+        action_req_tx,
+    );
     true
 }

@@ -340,7 +340,7 @@ pub(in crate::ui) fn execute_action(
             }
         },
         ShellAction::TemplateAi => {
-            let _ = crate::ui::commands::templates_cmd::handle_template_ai(app);
+            let _ = crate::ui::commands::templates_cmd::handle_template_ai(app, action_req_tx);
         }
         ShellAction::RegistryTest => {
             registry_test_selected(app, action_req_tx);

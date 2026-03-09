@@ -12,6 +12,15 @@ use super::types::{RegistryAuthResolved, StackUpdateService};
 
 #[derive(Debug, Clone)]
 pub(in crate::ui) enum ActionRequest {
+    AddonRun {
+        addon_id: String,
+        command: String,
+        payload_json: String,
+        entry: Vec<String>,
+        timeout_secs: u64,
+        env_allowlist: Vec<String>,
+        working_dir: Option<PathBuf>,
+    },
     Container {
         action: ContainerAction,
         id: String,

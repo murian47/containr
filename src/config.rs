@@ -12,6 +12,96 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub fn addon_protocol() -> String {
+    format!("{}.addon.v1", app_meta::CONFIG_NAMESPACE)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct AddonCommandSpec {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub action: Option<String>,
+    #[serde(default)]
+    pub capability: Option<String>,
+    #[serde(default)]
+    pub shortcut_allowed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct AddonEntry {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub entry: Vec<String>,
+    #[serde(default)]
+    pub commands: Vec<AddonCommandSpec>,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    #[serde(default)]
+    pub scope: Vec<String>,
+    #[serde(default = "default_addon_protocol")]
+    pub protocol: String,
+    #[serde(default = "default_addon_timeout")]
+    pub timeout_secs: u64,
+    #[serde(default = "default_addon_workdir")]
+    pub working_dir_policy: String,
+    #[serde(default)]
+    pub max_payload_bytes: usize,
+    #[serde(default)]
+    pub env_allowlist: Vec<String>,
+    #[serde(default)]
+    pub trusted: bool,
+    #[serde(default)]
+    pub priority: usize,
+}
+
+impl Default for AddonEntry {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            version: String::from("0.1.0"),
+            description: None,
+            entry: Vec::new(),
+            commands: Vec::new(),
+            enabled: true,
+            capabilities: Vec::new(),
+            scope: Vec::new(),
+            protocol: default_addon_protocol(),
+            timeout_secs: default_addon_timeout(),
+            working_dir_policy: String::from("auto"),
+            max_payload_bytes: 262_144,
+            env_allowlist: Vec::new(),
+            trusted: false,
+            priority: 0,
+        }
+    }
+}
+
+fn default_addon_protocol() -> String {
+    addon_protocol()
+}
+
+fn default_addon_workdir() -> String {
+    "auto".to_string()
+}
+
+fn default_addon_timeout() -> u64 {
+    30
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(transparent)]
 pub struct DockerCmd {
@@ -210,6 +300,8 @@ pub struct ContainrConfig {
     #[serde(default)]
     pub keymap: Vec<KeyBinding>,
     #[serde(default)]
+    pub addons: Vec<AddonEntry>,
+    #[serde(default)]
     pub servers: Vec<ServerEntry>,
     #[serde(default)]
     pub git_autocommit: bool,
@@ -304,7 +396,7 @@ impl Default for RegistriesConfig {
 }
 
 fn default_version() -> u32 {
-    10
+    11
 }
 
 fn default_refresh_secs() -> u64 {
@@ -365,6 +457,7 @@ impl Default for ContainrConfig {
             editor_cmd: String::new(),
             view_layout: HashMap::new(),
             keymap: Vec::new(),
+            addons: Vec::new(),
             servers: Vec::new(),
             git_autocommit: false,
             git_autocommit_confirm: false,

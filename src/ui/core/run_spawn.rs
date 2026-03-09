@@ -1,10 +1,15 @@
 use anyhow::Context as _;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 use tokio::sync::{Semaphore, mpsc, watch};
 use tokio::task::JoinSet;
+use tokio::time;
 
 use crate::docker::{self, ContainerRow, ImageRow, NetworkRow, VolumeRow};
 use crate::runner::Runner;
@@ -570,6 +575,23 @@ pub(in crate::ui) fn spawn_background_tasks(inputs: SpawnInputs) -> BackgroundTa
                 ActionRequest::NetworkRemove { id } => {
                     docker::network_remove(&conn.runner, &conn.docker, id).await
                 }
+                ActionRequest::AddonRun {
+                    entry,
+                    payload_json,
+                    timeout_secs,
+                    env_allowlist,
+                    working_dir,
+                    ..
+                } => {
+                    run_local_addon(
+                        entry,
+                        payload_json,
+                        *timeout_secs,
+                        working_dir,
+                        env_allowlist,
+                    )
+                    .await
+                }
             };
             let _ = action_res_tx_action.send((req, res));
         }
@@ -802,5 +824,94 @@ pub(in crate::ui) fn spawn_background_tasks(inputs: SpawnInputs) -> BackgroundTa
         logs_task,
         ip_task,
         usage_task,
+    }
+}
+
+async fn run_local_addon(
+    entry: &[String],
+    payload_json: &str,
+    timeout_secs: u64,
+    working_dir: &Option<PathBuf>,
+    env_allowlist: &[String],
+) -> anyhow::Result<String> {
+    if entry.is_empty() {
+        anyhow::bail!("addon has no command entry");
+    }
+    if payload_json.is_empty() {
+        anyhow::bail!("addon payload is empty");
+    }
+
+    let mut cmd = Command::new(&entry[0]);
+    if entry.len() > 1 {
+        cmd.args(&entry[1..]);
+    }
+    if let Some(dir) = working_dir {
+        cmd.current_dir(dir);
+    }
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    if !env_allowlist.is_empty() {
+        cmd.env_clear();
+        for pair in env_allowlist {
+            if let Some((key, value)) = split_env_pair(pair) {
+                cmd.env(key, value);
+            }
+        }
+    }
+
+    let mut child = cmd.spawn().context("failed to spawn addon command")?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("addon command stdin unavailable")?;
+    stdin
+        .write_all(payload_json.as_bytes())
+        .await
+        .context("failed to write addon payload to stdin")?;
+    drop(stdin);
+
+    let output = if timeout_secs > 0 {
+        time::timeout(Duration::from_secs(timeout_secs), child.wait_with_output())
+            .await
+            .context("addon command timed out")??
+    } else {
+        child
+            .wait_with_output()
+            .await
+            .context("failed to wait for addon command")?
+    };
+
+    let out = String::from_utf8_lossy(&output.stdout).to_string();
+    let err = String::from_utf8_lossy(&output.stderr).to_string();
+    let out = if out.trim().is_empty() {
+        err
+    } else if err.trim().is_empty() {
+        out
+    } else {
+        format!("{out}\n{err}")
+    };
+
+    if output.status.success() {
+        Ok(out)
+    } else {
+        let code = output.status.code().unwrap_or(-1);
+        anyhow::bail!("addon command failed with exit code {code}: {out}");
+    }
+}
+
+fn split_env_pair(raw: &str) -> Option<(String, String)> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some((key, value)) = trimmed.split_once('=') {
+        Some((key.trim().to_string(), value.to_string()))
+    } else {
+        let key = trimmed;
+        std::env::var(key)
+            .ok()
+            .map(|value| (key.to_string(), value))
     }
 }
