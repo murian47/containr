@@ -5,6 +5,7 @@
 //! Docker runner logic.
 
 use crate::ui::cmd_history::CmdHistory;
+use crate::ui::core::types::TemplateDeployEntry;
 use crate::ui::core::requests::ShellConfirm;
 use crate::ui::core::types::NetTemplateEntry;
 use crate::ui::core::types::{DeployMarker, InspectLine, InspectMode, LogsMode, TemplateEntry};
@@ -105,6 +106,16 @@ pub(in crate::ui) struct LogsState {
     pub(in crate::ui) regex_error: Option<String>,
     pub(in crate::ui) match_lines: Vec<usize>,
     pub(in crate::ui) show_line_numbers: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::ui) struct DeployHistoryState {
+    pub(in crate::ui) title: String,
+    pub(in crate::ui) source: String,
+    pub(in crate::ui) entries: Vec<TemplateDeployEntry>,
+    pub(in crate::ui) selected: usize,
+    pub(in crate::ui) scroll_top: usize,
+    pub(in crate::ui) return_view: ShellView,
 }
 
 #[derive(Debug, Clone)]
@@ -248,6 +259,7 @@ pub(in crate::ui) enum ShellView {
     Registries,
     Inspect,
     Logs,
+    History,
     Help,
     Messages,
     ThemeSelector,
@@ -266,6 +278,7 @@ impl ShellView {
             ShellView::Registries => "registries",
             ShellView::Inspect => "inspect",
             ShellView::Logs => "logs",
+            ShellView::History => "history",
             ShellView::Help => "help",
             ShellView::Messages => "messages",
             ShellView::ThemeSelector => "themes",
@@ -284,6 +297,7 @@ impl ShellView {
             ShellView::Registries => "Registries",
             ShellView::Inspect => "Inspect",
             ShellView::Logs => "Logs",
+            ShellView::History => "History",
             ShellView::Help => "Help",
             ShellView::Messages => "Messages",
             ShellView::ThemeSelector => "Themes",
@@ -339,6 +353,7 @@ pub(in crate::ui) struct SessionMsg {
 pub(in crate::ui) enum ShellAction {
     Inspect,
     Logs,
+    History,
     Start,
     Stop,
     Restart,
@@ -363,6 +378,7 @@ impl ShellAction {
         match self {
             ShellAction::Inspect => "Inspect",
             ShellAction::Logs => "Logs",
+            ShellAction::History => "History",
             ShellAction::Start => "Start",
             ShellAction::Stop => "Stop",
             ShellAction::Restart => "Restart",
@@ -387,6 +403,7 @@ impl ShellAction {
         match self {
             ShellAction::Inspect => "^i",
             ShellAction::Logs => "^l",
+            ShellAction::History => "^h",
             ShellAction::Start => "^s",
             ShellAction::Stop => "^o",
             ShellAction::Restart => "^r",

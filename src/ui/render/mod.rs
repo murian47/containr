@@ -14,6 +14,7 @@ pub mod format;
 pub mod git;
 pub mod header;
 pub mod help;
+pub mod history;
 pub mod highlight;
 pub mod inspect;
 pub mod layout;

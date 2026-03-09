@@ -2,9 +2,11 @@
 
 use crate::docker::ContainerRow;
 use crate::ui::core::types::StackEntry;
+use crate::ui::features::templates::template_id_from_labels;
 use crate::ui::render::stacks::stack_name_from_labels;
 use crate::ui::render::utils::is_container_stopped;
 use crate::ui::state::app::App;
+use std::collections::HashMap;
 
 impl App {
     pub(in crate::ui) fn rebuild_stacks(&mut self) {
@@ -68,6 +70,23 @@ impl App {
             .iter()
             .filter(|n| stack_name_from_labels(&n.labels).as_deref() == Some(name))
             .count()
+    }
+
+    pub(in crate::ui) fn stack_template_id(&self, name: &str) -> Option<String> {
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for container in self
+            .containers
+            .iter()
+            .filter(|c| stack_name_from_labels(&c.labels).as_deref() == Some(name))
+        {
+            if let Some(id) = template_id_from_labels(&container.labels) {
+                *counts.entry(id).or_insert(0) += 1;
+            }
+        }
+        counts
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(id, _)| id)
     }
 
     pub(in crate::ui) fn stack_network_ids(&self, name: &str) -> Vec<String> {

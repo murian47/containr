@@ -18,9 +18,9 @@ use crate::ui::core::types::{
     SimpleMarker, StackDetailsFocus, StackEntry, TemplateDeployEntry, ViewEntry,
 };
 use crate::ui::state::shell_types::{
-    ActiveView, InspectState, ListMode, LogsState, SessionMsg, ShellCmdlineState, ShellFocus,
-    ShellHelpState, ShellInteractive, ShellMessagesState, ShellSplitMode, ShellView,
-    TemplatesState, ThemeSelectorState,
+    ActiveView, DeployHistoryState, InspectState, ListMode, LogsState, SessionMsg,
+    ShellCmdlineState, ShellFocus, ShellHelpState, ShellInteractive, ShellMessagesState,
+    ShellSplitMode, ShellView, TemplatesState, ThemeSelectorState,
 };
 use crate::ui::theme;
 
@@ -90,6 +90,7 @@ pub(in crate::ui) struct App {
     pub(in crate::ui) current_target: String,
 
     pub(in crate::ui) logs: LogsState,
+    pub(in crate::ui) deploy_history: DeployHistoryState,
     pub(in crate::ui) dashboard: DashboardState,
     pub(in crate::ui) dashboard_all: DashboardAllState,
     pub(in crate::ui) dashboard_image: Option<DashboardImageState>,

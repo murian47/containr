@@ -6,6 +6,7 @@
 pub mod containers;
 pub mod dashboard;
 pub mod help;
+pub mod history;
 pub mod images;
 pub mod inspect;
 pub mod logs;

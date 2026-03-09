@@ -242,6 +242,7 @@ fn parse_view_name(s: &str) -> Option<ShellView> {
         "nettemplates" | "nettemplate" | "nettpl" | "ntpl" | "nt" => Some(ShellView::Templates),
         "logs" | "log" => Some(ShellView::Logs),
         "inspect" => Some(ShellView::Inspect),
+        "history" | "hist" => Some(ShellView::History),
         "messages" | "msgs" => Some(ShellView::Messages),
         "help" => Some(ShellView::Help),
         _ => None,
@@ -262,6 +263,7 @@ pub(in crate::ui) fn scope_to_string(scope: KeyScope) -> &'static str {
         KeyScope::View(ShellView::Registries) => "view:registries",
         KeyScope::View(ShellView::Logs) => "view:logs",
         KeyScope::View(ShellView::Inspect) => "view:inspect",
+        KeyScope::View(ShellView::History) => "view:history",
         KeyScope::View(ShellView::Messages) => "view:messages",
         KeyScope::View(ShellView::Help) => "view:help",
         KeyScope::View(ShellView::ThemeSelector) => "view:themes",
@@ -305,6 +307,7 @@ pub(in crate::ui) fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), Stri
     add(s, "C-d", ":stack rm");
     add(s, "C-u", ":stack update");
     add(s, "C-S-U", ":stack update --all");
+    add(s, "C-h", ":history");
 
     // Images.
     let i = KeyScope::View(ShellView::Images);
@@ -330,6 +333,7 @@ pub(in crate::ui) fn build_default_keymap() -> HashMap<(KeyScope, KeySpec), Stri
     add(t, "C-S-Y", ":template deploy --recreate --pull");
     add(t, "C-d", ":template rm");
     add(t, "C-t", ":templates toggle");
+    add(t, "C-h", ":history");
 
     // Registries.
     let r = KeyScope::View(ShellView::Registries);

@@ -21,6 +21,7 @@ pub(in crate::ui) fn shell_module_shortcut(view: ShellView) -> char {
         ShellView::Registries => 'r',
         ShellView::Inspect => 'i',
         ShellView::Logs => 'l',
+        ShellView::History => 'h',
         ShellView::Help => '?',
         // Not a primary module; used only for internal navigation/help display.
         ShellView::Messages => 'g',
@@ -55,11 +56,12 @@ fn shell_cycle_focus_by(app: &mut App, step: isize) {
     if has_details {
         order.push(ShellFocus::Details);
     }
-    let dock_allowed = app.log_dock_enabled
+        let dock_allowed = app.log_dock_enabled
         && !matches!(
             app.shell_view,
             ShellView::Logs
                 | ShellView::Inspect
+                | ShellView::History
                 | ShellView::Help
                 | ShellView::Messages
                 | ShellView::ThemeSelector
@@ -85,7 +87,11 @@ impl App {
         self.shell_view = view;
         if !matches!(
             view,
-            ShellView::Inspect | ShellView::Logs | ShellView::Help | ShellView::Messages
+            ShellView::Inspect
+                | ShellView::Logs
+                | ShellView::History
+                | ShellView::Help
+                | ShellView::Messages
         ) {
             self.shell_last_main_view = view;
         }
@@ -104,6 +110,7 @@ impl App {
             ShellView::Registries => self.active_view,
             ShellView::Inspect
             | ShellView::Logs
+            | ShellView::History
             | ShellView::Help
             | ShellView::Messages
             | ShellView::ThemeSelector => self.active_view,
@@ -113,7 +120,11 @@ impl App {
     pub(in crate::ui) fn back_from_full_view(&mut self) {
         if matches!(
             self.shell_view,
-            ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages
+            ShellView::Logs
+                | ShellView::Inspect
+                | ShellView::History
+                | ShellView::Help
+                | ShellView::Messages
         ) {
             // Full-screen views should never keep command-line mode active in the background.
             self.shell_cmdline.mode = false;
@@ -128,6 +139,12 @@ impl App {
                     fallback
                 } else {
                     self.shell_help.return_view
+                }
+            } else if self.shell_view == ShellView::History {
+                if self.deploy_history.return_view == ShellView::History {
+                    fallback
+                } else {
+                    self.deploy_history.return_view
                 }
             } else if self.shell_view == ShellView::Messages {
                 if self.shell_msgs.return_view == ShellView::Messages {

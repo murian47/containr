@@ -1,6 +1,8 @@
 use super::panel_bg;
 use crate::ui::commands::git_cmd;
 use crate::ui::core::types::ActionErrorKind;
+use crate::ui::core::types::TemplateDeployEntry;
+use crate::ui::render::format::format_action_ts;
 use crate::ui::render::highlight::{json_highlight_line, yaml_highlight_line};
 use crate::ui::render::status::action_error_label;
 use crate::ui::render::text::short_commit;
@@ -11,6 +13,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 use std::fs;
+use time::OffsetDateTime;
 
 pub(super) fn draw_shell_template_details(
     f: &mut ratatui::Frame,
@@ -36,7 +39,7 @@ fn draw_shell_stack_template_details(
     });
     let parts = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .constraints([Constraint::Length(7), Constraint::Min(1)])
         .split(inner);
     let status_area = parts[0];
     let content_area = parts[1];
@@ -186,13 +189,14 @@ fn draw_shell_stack_template_details(
         }
         (None, None) => Line::from(Span::styled("Commit: -".to_string(), info_style)),
     };
-    let status_lines = Text::from(vec![
+    let mut status_lines = vec![
         Line::from(Span::styled(status_text, status_style)),
         Line::from(Span::styled(format!("Servers: {servers_text}"), info_style)),
         commit_line,
-    ]);
+    ];
+    status_lines.extend(deploy_history_lines(deploy_list, active_server, info_style));
     f.render_widget(
-        Paragraph::new(status_lines).wrap(Wrap { trim: true }),
+        Paragraph::new(Text::from(status_lines)).wrap(Wrap { trim: true }),
         status_area,
     );
     f.render_widget(
@@ -233,7 +237,7 @@ fn draw_shell_net_template_details(
     });
     let parts = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(1)])
+        .constraints([Constraint::Length(6), Constraint::Min(1)])
         .split(inner);
     let status_area = parts[0];
     let content_area = parts[1];
@@ -293,7 +297,7 @@ fn draw_shell_net_template_details(
     }
 
     let dirty = app.templates_state.dirty_net_templates.contains(&t.name);
-    let (status_text, status_style) = if let Some(m) = app
+    let (mut status_text, status_style) = if let Some(m) = app
         .templates_state
         .net_template_deploy_inflight
         .get(&t.name)
@@ -320,10 +324,29 @@ fn draw_shell_net_template_details(
             bg.patch(app.theme.text_dim.to_style()),
         )
     };
+    let deploy_list = app.net_template_deploys.get(&t.name);
+    let active_server = app.active_server.as_deref();
+    let mut servers: Vec<String> = deploy_list
+        .map(|list| list.iter().map(|info| info.server_name.clone()).collect())
+        .unwrap_or_default();
+    servers.sort_by_key(|a| a.to_lowercase());
+    servers.dedup();
+    let servers_text = if servers.is_empty() {
+        "-".to_string()
+    } else {
+        servers.join(", ")
+    };
+    if status_text == "Status: -" && servers_text != "-" {
+        status_text = "Status: deployed".to_string();
+    }
+    let info_style = bg.patch(app.theme.text_dim.to_style());
+    let mut status_lines = vec![
+        Line::from(Span::styled(status_text, status_style)),
+        Line::from(Span::styled(format!("Servers: {servers_text}"), info_style)),
+    ];
+    status_lines.extend(deploy_history_lines(deploy_list, active_server, info_style));
     f.render_widget(
-        Paragraph::new(status_text)
-            .style(status_style)
-            .wrap(Wrap { trim: true }),
+        Paragraph::new(Text::from(status_lines)).wrap(Wrap { trim: true }),
         status_area,
     );
     f.render_widget(
@@ -335,4 +358,56 @@ fn draw_shell_net_template_details(
         )),
         content_area,
     );
+}
+
+fn deploy_history_lines(
+    deploy_list: Option<&Vec<TemplateDeployEntry>>,
+    active_server: Option<&str>,
+    info_style: Style,
+) -> Vec<Line<'static>> {
+    let Some(list) = deploy_list else {
+        return vec![Line::from(Span::styled(
+            "Deploys: -".to_string(),
+            info_style,
+        ))];
+    };
+    if list.is_empty() {
+        return vec![Line::from(Span::styled(
+            "Deploys: -".to_string(),
+            info_style,
+        ))];
+    }
+    let mut entries = list.clone();
+    entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    let mut lines: Vec<Line<'static>> = vec![Line::from(Span::styled(
+        format!("Deploys: {}", entries.len()),
+        info_style,
+    ))];
+    for entry in entries.iter().take(3) {
+        lines.push(Line::from(Span::styled(
+            format_deploy_history_entry(entry, active_server),
+            info_style,
+        )));
+    }
+    lines
+}
+
+fn format_deploy_history_entry(entry: &TemplateDeployEntry, active_server: Option<&str>) -> String {
+    let ts = OffsetDateTime::from_unix_timestamp(entry.timestamp)
+        .map(format_action_ts)
+        .unwrap_or_else(|_| entry.timestamp.to_string());
+    let marker = if active_server
+        .map(|server| server == entry.server_name)
+        .unwrap_or(false)
+    {
+        "*"
+    } else {
+        "-"
+    };
+    let commit = entry
+        .commit
+        .as_deref()
+        .map(short_commit)
+        .unwrap_or_else(|| "-".to_string());
+    format!("{marker} {ts} | {} | {commit}", entry.server_name)
 }

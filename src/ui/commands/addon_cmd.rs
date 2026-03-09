@@ -598,6 +598,7 @@ fn active_view_label(view: ShellView) -> String {
         ShellView::Registries => "registries".to_string(),
         ShellView::Inspect => "inspect".to_string(),
         ShellView::Logs => "logs".to_string(),
+        ShellView::History => "history".to_string(),
         ShellView::Help => "help".to_string(),
         ShellView::Messages => "messages".to_string(),
         ShellView::ThemeSelector => "themes".to_string(),

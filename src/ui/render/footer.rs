@@ -54,6 +54,7 @@ fn footer_hint(view: ShellView) -> &'static str {
         ShellView::Inspect => {
             " F1 help  / search  : cmd  n/N match  m regex  Enter expand  q back  :q quit"
         }
+        ShellView::History => " F1 help  Up/Down scroll  PageUp/PageDown  Home/End  q back  :q quit",
         ShellView::Help => " F1 help  Up/Down scroll  PageUp/PageDown  q back  :q quit",
         ShellView::Messages => {
             " F1 help  Up/Down select  Left/Right hscroll  PgUp/PgDn  ^c copy  ^g toggle  q back  :q quit"

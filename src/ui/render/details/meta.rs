@@ -132,3 +132,39 @@ pub(super) fn draw_shell_messages_meta(
         inner,
     );
 }
+
+pub(super) fn draw_shell_history_meta(
+    f: &mut ratatui::Frame,
+    app: &App,
+    area: ratatui::layout::Rect,
+) {
+    let bg = panel_bg(app);
+    f.render_widget(Block::default().style(bg), area);
+    let inner = area.inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    let pos = format!(
+        "Entry: {}/{}",
+        app.deploy_history.selected.saturating_add(1),
+        app.deploy_history.entries.len().max(1)
+    );
+    let line = Line::from(vec![
+        Span::styled("Source: ", Style::default().fg(Color::Gray)),
+        Span::styled(
+            truncate_end(&app.deploy_history.source, inner.width.max(1) as usize / 2),
+            Style::default().fg(Color::White),
+        ),
+        Span::raw("   "),
+        Span::styled(pos, Style::default().fg(Color::Gray)),
+        Span::raw("   "),
+        Span::styled(
+            "Up/Down scroll  Home/End  q back",
+            Style::default().fg(Color::Gray),
+        ),
+    ]);
+    f.render_widget(
+        Paragraph::new(line).style(bg).wrap(Wrap { trim: true }),
+        inner,
+    );
+}

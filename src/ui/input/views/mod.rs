@@ -29,7 +29,11 @@ pub(super) fn handle_view_navigation(app: &mut App, key: KeyEvent, ctx: &InputCt
         | ShellView::Networks => main_views::handle_main_view_navigation(app, key),
         ShellView::Templates => templates::handle_templates_navigation(app, key),
         ShellView::Registries => registries::handle_registries_navigation(app, key),
-        ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages => {
+        ShellView::Logs
+        | ShellView::Inspect
+        | ShellView::History
+        | ShellView::Help
+        | ShellView::Messages => {
             overlays::handle_overlay_navigation(app, key)
         }
         ShellView::ThemeSelector => {}

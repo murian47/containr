@@ -197,6 +197,7 @@ pub(super) fn handle_builtin_cmd<'a>(
                 },
                 ShellView::Logs
                 | ShellView::Inspect
+                | ShellView::History
                 | ShellView::Help
                 | ShellView::Messages
                 | ShellView::Registries
@@ -224,13 +225,13 @@ pub(super) fn handle_builtin_cmd<'a>(
         "view" => {
             let Some(raw) = it.next() else {
                 app.set_warn(
-                    "usage: :view <dashboard|stacks|containers|images|volumes|networks|templates|registries>",
+                    "usage: :view <dashboard|stacks|containers|images|volumes|networks|templates|registries|history>",
                 );
                 return true;
             };
             let Some(KeyScope::View(v)) = parse_scope(raw) else {
                 app.set_warn(
-                    "usage: :view <dashboard|stacks|containers|images|volumes|networks|templates|registries>",
+                    "usage: :view <dashboard|stacks|containers|images|volumes|networks|templates|registries|history>",
                 );
                 return true;
             };

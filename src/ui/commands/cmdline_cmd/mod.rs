@@ -185,6 +185,11 @@ pub(in crate::ui) fn execute_cmdline(
         return;
     }
 
+    if cmd == "history" || cmd == "hist" {
+        app.open_deploy_history_for_current();
+        return;
+    }
+
     if cmd == "set" {
         let args: Vec<&str> = it.collect();
         let _ = set_cmd::handle_set(

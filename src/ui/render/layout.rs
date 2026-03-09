@@ -19,7 +19,11 @@ pub(in crate::ui) fn draw_shell_body(f: &mut ratatui::Frame, app: &mut App, area
     let dock_allowed = app.log_dock_enabled
         && !matches!(
             app.shell_view,
-            ShellView::Logs | ShellView::Inspect | ShellView::Help | ShellView::Messages
+            ShellView::Logs
+                | ShellView::Inspect
+                | ShellView::History
+                | ShellView::Help
+                | ShellView::Messages
         );
     if app.shell_sidebar_hidden {
         draw_shell_main_with_optional_dock(f, app, area, dock_allowed);
@@ -75,7 +79,10 @@ pub(in crate::ui) fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area
         draw_shell_main_list(f, app, area);
         return;
     }
-    let is_full = matches!(app.shell_view, ShellView::Logs | ShellView::Inspect);
+    let is_full = matches!(
+        app.shell_view,
+        ShellView::Logs | ShellView::Inspect | ShellView::History
+    );
     let is_split_view = matches!(
         app.shell_view,
         ShellView::Stacks
@@ -108,6 +115,7 @@ pub(in crate::ui) fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area
             if matches!(
                 app.shell_view,
                 ShellView::Logs | ShellView::Inspect | ShellView::Messages | ShellView::Help
+                    | ShellView::History
             ) {
                 // Keep the meta area compact (3 lines) and centered.
                 [

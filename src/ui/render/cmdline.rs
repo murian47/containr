@@ -141,6 +141,8 @@ fn cmdline_command_candidates() -> Vec<&'static str> {
         "ai",
         "inspect",
         "logs",
+        "history",
+        "hist",
         "set",
         "layout",
         "templates",
@@ -171,6 +173,7 @@ fn cmdline_scope_candidates() -> Vec<String> {
         "view:registries",
         "view:logs",
         "view:inspect",
+        "view:history",
         "view:messages",
         "view:help",
     ]
@@ -204,7 +207,7 @@ fn cmdline_key_candidates() -> Vec<String> {
         out.push(format!("C-F{n}"));
     }
     for ch in [
-        'a', 'b', 'c', 'd', 'e', 'g', 'k', 'n', 'o', 'p', 'r', 's', 't', 'u', 'y',
+        'a', 'b', 'c', 'd', 'e', 'g', 'h', 'k', 'n', 'o', 'p', 'r', 's', 't', 'u', 'y',
     ] {
         out.push(format!("C-{ch}"));
     }

@@ -80,6 +80,7 @@ fn shell_action_cmd(view: ShellView, action: ShellAction) -> Option<&'static str
         (ShellView::Stacks, ShellAction::Delete) => Some("stack rm"),
         (ShellView::Stacks, ShellAction::StackUpdate) => Some("stack update"),
         (ShellView::Stacks, ShellAction::StackUpdateAll) => Some("stack update --all"),
+        (ShellView::Stacks, ShellAction::History) => Some("history"),
         (ShellView::Containers, ShellAction::Inspect) => Some("inspect"),
         (ShellView::Containers, ShellAction::Logs) => Some("logs"),
         (ShellView::Containers, ShellAction::Start) => Some("container start"),
@@ -101,6 +102,7 @@ fn shell_action_cmd(view: ShellView, action: ShellAction) -> Option<&'static str
         (ShellView::Templates, ShellAction::TemplateRedeploy) => {
             Some("template deploy --recreate --pull")
         }
+        (ShellView::Templates, ShellAction::History) => Some("history"),
         (ShellView::Registries, ShellAction::RegistryTest) => Some("registry test"),
         _ => None,
     }
@@ -288,6 +290,7 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
             ShellAction::Delete,
             ShellAction::StackUpdate,
             ShellAction::StackUpdateAll,
+            ShellAction::History,
         ],
         ShellView::Containers => vec![
             ShellAction::Inspect,
@@ -311,9 +314,10 @@ pub(in crate::ui) fn shell_sidebar_items(app: &App) -> Vec<ShellSidebarItem> {
             ShellAction::TemplateDelete,
             ShellAction::TemplateDeploy,
             ShellAction::TemplateRedeploy,
+            ShellAction::History,
         ],
         ShellView::Registries => vec![ShellAction::RegistryTest],
-        ShellView::Inspect | ShellView::Logs | ShellView::Help => vec![],
+        ShellView::Inspect | ShellView::Logs | ShellView::History | ShellView::Help => vec![],
         ShellView::Messages | ShellView::ThemeSelector => vec![],
     };
     if !actions.is_empty() {

@@ -225,7 +225,11 @@ pub(in crate::ui) fn draw_shell_title(
 pub(in crate::ui) fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let banner = if matches!(
         app.shell_view,
-        ShellView::Logs | ShellView::Inspect | ShellView::Messages | ShellView::Help
+        ShellView::Logs
+            | ShellView::Inspect
+            | ShellView::History
+            | ShellView::Messages
+            | ShellView::Help
     ) {
         None
     } else {
@@ -341,6 +345,16 @@ pub(in crate::ui) fn draw_shell_main_list(f: &mut ratatui::Frame, app: &mut App,
             draw_shell_title(f, app, "Inspect", app.inspect.lines.len(), title_area);
             views::inspect::render_inspect(f, app, content_area);
         }
+        ShellView::History => {
+            draw_shell_title(
+                f,
+                app,
+                &app.deploy_history.title,
+                app.deploy_history.entries.len(),
+                title_area,
+            );
+            views::history::render_history(f, app, content_area);
+        }
         ShellView::Help => {
             draw_shell_title(f, app, "Help", 0, title_area);
             views::help::render_help(f, app, content_area);
@@ -422,7 +436,9 @@ pub(in crate::ui) fn draw_shell_cmdline(f: &mut ratatui::Frame, app: &App, area:
                         ("CONTAINR", "", String::new(), 0, false)
                     }
                 }
-                ShellView::Messages | ShellView::Help => ("CONTAINR", "", String::new(), 0, false),
+                ShellView::Messages | ShellView::Help | ShellView::History => {
+                    ("CONTAINR", "", String::new(), 0, false)
+                }
                 _ => ("CONTAINR", "", String::new(), 0, false),
             }
         };

@@ -198,6 +198,9 @@ pub(in crate::ui) fn execute_action(
         ShellAction::Logs => {
             app.enter_logs(logs_req_tx);
         }
+        ShellAction::History => {
+            app.open_deploy_history_for_current();
+        }
         ShellAction::Start => {
             if app.shell_view == ShellView::Stacks {
                 state_actions::exec_stack_action(app, ContainerAction::Start, None, action_req_tx);

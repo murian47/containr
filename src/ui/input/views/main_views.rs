@@ -71,11 +71,6 @@ pub(super) fn handle_main_view_navigation(app: &mut App, key: KeyEvent) {
 fn handle_main_view_details_navigation(app: &mut App, key: KeyEvent) {
     let stack_name = if app.shell_view == ShellView::Stacks {
         let name = app.selected_stack_entry().map(|s| s.name.clone());
-        if let Some(ref n) = name
-            && app.stack_network_count(n) == 0
-        {
-            app.stack_details_focus = StackDetailsFocus::Containers;
-        }
         name
     } else {
         None
@@ -88,6 +83,11 @@ fn handle_main_view_details_navigation(app: &mut App, key: KeyEvent) {
         } else {
             None
         };
+    if let Some((_, networks)) = stack_counts {
+        if networks == 0 && app.stack_details_focus == StackDetailsFocus::Networks {
+            app.stack_details_focus = StackDetailsFocus::Containers;
+        }
+    }
     let scroll = match app.shell_view {
         ShellView::Stacks => match app.stack_details_focus {
             StackDetailsFocus::Containers => &mut app.stacks_details_scroll,

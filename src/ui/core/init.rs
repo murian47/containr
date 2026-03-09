@@ -196,6 +196,14 @@ impl App {
                 match_lines: Vec::new(),
                 show_line_numbers: false,
             },
+            deploy_history: crate::ui::state::shell_types::DeployHistoryState {
+                title: String::new(),
+                source: String::new(),
+                entries: Vec::new(),
+                selected: 0,
+                scroll_top: 0,
+                return_view: ShellView::Dashboard,
+            },
             dashboard: DashboardState {
                 loading: true,
                 last_disk_count: 0,

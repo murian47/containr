@@ -66,6 +66,18 @@ pub(super) fn handle_overlay_navigation(app: &mut App, key: KeyEvent) {
             KeyCode::Char('N') => app.inspect_jump_prev_match(),
             _ => {}
         },
+        ShellView::History => match key.code {
+            KeyCode::Up | KeyCode::Char('k') => app.history_move_up(1),
+            KeyCode::Down | KeyCode::Char('j') => app.history_move_down(1),
+            KeyCode::PageUp => app.history_move_up(10),
+            KeyCode::PageDown => app.history_move_down(10),
+            KeyCode::Home => app.deploy_history.selected = 0,
+            KeyCode::End => {
+                app.deploy_history.selected =
+                    app.deploy_history.entries.len().saturating_sub(1)
+            }
+            _ => {}
+        },
         ShellView::Help => match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 app.shell_help.scroll = app.shell_help.scroll.saturating_sub(1)

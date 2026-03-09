@@ -64,6 +64,13 @@ pub(in crate::ui) fn shell_breadcrumbs(app: &App) -> String {
             .and_then(|_| app.selected_container().map(|c| c.name.clone()))
             .map(|n| format!("/{n}"))
             .unwrap_or_default(),
+        ShellView::History => {
+            if app.deploy_history.source.trim().is_empty() {
+                String::new()
+            } else {
+                format!("/{}", app.deploy_history.source)
+            }
+        }
         ShellView::Help => String::new(),
         ShellView::Messages => String::new(),
         ShellView::ThemeSelector => String::new(),

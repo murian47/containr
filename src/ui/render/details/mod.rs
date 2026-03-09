@@ -26,6 +26,7 @@ pub(in crate::ui) fn draw_shell_main_details(
         ShellView::Registries => registries::draw_shell_registry_details(f, app, area),
         ShellView::Logs => meta::draw_shell_logs_meta(f, app, area),
         ShellView::Inspect => meta::draw_shell_inspect_meta(f, app, area),
+        ShellView::History => meta::draw_shell_history_meta(f, app, area),
         ShellView::Help => meta::draw_shell_help_meta(f, app, area),
         ShellView::Messages => meta::draw_shell_messages_meta(f, app, area),
         ShellView::ThemeSelector => {}

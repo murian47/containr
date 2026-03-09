@@ -31,6 +31,7 @@ pub(super) fn handle_dock_navigation(app: &mut App, key: KeyEvent) -> bool {
             app.shell_view,
             ShellView::Logs
                 | ShellView::Inspect
+                | ShellView::History
                 | ShellView::Help
                 | ShellView::Messages
                 | ShellView::ThemeSelector
