@@ -56,7 +56,7 @@ fn shell_cycle_focus_by(app: &mut App, step: isize) {
     if has_details {
         order.push(ShellFocus::Details);
     }
-        let dock_allowed = app.log_dock_enabled
+    let dock_allowed = app.log_dock_enabled
         && !matches!(
             app.shell_view,
             ShellView::Logs

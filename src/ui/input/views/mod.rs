@@ -33,9 +33,7 @@ pub(super) fn handle_view_navigation(app: &mut App, key: KeyEvent, ctx: &InputCt
         | ShellView::Inspect
         | ShellView::History
         | ShellView::Help
-        | ShellView::Messages => {
-            overlays::handle_overlay_navigation(app, key)
-        }
+        | ShellView::Messages => overlays::handle_overlay_navigation(app, key),
         ShellView::ThemeSelector => {}
     }
 }

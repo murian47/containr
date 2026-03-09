@@ -5,9 +5,9 @@
 //! Docker runner logic.
 
 use crate::ui::cmd_history::CmdHistory;
-use crate::ui::core::types::TemplateDeployEntry;
 use crate::ui::core::requests::ShellConfirm;
 use crate::ui::core::types::NetTemplateEntry;
+use crate::ui::core::types::TemplateDeployEntry;
 use crate::ui::core::types::{DeployMarker, InspectLine, InspectMode, LogsMode, TemplateEntry};
 use crate::ui::theme;
 use regex::Regex;

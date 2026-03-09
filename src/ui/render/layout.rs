@@ -114,7 +114,10 @@ pub(in crate::ui) fn draw_shell_main(f: &mut ratatui::Frame, app: &mut App, area
         .constraints(
             if matches!(
                 app.shell_view,
-                ShellView::Logs | ShellView::Inspect | ShellView::Messages | ShellView::Help
+                ShellView::Logs
+                    | ShellView::Inspect
+                    | ShellView::Messages
+                    | ShellView::Help
                     | ShellView::History
             ) {
                 // Keep the meta area compact (3 lines) and centered.

@@ -73,8 +73,7 @@ pub(super) fn handle_overlay_navigation(app: &mut App, key: KeyEvent) {
             KeyCode::PageDown => app.history_move_down(10),
             KeyCode::Home => app.deploy_history.selected = 0,
             KeyCode::End => {
-                app.deploy_history.selected =
-                    app.deploy_history.entries.len().saturating_sub(1)
+                app.deploy_history.selected = app.deploy_history.entries.len().saturating_sub(1)
             }
             _ => {}
         },
