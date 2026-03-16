@@ -180,7 +180,7 @@ pub fn containers_command(cfg: &DockerCfg) -> String {
     }
     // Run "ps -a" and "stats --no-stream" in a single SSH session to reduce latency.
     // We separate the outputs using a unique marker line.
-    const SPLIT: &str = "__MCDOC_SPLIT__";
+    const SPLIT: &str = "__CONTAINR_SPLIT__";
     let cmd = cfg.docker_cmd.to_shell();
     format!(
         "{cmd} ps -a --no-trunc --format '{{{{json .}}}}'; echo {split}; {cmd} stats --no-stream --format '{{{{json .}}}}'",
@@ -195,10 +195,10 @@ pub fn overview_command(cfg: &DockerCfg) -> String {
     }
     // Fetch containers + stats + images + volumes + networks in a single SSH session.
     // Outputs are separated using unique marker lines.
-    const S1: &str = "__MCDOC_SPLIT_1__";
-    const S2: &str = "__MCDOC_SPLIT_2__";
-    const S3: &str = "__MCDOC_SPLIT_3__";
-    const S4: &str = "__MCDOC_SPLIT_4__";
+    const S1: &str = "__CONTAINR_SPLIT_1__";
+    const S2: &str = "__CONTAINR_SPLIT_2__";
+    const S3: &str = "__CONTAINR_SPLIT_3__";
+    const S4: &str = "__CONTAINR_SPLIT_4__";
     let cmd = cfg.docker_cmd.to_shell();
     format!(
         "{cmd} ps -a --no-trunc --format '{{{{json .}}}}'; echo {s1}; \
@@ -216,7 +216,7 @@ pub fn overview_command(cfg: &DockerCfg) -> String {
 
 pub fn parse_containers_output(out: &str) -> anyhow::Result<Vec<ContainerRow>> {
     // Parse the combined output from containers_command() and join ps/stats rows.
-    const SPLIT: &str = "__MCDOC_SPLIT__";
+    const SPLIT: &str = "__CONTAINR_SPLIT__";
     let mut ps_part = String::new();
     let mut stats_part = String::new();
     let mut in_stats = false;
@@ -280,10 +280,10 @@ pub fn parse_containers_output(out: &str) -> anyhow::Result<Vec<ContainerRow>> {
 }
 
 pub fn parse_overview_output(out: &str) -> anyhow::Result<OverviewRows> {
-    const S1: &str = "__MCDOC_SPLIT_1__";
-    const S2: &str = "__MCDOC_SPLIT_2__";
-    const S3: &str = "__MCDOC_SPLIT_3__";
-    const S4: &str = "__MCDOC_SPLIT_4__";
+    const S1: &str = "__CONTAINR_SPLIT_1__";
+    const S2: &str = "__CONTAINR_SPLIT_2__";
+    const S3: &str = "__CONTAINR_SPLIT_3__";
+    const S4: &str = "__CONTAINR_SPLIT_4__";
 
     let mut part_ps = String::new();
     let mut part_stats = String::new();
@@ -342,7 +342,7 @@ pub fn parse_overview_output(out: &str) -> anyhow::Result<OverviewRows> {
         }
     }
 
-    let combined = format!("{}__MCDOC_SPLIT__\n{}", part_ps, part_stats);
+    let combined = format!("{}__CONTAINR_SPLIT__\n{}", part_ps, part_stats);
     let containers = parse_containers_output(&combined)?;
 
     let images_raw: Vec<ImageLsRow> = parse_json_lines(&part_images)?;
