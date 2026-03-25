@@ -62,6 +62,9 @@ pub(in crate::ui) fn maybe_autocommit_templates(
             } else {
                 app.log_msg(MsgLevel::Info, format!("git autocommit: {out}"));
             }
+            app.refresh_templates();
+            app.refresh_net_templates();
+            app.refresh_template_git_status();
         }
         Err(e) => app.log_msg(MsgLevel::Warn, format!("git autocommit failed: {e:#}")),
     }

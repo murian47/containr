@@ -189,6 +189,13 @@ fn show_git_output(app: &mut App, title: &str, output: &str) {
     app.shell_msgs.scroll = usize::MAX;
 }
 
+fn refresh_templates_git_view_state(app: &mut App) {
+    app.refresh_templates();
+    app.refresh_net_templates();
+    // Keep Git markers in sync even when list refresh exits early.
+    app.refresh_template_git_status();
+}
+
 pub(in crate::ui) fn handle_git(app: &mut App, args: &[&str]) -> bool {
     if !git_available() {
         return true;
@@ -265,6 +272,9 @@ pub(in crate::ui) fn handle_git(app: &mut App, args: &[&str]) -> bool {
             match run_git(&dir, &["status", "--porcelain"]) {
                 Ok(out) => {
                     if out.trim().is_empty() {
+                        if ctx == GitContext::Templates {
+                            refresh_templates_git_view_state(app);
+                        }
                         app.set_info("git commit: no changes".to_string());
                         return true;
                     }
@@ -282,8 +292,7 @@ pub(in crate::ui) fn handle_git(app: &mut App, args: &[&str]) -> bool {
                 Ok(out) => {
                     show_git_output(app, "git commit", &out);
                     if ctx == GitContext::Templates {
-                        app.refresh_templates();
-                        app.refresh_net_templates();
+                        refresh_templates_git_view_state(app);
                     }
                 }
                 Err(e) => app.set_error(format!("{e:#}")),
@@ -337,6 +346,9 @@ pub(in crate::ui) fn handle_git(app: &mut App, args: &[&str]) -> bool {
             match run_git(&dir, &["status", "--porcelain"]) {
                 Ok(out) => {
                     if out.trim().is_empty() {
+                        if ctx == GitContext::Templates {
+                            refresh_templates_git_view_state(app);
+                        }
                         app.set_info("git autocommit: no changes".to_string());
                         return true;
                     }
@@ -355,8 +367,7 @@ pub(in crate::ui) fn handle_git(app: &mut App, args: &[&str]) -> bool {
                 Ok(out) => {
                     show_git_output(app, "git autocommit", &out);
                     if ctx == GitContext::Templates {
-                        app.refresh_templates();
-                        app.refresh_net_templates();
+                        refresh_templates_git_view_state(app);
                     }
                 }
                 Err(e) => app.set_error(format!("{e:#}")),
